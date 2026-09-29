@@ -102,7 +102,7 @@ export function Office({ s }: { s: GameState }) {
     atNight && (id === "talent" || id === "build");
 
   return (
-    <div className="fixed inset-0 overflow-hidden bg-black">
+    <div className="fixed inset-0 overflow-x-hidden overflow-y-auto bg-black lg:overflow-hidden">
       {/* The office itself, dimmed, behind every panel. */}
       <Img
         src={art.office}
@@ -111,12 +111,12 @@ export function Office({ s }: { s: GameState }) {
       <div className="absolute inset-0 bg-black/55" />
       <div className="grain" />
 
-      <div className="relative flex h-full flex-col gap-3 p-3">
+      <div className="relative flex min-h-full flex-col gap-3 p-3 lg:h-full">
         <TopBar s={s} />
-        <div className="grid min-h-0 flex-1 grid-cols-[13.5rem_1fr_22rem] gap-3">
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[12rem_1fr_18rem] xl:grid-cols-[13.5rem_1fr_22rem]">
           {/* Sidebar */}
           <nav
-            className="glass enter flex min-h-0 flex-col gap-1 rounded-xl p-2"
+            className="glass enter flex min-h-0 gap-1 overflow-x-auto rounded-xl p-2 lg:flex-col lg:overflow-x-visible"
             style={d(60)}
             aria-label="Office"
           >
@@ -131,7 +131,7 @@ export function Office({ s }: { s: GameState }) {
                   onClick={() => setTab(t.id)}
                   aria-current={on ? "page" : undefined}
                   className={cn(
-                    "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors",
+                    "group flex shrink-0 items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors",
                     on
                       ? "bg-white text-black shadow-[0_0_24px_rgba(255,255,255,.18)]"
                       : "text-white/75 hover:bg-white/8 hover:text-white",
@@ -155,7 +155,7 @@ export function Office({ s }: { s: GameState }) {
                     <span
                       className={cn(
                         "truncate text-[11px]",
-                        on ? "text-black/55" : "text-white/40",
+                        on ? "text-black/55" : "text-white/60",
                       )}
                     >
                       {nightLock(t.id)
@@ -170,7 +170,7 @@ export function Office({ s }: { s: GameState }) {
               );
             })}
 
-            <div className="mt-auto overflow-hidden rounded-lg border border-white/10">
+            <div className="mt-auto hidden overflow-hidden rounded-lg border border-white/10 lg:block">
               <div className="relative aspect-[16/9]">
                 <Img
                   src={art.venue(s.level)}
@@ -188,7 +188,7 @@ export function Office({ s }: { s: GameState }) {
                 <div className="text-sm font-medium">
                   {levels[s.level].name}
                 </div>
-                <div className="text-[11px] text-white/45">
+                <div className="text-[11px] text-white/60">
                   {en.office.capacity(levels[s.level].capacity)}
                 </div>
               </div>
@@ -197,10 +197,10 @@ export function Office({ s }: { s: GameState }) {
 
           {/* Main */}
           <main
-            className="glass enter flex min-h-0 flex-col overflow-hidden rounded-xl"
+            className="glass enter flex min-h-[60dvh] flex-col overflow-hidden rounded-xl lg:min-h-0"
             style={d(100)}
           >
-            <header className="relative h-36 shrink-0 overflow-hidden border-b border-white/10">
+            <header className="relative h-28 shrink-0 overflow-hidden border-b border-white/10 xl:h-36">
               <Img
                 src={art.office}
                 className="absolute inset-0 size-full object-cover object-[50%_65%]"
@@ -208,7 +208,7 @@ export function Office({ s }: { s: GameState }) {
               <div className="absolute inset-0 bg-black/50" />
               <div
                 key={tab}
-                className="relative flex h-full items-end justify-between gap-6 p-6"
+                className="relative flex h-full items-end justify-between gap-6 p-4 sm:p-6"
               >
                 <div className="enter">
                   <div className="text-[10px] tracking-[0.3em] text-white/60 uppercase">
@@ -217,7 +217,7 @@ export function Office({ s }: { s: GameState }) {
                       ? `${en.office.nightTime} · ${clock(s.night!.minute)}`
                       : en.office.daytime}
                   </div>
-                  <h1 className="mt-1 text-4xl font-medium tracking-[-0.03em]">
+                  <h1 className="mt-1 text-2xl font-medium tracking-[-0.03em] sm:text-4xl">
                     {info.title}
                   </h1>
                   <p className="mt-1 text-sm text-white/70">{info.desc}</p>
@@ -234,7 +234,7 @@ export function Office({ s }: { s: GameState }) {
                 })()}
               </div>
             </header>
-            <div className="min-h-0 flex-1 overflow-y-auto p-6">
+            <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-6">
               {hint && <Banner badge="CEO">{hint}</Banner>}
               {atNight && <Banner badge="OPEN">{en.office.nightBanner}</Banner>}
               {crowdRisk && (

@@ -470,8 +470,18 @@
 
 /* ---------- responsive ---------- */
 @media (max-width: 899px) {
+  /* The menu drops to its own row under the clock instead of disappearing. */
+  .nx .chrome {
+    flex-wrap: wrap;
+  }
   .nx .nav {
-    display: none;
+    order: 3;
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 12px 20px;
+  }
+  .nx .nav .hit {
+    padding: 6px 0;
   }
 }
 @media (max-width: 767px) {
@@ -499,6 +509,15 @@
   }
   .nx .foot {
     grid-area: 4 / 1;
+  }
+  .nx .nx-cta {
+    top: auto;
+    bottom: calc(env(safe-area-inset-bottom) + 24px);
+    flex-direction: column;
+    width: calc(100% - 40px);
+  }
+  .nx .nx-cta > * {
+    white-space: nowrap;
   }
   .nx .stage__media {
     object-position: 66% 50%;

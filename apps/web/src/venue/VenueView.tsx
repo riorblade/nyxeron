@@ -76,15 +76,17 @@ export function VenueView({
       <div ref={el} className="absolute inset-0" />
       {drink && <DrinkDetail s={s} id={drink} onClose={() => setDrink(null)} />}
       {editing && (
-        <div className="glass enter absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 flex-col gap-2 rounded-xl p-3">
-          <div className="flex items-center justify-between gap-6">
+        <div className="glass enter absolute inset-x-3 bottom-3 z-20 flex max-h-[45dvh] flex-col gap-2 overflow-y-auto rounded-xl p-3 lg:inset-x-auto lg:left-1/2 lg:-translate-x-1/2">
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1">
             <h2 className="text-[10px] tracking-[0.3em] text-white/60 uppercase">
               {en.editor.title}
             </h2>
-            <span className="text-[11px] text-white/45">{en.editor.hint}</span>
+            <span className="hidden text-[11px] text-white/60 md:inline">
+              {en.editor.hint}
+            </span>
           </div>
-          <div className="flex items-center gap-1.5 whitespace-nowrap">
-            <span className="mr-1 text-[10px] tracking-[0.2em] text-white/45 uppercase">
+          <div className="flex flex-wrap items-center gap-1.5 whitespace-nowrap lg:flex-nowrap">
+            <span className="mr-1 text-[10px] tracking-[0.2em] text-white/60 uppercase">
               {en.editor.add}
             </span>
             {KINDS.map((k) => (

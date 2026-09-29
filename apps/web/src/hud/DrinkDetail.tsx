@@ -37,17 +37,17 @@ export function DrinkDetail({
   // Portal: glass panels use backdrop-filter, which would otherwise trap a fixed overlay inside them.
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm sm:p-6"
       onClick={onClose}
     >
       <div
         role="dialog"
         aria-label={`${t.title}: ${info.line}`}
-        className="glass glow enter grid max-h-full w-full max-w-4xl grid-cols-[17rem_1fr] overflow-hidden rounded-2xl"
+        className="glass glow enter grid max-h-[92dvh] w-full max-w-4xl grid-cols-1 overflow-y-auto rounded-2xl md:grid-cols-[17rem_1fr] md:overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <aside className="flex max-h-[85vh] flex-col gap-4 overflow-y-auto border-r border-white/10 p-5">
-          <div className="flex aspect-square items-center justify-center rounded-xl border border-white/10 bg-white/[0.03]">
+        <aside className="flex flex-col gap-4 border-b border-white/10 p-5 md:max-h-[85vh] md:overflow-y-auto md:border-r md:border-b-0">
+          <div className="hidden aspect-square items-center justify-center rounded-xl sm:flex border border-white/10 bg-white/[0.03]">
             <Img
               src={art.drink(id)}
               alt=""
@@ -78,7 +78,7 @@ export function DrinkDetail({
             <Stat label={t.buzz}>+{dr.alcohol}</Stat>
           </dl>
           <p className="mt-auto text-xs leading-relaxed text-white/50">
-            <span className="block text-[10px] tracking-[0.2em] text-white/40 uppercase">
+            <span className="block text-[10px] tracking-[0.2em] text-white/60 uppercase">
               {t.serve}
             </span>
             {info.serve}
@@ -98,7 +98,7 @@ export function DrinkDetail({
               <X className="size-4" />
             </button>
           </header>
-          <ul className="max-h-[70vh] space-y-2 overflow-y-auto p-5">
+          <ul className="space-y-2 p-5 md:max-h-[70vh] md:overflow-y-auto">
             {info.menu.map((m) => (
               <li
                 key={m.name}
@@ -110,7 +110,7 @@ export function DrinkDetail({
                     {m.abv} ABV
                   </span>
                 </div>
-                <div className="text-[11px] tracking-wide text-white/45">
+                <div className="text-[11px] tracking-wide text-white/60">
                   {m.origin}
                 </div>
                 <p className="mt-1.5 text-sm leading-relaxed text-white/75">
@@ -118,7 +118,7 @@ export function DrinkDetail({
                 </p>
                 {m.famous && (
                   <p className="mt-1.5 text-xs text-white/55">
-                    <span className="text-white/40">{t.famous}: </span>
+                    <span className="text-white/60">{t.famous}: </span>
                     {m.famous}
                   </p>
                 )}
@@ -159,7 +159,8 @@ export function DrinkLink({
       <button
         type="button"
         className={
-          className ?? "flex items-center gap-3 text-left hover:underline"
+          className ??
+          "flex min-w-0 items-center gap-3 text-left hover:underline"
         }
         onClick={() => setOpen(true)}
         title={en.drinkDetail.open}

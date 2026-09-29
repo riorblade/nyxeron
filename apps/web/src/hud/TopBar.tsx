@@ -19,15 +19,24 @@ function Stat({
   children,
   warn,
   dense,
+  tier = 0,
 }: {
   label: string;
   icon: LucideIcon;
   children: ReactNode;
   warn?: boolean;
   dense?: boolean;
+  /** 0 = always shown; 1 = from xl; 2 = from 2xl. A stat in warning always shows. */
+  tier?: 0 | 1 | 2;
 }) {
   return (
-    <div className="flex items-center gap-2.5 border-l border-white/10 pl-4 first-of-type:border-0 first-of-type:pl-0">
+    <div
+      className={cn(
+        "flex shrink-0 items-center gap-2.5 border-l border-white/10 pl-4 first-of-type:border-0 first-of-type:pl-0",
+        !warn && tier === 1 && "hidden xl:flex",
+        !warn && tier === 2 && "hidden 2xl:flex",
+      )}
+    >
       {!dense && (
         <span
           className={cn(
@@ -39,7 +48,7 @@ function Stat({
         </span>
       )}
       <div className="flex flex-col gap-0.5 leading-tight">
-        <span className="text-[10px] tracking-[0.2em] whitespace-nowrap text-white/45 uppercase">
+        <span className="text-[10px] tracking-[0.2em] whitespace-nowrap text-white/60 uppercase">
           {label}
         </span>
         <span
@@ -93,12 +102,12 @@ export function TopBar({
   return (
     <header
       className={cn(
-        "glass enter flex items-center gap-4 rounded-xl px-5 py-2.5",
+        "glass enter flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl px-3 py-2.5 sm:px-5 lg:flex-nowrap",
         className,
       )}
     >
       <Brand compact />
-      <div className="flex min-w-40 flex-col leading-tight">
+      <div className="flex min-w-0 max-w-52 flex-col leading-tight">
         <span className="truncate text-sm font-medium tracking-[0.22em] uppercase">
           {s.clubName}
         </span>
@@ -122,18 +131,19 @@ export function TopBar({
         </span>{" "}
         {s.reputation}
       </Stat>
-      <Stat dense={dense} icon={statIcon.hype} label={en.hud.hype}>
+      <Stat dense={dense} tier={2} icon={statIcon.hype} label={en.hud.hype}>
         <Meter value={s.hype} />
       </Stat>
       <Stat
         dense={dense}
+        tier={1}
         icon={statIcon.safety}
         label={en.hud.safety}
         warn={s.safety < 40}
       >
         <Meter value={s.safety} warn={s.safety < 40} />
       </Stat>
-      <Stat dense={dense} icon={statIcon.energy} label={en.hud.energy}>
+      <Stat dense={dense} tier={2} icon={statIcon.energy} label={en.hud.energy}>
         {"●".repeat(s.ceoEnergy)}
         <span className="text-white/25">
           {"●".repeat(Math.max(0, economy.ceoEnergyPerDay - s.ceoEnergy))}
@@ -141,6 +151,7 @@ export function TopBar({
       </Stat>
       <Stat
         dense={dense}
+        tier={1}
         icon={statIcon.violations}
         label={en.hud.violations}
         warn={s.violations > 0}
@@ -149,13 +160,14 @@ export function TopBar({
       </Stat>
       <Stat
         dense={dense}
+        tier={2}
         icon={statIcon.permits}
         label={en.hud.permits}
         warn={missing.length > 0}
       >
         {missing.length ? `! ${missing.length}` : "✓"}
       </Stat>
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex flex-wrap items-center justify-end gap-2 lg:shrink-0 lg:flex-nowrap">
         {right}
         <SettingsButton />
         <HomeButton />

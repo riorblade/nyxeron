@@ -17,7 +17,7 @@ import {
   useSyncExternalStore,
   type CSSProperties,
 } from "react";
-import { Briefcase, Sofa, Volume2, VolumeX } from "lucide-react";
+import { Briefcase, PanelsTopLeft, Sofa, Volume2, VolumeX } from "lucide-react";
 import { Office } from "./Office";
 import { audio, nightTrack, TRACKS, useMusic } from "@/audio";
 import { isAlert } from "@/hud/eventText";
@@ -105,10 +105,10 @@ function VideotronPanel() {
   };
   return (
     <section>
-      <h3 className="mb-1 text-[10px] tracking-[0.2em] text-white/45 uppercase">
+      <h3 className="mb-1 text-[10px] tracking-[0.2em] text-white/60 uppercase">
         {en.videotron.title}
       </h3>
-      <p className="mb-2 text-[11px] text-white/40">{en.videotron.hint}</p>
+      <p className="mb-2 text-[11px] text-white/60">{en.videotron.hint}</p>
       <form
         className="flex gap-1.5"
         onSubmit={(e) => {
@@ -140,7 +140,7 @@ function VideotronPanel() {
           >
             <span className="min-w-0 flex-1 truncate">{m}</span>
             <button
-              className="text-white/45 hover:text-white"
+              className="text-white/60 hover:text-white"
               aria-label={en.videotron.remove}
               onClick={() => save(list.filter((_, j) => j !== i))}
             >
@@ -198,7 +198,8 @@ export function Night({ s }: { s: GameState }) {
     view,
     setView,
   } = useGame();
-  const [panel, setPanel] = useState(true);
+  // Side panels start closed on tablets/phones so the venue stays visible.
+  const [panel, setPanel] = useState(() => window.innerWidth >= 1024);
   const [ceoOpen, setCeoOpen] = useState(false);
   useNightLoop();
   useNightAudio(s, intro, paused);
@@ -280,47 +281,65 @@ export function Night({ s }: { s: GameState }) {
                     key={x}
                     className={seg(speed === x && running)}
                     onClick={() => setSpeed(x)}
+                    aria-pressed={speed === x}
+                    title={`${en.night.speed(x)} [${x}]`}
                   >
                     {x}×
                   </button>
                 ))}
                 <button
-                  className={cn(seg(false), "tracking-wide")}
+                  className={cn(seg(false), "tracking-wide whitespace-nowrap")}
                   onClick={skipToEnd}
+                  aria-label={en.night.skip}
+                  title={en.night.skip}
                 >
-                  {en.night.skip} ⏭
+                  <span className="hidden 2xl:inline">{en.night.skip} </span>⏭
                 </button>
                 <MuteButton className={seg(false)} />
               </div>
               <button
-                className="flex h-10 items-center gap-2 rounded-lg border border-white/25 bg-black/30 px-3.5 text-xs font-semibold tracking-[0.12em] uppercase hover:bg-white/10"
+                className={cn(
+                  "flex size-10 items-center justify-center rounded-lg border border-white/25 hover:bg-white/10",
+                  panel ? "bg-white/15" : "bg-black/30",
+                )}
+                onClick={() => setPanel((p) => !p)}
+                aria-pressed={panel}
+                aria-label={en.night.panel}
+                title={en.night.panel}
+              >
+                <PanelsTopLeft className="size-4" />
+              </button>
+              <button
+                className="flex h-10 items-center gap-2 rounded-lg border border-white/25 bg-black/30 px-3 text-xs font-semibold tracking-[0.12em] uppercase hover:bg-white/10"
                 onClick={() => setView("edit")}
+                aria-label={en.night.editLayout}
                 title={`${en.night.editLayout} [L]`}
               >
                 <Sofa className="size-4" />
-                {en.night.editLayout}
+                <span className="hidden 2xl:inline">{en.night.editLayout}</span>
               </button>
               <button
-                className="flex h-10 items-center gap-2 rounded-lg bg-white px-3.5 text-xs font-semibold tracking-[0.12em] text-black uppercase shadow-[0_0_20px_rgba(255,255,255,.2)]"
+                className="flex h-10 items-center gap-2 rounded-lg bg-white px-3 text-xs font-semibold tracking-[0.12em] text-black uppercase shadow-[0_0_20px_rgba(255,255,255,.2)]"
                 onClick={() => setView("office")}
+                aria-label={en.night.toOffice}
                 title={`${en.night.toOffice} [O]`}
               >
                 <Briefcase className="size-4" />
-                {en.night.toOffice}
+                <span className="hidden xl:inline">{en.night.toOffice}</span>
               </button>
             </>
           }
         />
-        <div className="flex min-h-0 flex-1 gap-3 pointer-events-none! [&>*]:pointer-events-auto">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pointer-events-none! lg:flex-row lg:overflow-visible [&>*]:pointer-events-auto">
           {panel && (
             <aside
-              className="glass enter w-80 space-y-6 overflow-y-auto rounded-xl p-4"
+              className="glass enter shrink-0 space-y-6 rounded-xl p-4 lg:w-80 lg:overflow-y-auto"
               style={{ "--d": "80ms" } as CSSProperties}
             >
               <CeoCall s={s} />
               <VideotronPanel />
               <section>
-                <h3 className="mb-2 text-[10px] tracking-[0.2em] text-white/45 uppercase">
+                <h3 className="mb-2 text-[10px] tracking-[0.2em] text-white/60 uppercase">
                   {en.stock.emergency}
                 </h3>
                 <StockTab s={s} compact />
@@ -358,17 +377,20 @@ export function Night({ s }: { s: GameState }) {
                 </div>
               </div>
             )}
-            <span className="absolute bottom-1 left-1 text-[10px] text-white/40">
+            <span className="absolute bottom-1 left-1 hidden text-[10px] text-white/60 lg:block">
               {en.night.panel}
             </span>
           </div>
           <aside
-            className="glass enter w-72 space-y-6 overflow-y-auto rounded-xl p-4"
+            className={cn(
+              "glass enter shrink-0 space-y-6 rounded-xl p-4 lg:w-72 lg:overflow-y-auto",
+              !panel && "hidden lg:block",
+            )}
             style={{ "--d": "140ms" } as CSSProperties}
           >
             <Objectives s={s} />
             <section>
-              <h3 className="mb-1 text-[10px] tracking-[0.2em] text-white/45">
+              <h3 className="mb-1 text-[10px] tracking-[0.2em] text-white/60">
                 {en.night.capacity}
               </h3>
               <p
@@ -378,7 +400,7 @@ export function Night({ s }: { s: GameState }) {
                 )}
               >
                 {inside.length}
-                <span className="text-white/40"> / {cap}</span>
+                <span className="text-white/60"> / {cap}</span>
               </p>
               <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
                 <div
@@ -396,11 +418,13 @@ export function Night({ s }: { s: GameState }) {
           </aside>
         </div>
         <footer
-          className="glass enter grid grid-cols-[1fr_18rem_16rem] gap-6 rounded-xl px-5 py-3"
+          className="glass enter grid grid-cols-2 gap-3 rounded-xl px-4 py-3 md:grid-cols-[1fr_18rem_16rem] md:gap-6 md:px-5"
           style={{ "--d": "200ms" } as CSSProperties}
         >
-          <EventFeed s={s} max={5} />
-          <section className="flex gap-3 text-sm">
+          <div className="hidden min-w-0 md:block">
+            <EventFeed s={s} max={5} />
+          </div>
+          <section className="flex min-w-0 gap-3 text-sm">
             {dj && (
               <Img
                 src={art.dj(dj)}
@@ -413,7 +437,7 @@ export function Night({ s }: { s: GameState }) {
               />
             )}
             <div className="min-w-0">
-              <h3 className="mb-1 text-[10px] tracking-[0.2em] text-white/45">
+              <h3 className="mb-1 text-[10px] tracking-[0.2em] text-white/60">
                 {en.night.nowPlaying}
               </h3>
               <p>
@@ -450,7 +474,7 @@ export function Night({ s }: { s: GameState }) {
             </div>
           </section>
           <section className="text-sm">
-            <h3 className="mb-1 text-[10px] tracking-[0.2em] text-white/45">
+            <h3 className="mb-1 text-[10px] tracking-[0.2em] text-white/60">
               {en.night.tonight}
             </h3>
             <p className="font-mono text-lg tabular-nums">{fmt(revenue)} C</p>

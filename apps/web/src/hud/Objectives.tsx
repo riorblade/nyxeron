@@ -10,7 +10,7 @@ export function Objectives({ s, bare }: { s: GameState; bare?: boolean }) {
   return (
     <section>
       {!bare && (
-        <h3 className="mb-2 text-[10px] tracking-[0.2em] text-white/45">
+        <h3 className="mb-2 text-[10px] tracking-[0.2em] text-white/60">
           {en.night.objectives}
         </h3>
       )}
@@ -20,7 +20,7 @@ export function Objectives({ s, bare }: { s: GameState; bare?: boolean }) {
             key={o.id}
             className={cn(
               "flex items-start gap-2.5",
-              o.done && "text-white/45",
+              o.done && "text-white/60",
             )}
           >
             <span

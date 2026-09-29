@@ -60,7 +60,7 @@ export function PermitsTab({ s }: { s: GameState }) {
             </span>
             <FileText className="size-6 text-white/60" strokeWidth={1.5} />
             <div className="mt-3 pr-24 text-base font-medium">{pm.name}</div>
-            <div className="mt-0.5 text-[10px] tracking-[0.2em] text-white/45 uppercase">
+            <div className="mt-0.5 text-[10px] tracking-[0.2em] text-white/60 uppercase">
               {required.includes(p) ? en.permits.required : en.permits.optional}
             </div>
             <div className="mt-6 space-y-1 text-xs text-white/60">

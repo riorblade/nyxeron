@@ -96,7 +96,7 @@ export function TalentTab({ s }: { s: GameState }) {
       </ul>
 
       <aside className="h-fit rounded-xl border border-white/10 bg-white/[0.03] p-4">
-        <h4 className="mb-3 text-[10px] tracking-[0.2em] text-white/45 uppercase">
+        <h4 className="mb-3 text-[10px] tracking-[0.2em] text-white/60 uppercase">
           {en.talent.forecast}
         </h4>
         <div className="flex h-40 gap-2">

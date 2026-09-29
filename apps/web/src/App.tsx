@@ -18,6 +18,8 @@ export function App() {
     const onKey = (e: KeyboardEvent) => {
       const st = useGame.getState();
       if (e.key !== "Escape" || st.screen !== "game" || st.intro) return;
+      // Esc in a text field just leaves the field.
+      if (e.target instanceof HTMLInputElement) return e.target.blur();
       if (st.game?.phase === "night" && st.view !== "venue" && !st.paused)
         st.setView("venue");
       else setPaused(!st.paused);

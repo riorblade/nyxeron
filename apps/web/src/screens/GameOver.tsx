@@ -26,7 +26,7 @@ export function GameOver({ s }: { s: GameState }) {
       <Brand className="enter absolute top-6 left-10 z-10" />
       <HomeButton className="enter absolute top-6 right-10 z-10" />
       <div className="relative flex h-full flex-col items-center justify-center gap-8 px-6 text-center">
-        <h1 className="glow text-[clamp(64px,14vh,160px)] leading-none font-medium tracking-[-0.04em]">
+        <h1 className="glow text-[clamp(48px,min(14vh,18vw),160px)] leading-none font-medium tracking-[-0.04em]">
           <span className="line">
             <span className="line-reveal" style={d(200)}>
               {en.outcome[o]}
@@ -40,26 +40,29 @@ export function GameOver({ s }: { s: GameState }) {
           {en.outcome[`${o}Text`]}
         </p>
         <dl
-          className="glass enter grid grid-cols-5 divide-x divide-white/10 rounded-2xl"
+          className="glass enter grid grid-cols-2 divide-white/10 rounded-2xl sm:grid-cols-5 sm:divide-x"
           style={d(760)}
         >
           {stats.map(([k, v]) => (
-            <div key={k} className="px-6 py-4">
-              <dt className="text-[10px] tracking-[0.2em] text-white/45 uppercase">
+            <div key={k} className="px-3 py-3 sm:px-6 sm:py-4">
+              <dt className="text-[10px] tracking-[0.2em] text-white/60 uppercase">
                 {k}
               </dt>
               <dd className="mt-1 font-mono text-lg tabular-nums">{v}</dd>
             </div>
           ))}
         </dl>
-        <div className="enter flex gap-3" style={d(900)}>
+        <div
+          className="enter flex w-full flex-col gap-3 sm:w-auto sm:flex-row"
+          style={d(900)}
+        >
           {origin && (
-            <Cta className="w-48" onClick={() => start(origin)}>
+            <Cta className="w-full sm:w-48" onClick={() => start(origin)}>
               {en.outcome.retry}
             </Cta>
           )}
           <button
-            className="glass h-12 rounded-lg px-6 text-sm tracking-[0.14em] uppercase"
+            className="glass h-12 rounded-lg px-6 text-sm tracking-[0.14em] whitespace-nowrap uppercase"
             onClick={home}
           >
             {en.outcome.menu}

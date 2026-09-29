@@ -77,10 +77,10 @@ export function NightReport({ s }: { s: GameState }) {
   return (
     <div className="fixed inset-0 overflow-y-auto">
       <Backdrop />
-      <Brand className="enter absolute top-6 left-10 z-10" />
-      <HomeButton className="enter absolute top-6 right-10 z-10" />
-      <div className="relative mx-auto flex min-h-full max-w-5xl flex-col justify-center gap-8 px-8 py-12">
-        <header className="flex items-end justify-between gap-6">
+      <Brand className="enter absolute top-6 left-4 z-10 sm:left-10" />
+      <HomeButton className="enter absolute top-6 right-4 z-10 sm:right-10" />
+      <div className="relative mx-auto flex min-h-full max-w-5xl flex-col justify-center gap-8 px-4 pt-24 pb-12 sm:px-8 sm:py-12">
+        <header className="flex flex-col items-start justify-between gap-6 sm:flex-row sm:items-end">
           <h1 className="text-[clamp(44px,7vh,76px)] leading-[0.98] font-medium tracking-[-0.035em]">
             <span className="line">
               <span className="line-reveal" style={d(100)}>
@@ -93,12 +93,12 @@ export function NightReport({ s }: { s: GameState }) {
               </span>
             </span>
           </h1>
-          <div className="enter text-right" style={d(420)}>
-            <div className="text-[10px] tracking-[0.2em] text-white/45 uppercase">
+          <div className="enter sm:text-right" style={d(420)}>
+            <div className="text-[10px] tracking-[0.2em] text-white/60 uppercase">
               {en.report.profit}
             </div>
             <div className="font-mono text-4xl tabular-nums">
-              {signed(r.profit)}
+              {signed(r.profit)} C
             </div>
             <div className="text-sm text-white/55">
               {en.report.rep} {signed(r.repDelta)} → {s.reputation}
@@ -131,7 +131,7 @@ export function NightReport({ s }: { s: GameState }) {
             <Row label={en.report.profit} strong>
               {signed(r.profit)}
             </Row>
-            <p className="mt-2 text-xs text-white/45">{en.report.upkeepNote}</p>
+            <p className="mt-2 text-xs text-white/60">{en.report.upkeepNote}</p>
           </section>
           <section
             className="glass enter rounded-2xl p-5 text-sm"
@@ -150,7 +150,7 @@ export function NightReport({ s }: { s: GameState }) {
                 style={{ width: `${r.avgSatisfaction}%` }}
               />
             </div>
-            <div className="mt-1 flex justify-between text-[10px] text-white/40">
+            <div className="mt-1 flex justify-between text-[10px] text-white/60">
               <span>{en.report.repLow}</span>
               <span>{en.report.repHigh}</span>
             </div>
@@ -159,18 +159,18 @@ export function NightReport({ s }: { s: GameState }) {
             className="glass enter rounded-2xl p-5 text-sm"
             style={d(680)}
           >
-            <h3 className="mb-2 text-[10px] tracking-[0.2em] text-white/45 uppercase">
+            <h3 className="mb-2 text-[10px] tracking-[0.2em] text-white/60 uppercase">
               {en.report.why}
             </h3>
             <ul className="space-y-2">
               {factors(s).map((f) => (
                 <li key={f} className="flex gap-2 leading-snug">
-                  <span className="text-white/40">•</span>
+                  <span className="text-white/60">•</span>
                   {f}
                 </li>
               ))}
             </ul>
-            <h3 className="mt-5 mb-2 text-[10px] tracking-[0.2em] text-white/45 uppercase">
+            <h3 className="mt-5 mb-2 text-[10px] tracking-[0.2em] text-white/60 uppercase">
               {en.report.reviews}
             </h3>
             <ul className="space-y-1 text-white/80 italic">

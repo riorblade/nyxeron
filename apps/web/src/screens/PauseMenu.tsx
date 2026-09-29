@@ -12,12 +12,18 @@ export function PauseMenu() {
       className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-md"
       role="dialog"
       aria-modal
+      aria-labelledby="pause-title"
     >
       <div className="glass glow enter flex w-80 flex-col gap-3 rounded-2xl p-6">
-        <h2 className="mb-2 text-center text-2xl font-medium tracking-[-0.02em]">
+        <h2
+          id="pause-title"
+          className="mb-2 text-center text-2xl font-medium tracking-[-0.02em]"
+        >
           {en.pause.title}
         </h2>
-        <Button onClick={() => setPaused(false)}>{en.pause.resume}</Button>
+        <Button autoFocus onClick={() => setPaused(false)}>
+          {en.pause.resume}
+        </Button>
         <div className="grid grid-cols-3 gap-2">
           {([1, 2, 3] as const).map((n) => (
             <Button

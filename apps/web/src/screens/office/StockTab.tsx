@@ -85,7 +85,7 @@ export function StockTab({ s, compact }: { s: GameState; compact?: boolean }) {
                 <Thumb id={d} size="size-8" />
                 <div className="min-w-0 flex-1 leading-tight">
                   <div className="nm truncate text-sm">{drinks[d].name}</div>
-                  <div className="font-mono text-[11px] text-white/45">
+                  <div className="font-mono text-[11px] text-white/60">
                     {s.stock[d]} · {fmt(orderCost(d, 1, supplier, s.level))} C
                   </div>
                 </div>
@@ -105,8 +105,9 @@ export function StockTab({ s, compact }: { s: GameState; compact?: boolean }) {
     );
 
   return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-[repeat(3,1fr)_auto] gap-2.5">
+    // Container query: the table drops columns as the panel narrows (need, cost, then the stock bar).
+    <div className="space-y-5 @container">
+      <div className="grid grid-cols-1 gap-2.5 @xl:grid-cols-[repeat(3,1fr)_auto]">
         {ids(suppliers).map((id) => {
           const sp = suppliers[id];
           const Icon = supplierIcon[id];
@@ -153,19 +154,21 @@ export function StockTab({ s, compact }: { s: GameState; compact?: boolean }) {
           disabled={
             !menu.some((d) => drinks[d].minLevel <= s.level && shortfall(d) > 0)
           }
-          className="flex items-center gap-2 rounded-xl bg-white px-4 text-sm font-medium text-black shadow-[0_0_24px_rgba(255,255,255,.18)] disabled:bg-white/10 disabled:text-white/40 disabled:shadow-none"
+          className="flex h-11 items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-medium @xl:h-auto text-black shadow-[0_0_24px_rgba(255,255,255,.18)] disabled:bg-white/10 disabled:text-white/60 disabled:shadow-none"
         >
           <RefreshCw className="size-4" />
           {en.stock.fill}
         </button>
       </div>
 
-      <div className="grid grid-cols-[minmax(12rem,1.4fr)_1fr_6rem_5.5rem_8rem_auto] items-center gap-x-4 px-3 text-[10px] tracking-[0.2em] text-white/40 uppercase">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-y-2 @xl:gap-y-0 @xl:grid-cols-[minmax(8rem,1.2fr)_minmax(4rem,1fr)_7.5rem_auto] @2xl:grid-cols-[minmax(10rem,1.4fr)_minmax(0,1fr)_5rem_7.5rem_auto] @3xl:grid-cols-[minmax(12rem,1.4fr)_1fr_6rem_5.5rem_8rem_auto] items-center gap-x-4 px-3 text-[10px] tracking-[0.2em] text-white/60 uppercase">
         <span>{en.stock.drink}</span>
-        <span>{en.stock.inStock}</span>
-        <span title={en.stock.needHint}>{en.stock.need}</span>
-        <span>{en.stock.cost}</span>
-        <span>{en.stock.price}</span>
+        <span className="hidden @xl:block">{en.stock.inStock}</span>
+        <span className="hidden @2xl:block" title={en.stock.needHint}>
+          {en.stock.need}
+        </span>
+        <span className="hidden @3xl:block">{en.stock.cost}</span>
+        <span className="hidden @xl:block">{en.stock.price}</span>
         <span className="text-right">{en.stock.order}</span>
       </div>
       <ul className="space-y-1.5">
@@ -178,15 +181,22 @@ export function StockTab({ s, compact }: { s: GameState; compact?: boolean }) {
             <li
               key={d}
               className={cn(
-                "grid grid-cols-[minmax(12rem,1.4fr)_1fr_6rem_5.5rem_8rem_auto] items-center gap-x-4 rounded-xl border border-white/8 bg-white/[0.025] px-3 py-2 transition-colors hover:bg-white/[0.05]",
+                "grid grid-cols-[minmax(0,1fr)_auto] gap-y-2 @xl:gap-y-0 @xl:grid-cols-[minmax(8rem,1.2fr)_minmax(4rem,1fr)_7.5rem_auto] @2xl:grid-cols-[minmax(10rem,1.4fr)_minmax(0,1fr)_5rem_7.5rem_auto] @3xl:grid-cols-[minmax(12rem,1.4fr)_1fr_6rem_5.5rem_8rem_auto] items-center gap-x-4 rounded-xl border border-white/8 bg-white/[0.025] px-3 py-2 transition-colors hover:bg-white/[0.05]",
                 locked && "opacity-40",
               )}
             >
               <DrinkLink s={s} id={d}>
                 <Thumb id={d} />
-                <span className="font-medium">{dr.name}</span>
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">{dr.name}</span>
+                  {!locked && (
+                    <span className="block font-mono text-xs text-white/55 @xl:hidden">
+                      {s.stock[d]}
+                    </span>
+                  )}
+                </span>
               </DrinkLink>
-              <span className="flex items-center gap-3">
+              <span className="hidden items-center gap-3 @xl:flex">
                 <span className="w-9 font-mono text-sm tabular-nums">
                   {locked ? "—" : s.stock[d]}
                 </span>
@@ -206,8 +216,8 @@ export function StockTab({ s, compact }: { s: GameState; compact?: boolean }) {
               </span>
               <span
                 className={cn(
-                  "flex items-center gap-1 font-mono text-sm",
-                  short ? "text-white" : "text-white/45",
+                  "hidden items-center gap-1 font-mono text-sm @2xl:flex",
+                  short ? "text-white" : "text-white/55",
                 )}
               >
                 {!locked &&
@@ -222,10 +232,11 @@ export function StockTab({ s, compact }: { s: GameState; compact?: boolean }) {
                     </>
                   ))}
               </span>
-              <span className="font-mono text-sm text-white/70 tabular-nums">
+              <span className="hidden font-mono text-sm text-white/70 tabular-nums @3xl:block">
                 {fmt(orderCost(d, 1, supplier, s.level))}
               </span>
-              <span className="flex items-center gap-1">
+              {/* Phones: the price stepper gets its own row under the drink. */}
+              <span className="order-last col-span-2 flex items-center gap-1 @xl:order-none @xl:col-span-1">
                 {!locked && (
                   <>
                     <button
@@ -291,7 +302,7 @@ export function StockTab({ s, compact }: { s: GameState; compact?: boolean }) {
 
       {s.pendingOrders.length > 0 && (
         <div className="rounded-xl border border-dashed border-white/15 p-3">
-          <h4 className="mb-2 flex items-center gap-2 text-[10px] tracking-[0.2em] text-white/45 uppercase">
+          <h4 className="mb-2 flex items-center gap-2 text-[10px] tracking-[0.2em] text-white/60 uppercase">
             <Truck className="size-3.5" /> {en.stock.pending}
           </h4>
           <ul className="flex flex-wrap gap-2 text-sm">

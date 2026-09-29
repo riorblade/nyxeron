@@ -20,7 +20,7 @@ export function EventFeed({
     .reverse();
   return (
     <section className="min-w-0">
-      <h3 className="mb-2 text-[10px] tracking-[0.2em] text-white/45">
+      <h3 className="mb-2 text-[10px] tracking-[0.2em] text-white/60">
         {en.night.feed}
       </h3>
       {events.length === 0 && (
