@@ -1709,10 +1709,11 @@ export class VenueScene {
     const x1 = Math.max(...blocks.map((b) => b.x + b.w)) + 0.45;
     const zf = Math.max(...blocks.map((b) => b.y + b.h));
     const fire = [
-      new THREE.Vector3(x0, 0, zf - 0.9),
-      new THREE.Vector3(x0, 0, zf + 0.1),
-      new THREE.Vector3(x1, 0, zf - 0.9),
-      new THREE.Vector3(x1, 0, zf + 0.1),
+      // A pyro line along the stage front, two each side (clear of balconies and the booth).
+      new THREE.Vector3(x0 + 0.85, 0, zf + 0.35),
+      new THREE.Vector3(x0 + 1.85, 0, zf + 0.35),
+      new THREE.Vector3(x1 - 1.85, 0, zf + 0.35),
+      new THREE.Vector3(x1 - 0.85, 0, zf + 0.35),
     ];
     const y = Math.min(this.wallH, 7) - 0.35;
     const m = 1.2;
@@ -1721,9 +1722,13 @@ export class VenueScene {
       [dance.x + dance.w - m, dance.y + m],
       [dance.x + m, dance.y + dance.h - m],
       [dance.x + dance.w - m, dance.y + dance.h - m],
-      [dance.x + dance.w / 2, dance.y + dance.h * 0.3],
-      [dance.x + dance.w / 2, dance.y + dance.h * 0.7],
     ].map(([x, z]) => new THREE.Vector3(x, y, z));
+    // Low-fog machines: at the stage front and along the dance floor's front edge.
+    const floor = [
+      [(x0 + x1) / 2, zf + 0.4],
+      [dance.x + dance.w * 0.25, dance.y + dance.h],
+      [dance.x + dance.w * 0.75, dance.y + dance.h],
+    ].map(([x, z]) => new THREE.Vector3(x, 0.02, z));
     // The cannons themselves, hanging from the ceiling.
     const can = new THREE.MeshStandardMaterial({
       color: 0x1a1a20,
@@ -1737,7 +1742,7 @@ export class VenueScene {
       c.position.set(at.x, at.y + 0.1, at.z);
       this.root.add(c);
     }
-    this.fx = new StageFx(fire, mist);
+    this.fx = new StageFx(fire, mist, floor, (x0 + x1) / 2, this.wallH);
     this.root.add(this.fx.group);
   }
 
@@ -2383,7 +2388,7 @@ export class VenueScene {
         this.fx.burstMist();
       }
       this.prevPulse = pulse;
-      this.fx.update(dt / 1000);
+      this.fx.update();
     }
     this.renderer.render(this.scene, this.camera);
   }

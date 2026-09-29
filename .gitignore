@@ -2,3 +2,6 @@ node_modules
 dist
 .DS_Store
 *.log
+
+# Source footage (ProRes originals); the web-ready versions live in apps/web/public
+apps/web/assets-src/

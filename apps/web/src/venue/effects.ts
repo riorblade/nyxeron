@@ -1,205 +1,189 @@
 import * as THREE from "three";
-import { canvasTexture } from "./assets";
 
 /**
- * Stage pyrotechnics, fired on the DJ's beat: flame jets shooting up beside the stage and CO₂ / mist cannons blasting
- * down from the ceiling. One pooled particle cloud per effect (additive, camera-facing points).
+ * Stage pyrotechnics from real footage (FootageCrate clips with alpha, in /public/effect): flame jets beside the stage,
+ * CO₂ bursts down from the ceiling, low fog rolling over the floor. Each effect is one looping video shared by all its
+ * emitters (camera-facing sprites), shown for a burst on the DJ's beat and faded out.
+ * WebM VP9 alpha for Chrome/Firefox, HEVC alpha (.mov) for Safari.
  */
-const FIRE_MAX = 1400;
-const MIST_MAX = 1400;
+const src = (name: string) => {
+  const probe = document.createElement("video");
+  return probe.canPlayType('video/quicktime; codecs="hvc1"')
+    ? `/effect/${name}.mov`
+    : `/effect/${name}.webm`;
+};
 
-class Cloud {
-  readonly points: THREE.Points;
-  private pos: Float32Array;
-  private col: Float32Array;
-  private vel: Float32Array;
-  private life: Float32Array;
-  private maxLife: Float32Array;
-  private next = 0;
+class ClipFx {
+  private video = document.createElement("video");
+  private sprites: THREE.Sprite[] = [];
+  private textures: THREE.VideoTexture[] = [];
+  private until = 0;
 
   constructor(
-    private max: number,
-    size: number,
-    tex: THREE.Texture,
-    private tint: (t: number, out: THREE.Color) => void,
-    private drag: number,
-    private gravity: number,
+    name: string,
+    /** Seconds into the clip a burst may start from (random in range). */
+    private from: [number, number],
+    private fadeMs: number,
+    private blending: THREE.Blending,
   ) {
-    this.pos = new Float32Array(max * 3);
-    this.col = new Float32Array(max * 3);
-    this.vel = new Float32Array(max * 3);
-    this.life = new Float32Array(max);
-    this.maxLife = new Float32Array(max).fill(1);
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.BufferAttribute(this.pos, 3));
-    g.setAttribute("color", new THREE.BufferAttribute(this.col, 3));
-    this.points = new THREE.Points(
-      g,
-      new THREE.PointsMaterial({
-        size,
+    Object.assign(this.video, {
+      src: src(name),
+      muted: true,
+      loop: true,
+      playsInline: true,
+      crossOrigin: "anonymous",
+      preload: "auto",
+    });
+  }
+
+  /** A sprite at `at`; `anchor` is the point of the clip that sits on `at`; `mirror` flips it left–right. */
+  add(
+    group: THREE.Group,
+    at: THREE.Vector3,
+    w: number,
+    h: number,
+    anchor: [number, number],
+    mirror = false,
+  ) {
+    const tex = new THREE.VideoTexture(this.video);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    if (mirror) {
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.repeat.x = -1;
+      tex.offset.x = 1;
+    }
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({
         map: tex,
-        vertexColors: true,
         transparent: true,
         depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        sizeAttenuation: true,
+        blending: this.blending,
+        opacity: 0,
       }),
     );
-    this.points.frustumCulled = false;
+    sprite.center.set(mirror ? 1 - anchor[0] : anchor[0], anchor[1]);
+    sprite.scale.set(w, h, 1);
+    sprite.position.copy(at);
+    sprite.visible = false;
+    group.add(sprite);
+    this.sprites.push(sprite);
+    this.textures.push(tex);
   }
 
-  emit(
-    at: THREE.Vector3,
-    v: [number, number, number],
-    spread: number,
-    life: number,
-  ) {
-    const i = this.next;
-    this.next = (this.next + 1) % this.max;
-    this.pos.set([at.x, at.y, at.z], i * 3);
-    this.vel.set(
-      [
-        v[0] + (Math.random() - 0.5) * spread,
-        v[1] + (Math.random() - 0.5) * spread * 0.4,
-        v[2] + (Math.random() - 0.5) * spread,
-      ],
-      i * 3,
-    );
-    this.maxLife[i] = this.life[i] = life * (0.7 + Math.random() * 0.6);
+  /** Fire a burst lasting `ms` (a burst during a burst just extends it). */
+  burst(now: number, ms: number) {
+    const [a, b] = this.from;
+    if (now > this.until) this.video.currentTime = a + Math.random() * (b - a);
+    this.video.play().catch(() => {});
+    this.until = now + ms;
   }
 
-  update(dt: number) {
-    const c = new THREE.Color();
-    const damp = Math.exp(-this.drag * dt);
-    for (let i = 0; i < this.max; i++) {
-      if (this.life[i]! <= 0) {
-        this.col[i * 3] = this.col[i * 3 + 1] = this.col[i * 3 + 2] = 0;
-        continue;
-      }
-      this.life[i]! -= dt;
-      const k = i * 3;
-      this.vel[k + 1]! += this.gravity * dt;
-      for (let a = 0; a < 3; a++) {
-        this.vel[k + a]! *= damp;
-        this.pos[k + a]! += this.vel[k + a]! * dt;
-      }
-      this.tint(1 - Math.max(0, this.life[i]!) / this.maxLife[i]!, c);
-      this.col.set([c.r, c.g, c.b], k);
+  update(now: number) {
+    const left = this.until - now;
+    const alpha = left <= 0 ? 0 : Math.min(1, left / this.fadeMs);
+    for (const s of this.sprites) {
+      s.visible = alpha > 0.01;
+      (s.material as THREE.SpriteMaterial).opacity = alpha;
     }
-    this.points.geometry.attributes.position!.needsUpdate = true;
-    this.points.geometry.attributes.color!.needsUpdate = true;
+    if (left <= 0 && !this.video.paused) this.video.pause();
+  }
+
+  dispose() {
+    this.video.pause();
+    this.video.removeAttribute("src");
+    this.video.load();
+    this.textures.forEach((t) => t.dispose());
+    this.sprites.forEach((s) => (s.material as THREE.Material).dispose());
   }
 }
 
-const soft = () =>
-  canvasTexture(64, 64, (ctx) => {
-    const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-    g.addColorStop(0, "rgba(255,255,255,1)");
-    g.addColorStop(0.4, "rgba(255,255,255,.55)");
-    g.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, 64, 64);
-  });
-
 export class StageFx {
   readonly group = new THREE.Group();
-  private fire: Cloud;
-  private mist: Cloud;
-  private flames: {
-    at: THREE.Vector3;
-    light: THREE.PointLight;
-    left: number;
-  }[] = [];
-  private cannons: THREE.Vector3[];
-  private tex = soft();
+  private fire = new ClipFx("fire", [0.3, 3.8], 250, THREE.AdditiveBlending);
+  private fogDown = new ClipFx(
+    "fog-down",
+    [0, 0.4],
+    1200,
+    THREE.NormalBlending,
+  );
+  private fogFloor = new ClipFx(
+    "fog-floor",
+    [0, 1],
+    1500,
+    THREE.NormalBlending,
+  );
+  private lights: THREE.PointLight[] = [];
+  private flashUntil = 0;
 
-  constructor(fireAt: THREE.Vector3[], mistAt: THREE.Vector3[]) {
-    // Flame: white-hot core → yellow → orange → deep red, dimming as it rises.
-    this.fire = new Cloud(
-      FIRE_MAX,
-      1.1,
-      this.tex,
-      (t, c) =>
-        c
-          .setRGB(
-            1,
-            Math.max(0.08, 0.72 - t * 0.9),
-            Math.max(0, 0.28 - t * 1.4),
-          )
-          .multiplyScalar(Math.max(0, 1 - t) * 0.9),
-      1.2,
-      2.5, // hot gas keeps rising a little
-    );
-    // Mist: cool white-blue, lingers and drifts down.
-    this.mist = new Cloud(
-      MIST_MAX,
-      2.6,
-      this.tex,
-      (t, c) =>
-        c.setRGB(0.5, 0.6, 0.75).multiplyScalar(Math.sin(Math.PI * t) * 0.09),
-      1.6,
-      -0.6,
-    );
-    this.group.add(this.fire.points, this.mist.points);
+  /**
+   * @param fireAt flame units on the floor; those right of `midX` are mirrored so both sides lean inward.
+   * @param ceilingAt CO₂ cannons (the burst falls from here).
+   * @param floorAt low-fog machines along the dance floor.
+   */
+  constructor(
+    fireAt: THREE.Vector3[],
+    ceilingAt: THREE.Vector3[],
+    floorAt: THREE.Vector3[],
+    midX: number,
+    ceiling: number,
+  ) {
     const base = new THREE.MeshStandardMaterial({
       color: 0x18161c,
       metalness: 0.7,
       roughness: 0.4,
     });
+    const flameH = Math.min(3.6, ceiling - 0.2);
     for (const at of fireAt) {
-      // The flame unit: a small steel box with a nozzle.
+      // The flame unit: a steel box; the clip's nozzle sits 20% in from its edge, on top of the box.
       const box = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.3, 0.35), base);
       box.position.set(at.x, 0.15, at.z);
-      const light = new THREE.PointLight(0xff7a1a, 0, 7, 1.6);
-      light.position.set(at.x, 1.4, at.z);
-      this.group.add(box, light);
-      this.flames.push({
-        at: new THREE.Vector3(at.x, 0.32, at.z),
-        light,
-        left: 0,
-      });
+      this.group.add(box);
+      this.fire.add(
+        this.group,
+        new THREE.Vector3(at.x, 0.3, at.z),
+        flameH * (180 / 270),
+        flameH,
+        [0.2, 0],
+        at.x > midX,
+      );
+      const light = new THREE.PointLight(0xff7a1a, 0, 8, 1.6);
+      light.position.set(at.x, 1.5, at.z);
+      this.group.add(light);
+      this.lights.push(light);
     }
-    this.cannons = mistAt;
+    const fogW = Math.min(6, ceiling * 1.6);
+    for (const at of ceilingAt)
+      this.fogDown.add(this.group, at, fogW, fogW * (270 / 480), [0.5, 1]);
+    for (const at of floorAt)
+      this.fogFloor.add(this.group, at, 5, 5 * (270 / 480), [0.5, 0.03]);
   }
 
-  /** One flame burst from every jet (~0.8 s). */
+  /** Flame jets (~1.2 s) with an orange flash. */
   burstFire() {
-    for (const f of this.flames) f.left = 0.7;
+    const now = performance.now();
+    this.fire.burst(now, 1200);
+    this.flashUntil = now + 900;
   }
 
-  /** Every ceiling cannon blasts mist down and out in all directions. */
+  /** CO₂ down from the ceiling and fog rolling over the floor. */
   burstMist() {
-    for (const at of this.cannons)
-      for (let i = 0; i < 110; i++) {
-        const a = Math.random() * Math.PI * 2;
-        const out = 2 + Math.random() * 3.5;
-        this.mist.emit(
-          at,
-          [Math.cos(a) * out, -3 - Math.random() * 3, Math.sin(a) * out],
-          1.2,
-          2.2,
-        );
-      }
+    const now = performance.now();
+    this.fogDown.burst(now, 3500);
+    this.fogFloor.burst(now, 6000);
   }
 
-  update(dt: number) {
-    for (const f of this.flames) {
-      if (f.left > 0) {
-        f.left -= dt;
-        // A jet is a stream: keep feeding the column while it fires.
-        for (let i = 0; i < 16; i++) this.fire.emit(f.at, [0, 10, 0], 1.1, 0.9);
-        f.light.intensity = 70;
-      } else f.light.intensity *= Math.exp(-10 * dt);
-    }
-    this.fire.update(dt);
-    this.mist.update(dt);
+  update() {
+    const now = performance.now();
+    this.fire.update(now);
+    this.fogDown.update(now);
+    this.fogFloor.update(now);
+    const flash = now < this.flashUntil ? 40 + Math.random() * 40 : 0;
+    for (const l of this.lights) l.intensity = flash;
   }
 
   dispose() {
-    this.tex.dispose();
-    for (const c of [this.fire, this.mist]) {
-      c.points.geometry.dispose();
-      (c.points.material as THREE.Material).dispose();
-    }
+    this.fire.dispose();
+    this.fogDown.dispose();
+    this.fogFloor.dispose();
   }
 }
