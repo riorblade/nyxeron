@@ -147,6 +147,9 @@ export function NightReport({ s }: { s: GameState }) {
             <Row label={en.report.guests}>{r.guests}</Row>
             <Row label={en.report.rejected}>{r.rejectedUnderage}</Row>
             <Row label={en.report.fights}>{r.fights}</Row>
+            {(r.escorted ?? 0) > 0 && (
+              <Row label={en.report.escorted}>{r.escorted}</Row>
+            )}
             {s.level >= 3 && r.avgEnergy !== undefined && (
               <>
                 <Row label={en.report.energy}>

@@ -2,10 +2,9 @@ import {
   ceoCall,
   djs,
   endNight,
-  escortGuest,
+  securityStatus,
   setAutoRefill,
   strategy,
-  isAtFightRisk,
   isInside,
   night as nightData,
   nightOver,
@@ -21,7 +20,14 @@ import {
   useSyncExternalStore,
   type CSSProperties,
 } from "react";
-import { Briefcase, PanelsTopLeft, Sofa, Volume2, VolumeX } from "lucide-react";
+import {
+  Briefcase,
+  PanelsTopLeft,
+  Shield,
+  Sofa,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
 import { Office } from "./Office";
 import { audio, nightTrack, useMusic } from "@/audio";
 import { isAlert } from "@/hud/eventText";
@@ -56,15 +62,43 @@ function useNightLoop() {
   }, [paused, running, speed, intro, view]);
 }
 
-/** Guests at fight risk, most drunk first. */
-const atRisk = (s: GameState) =>
-  s.night!.guests.filter(isAtFightRisk).sort((a, b) => b.drunk - a.drunk);
-
-/** Alert button / S key: security walks the most drunk guest out. */
-function sendSecurity() {
-  const { game, act } = useGame.getState();
-  const g = game?.night && atRisk(game)[0];
-  if (g) act((x) => escortGuest(x, g.id));
+/**
+ * Security handles drunk guests on its own. This only speaks up when it matters: guards busy walking someone out
+ * (quiet info), or drunk guests waiting because every guard is busy / there is no security (a warning).
+ */
+function SecurityStatus({ s }: { s: GameState }) {
+  const { total, busy, waiting } = securityStatus(s);
+  if (!waiting && !busy) return null;
+  const t = en.night;
+  const warn = waiting > 0;
+  return (
+    <div
+      role={warn ? "alert" : "status"}
+      className={cn(
+        "glass enter pointer-events-auto absolute top-2 right-2 flex max-w-80 items-center gap-2 rounded-lg px-3 py-2 text-xs",
+        warn && "border-white/60",
+      )}
+    >
+      <span
+        className={cn(
+          "flex size-6 shrink-0 items-center justify-center rounded-full font-black",
+          warn ? "animate-pulse bg-white text-black" : "border border-white/40",
+        )}
+      >
+        {warn ? "!" : <Shield className="size-3.5" />}
+      </span>
+      <span className="leading-tight">
+        <span className="block font-medium">
+          {warn
+            ? total
+              ? t.securityStretched(waiting, total)
+              : t.noSecurity(waiting)
+            : t.securityBusy(busy, total)}
+        </span>
+        {warn && <span className="block text-white/70">{t.hireSecurity}</span>}
+      </span>
+    </div>
+  );
 }
 
 /** "Skip to 04:00?" — the rest of the night plays out at once, so confirm first. Esc cancels. */
@@ -287,7 +321,6 @@ export function Night({ s }: { s: GameState }) {
         setPanel((p) => !p);
       } else if (e.key.toLowerCase() === "q") setCeoOpen((o) => !o);
       else if (e.key.toLowerCase() === "m") audio.toggleMute();
-      else if (e.key.toLowerCase() === "s") sendSecurity();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -300,7 +333,6 @@ export function Night({ s }: { s: GameState }) {
   const mood = inside.length
     ? inside.reduce((a, g) => a + g.satisfaction, 0) / inside.length
     : 0;
-  const drunk = atRisk(s);
   // The track the DJ is on right now (they mix through several per set).
   const nowPlaying = useSyncExternalStore(
     (cb) => audio.subscribe(cb),
@@ -472,28 +504,7 @@ export function Night({ s }: { s: GameState }) {
                 {en.night.paused}
               </div>
             )}
-            {drunk.length > 0 && (
-              <button
-                className="glass enter pointer-events-auto absolute top-2 right-2 flex items-center gap-2 rounded-lg border-white/50 px-3 py-2 text-left text-xs hover:bg-white/10 disabled:cursor-not-allowed"
-                onClick={sendSecurity}
-                disabled={s.staff.security <= 0}
-                title={`${en.night.sendSecurity} [S]`}
-              >
-                <span className="flex size-6 items-center justify-center rounded-full bg-white font-black text-black">
-                  !
-                </span>
-                <span className="leading-tight">
-                  <span className="block font-medium">
-                    {en.night.drunkCount(drunk.length)}
-                  </span>
-                  <span className="block text-white/70">
-                    {s.staff.security > 0
-                      ? `${en.night.sendSecurity} [S]`
-                      : en.night.needSecurity}
-                  </span>
-                </span>
-              </button>
-            )}
+            <SecurityStatus s={s} />
             {confirmSkip && (
               <SkipConfirm
                 onCancel={() => setConfirmSkip(false)}

@@ -28,4 +28,5 @@ export const isAlert = (e: GameEvent) =>
     "doorForced",
     "venueSealed",
     "rivalPromo",
+    "securityStretched",
   ].includes(e.kind);

@@ -223,7 +223,7 @@ export class VenueScene {
   /** Told when the selection changes in edit mode (-1 = none). */
   onSelect?: (index: number) => void;
 
-  constructor(private onGuestClick: (id: number) => void) {}
+  // Security handles drunk guests on its own (core), so guests aren't clickable; only the bar cabinet and editing are.
 
   async init(el: HTMLElement) {
     [this.assets, this.playlist] = await Promise.all([
@@ -2120,12 +2120,7 @@ export class VenueScene {
         const over =
           (ray.intersectObjects(this.cabinetHits, false)[0]?.object as
             THREE.Mesh | undefined) ?? null;
-        // Drunk guests (red ring + "!") are clickable too.
-        const risky = [...this.guests.values()]
-          .filter((p) => p.alert?.visible)
-          .flatMap((p) => [p.sprite, p.alert!]);
-        const onRisky = ray.intersectObjects(risky, false).length > 0;
-        canvas.style.cursor = over || onRisky ? "pointer" : "";
+        canvas.style.cursor = over ? "pointer" : "";
         if (over === this.hovered) return;
         const fade = (b: THREE.Mesh | null, o: number) =>
           b && ((b.material as THREE.MeshBasicMaterial).opacity = o);
@@ -2166,17 +2161,6 @@ export class VenueScene {
       )
         return;
       aim(e);
-      const targets = [...this.guests.values()]
-        .filter((p) => p.alert?.visible)
-        .flatMap((p) => [p.sprite, p.alert!]);
-      const hit = ray.intersectObjects(targets, false)[0];
-      if (hit) {
-        const id = [...this.guests.entries()].find(
-          ([, p]) => p.sprite === hit.object || p.alert === hit.object,
-        )?.[0];
-        if (id !== undefined) this.onGuestClick(id);
-        return;
-      }
       const shelf = ray.intersectObjects(this.cabinetHits, false)[0];
       if (shelf) this.onDrinkClick?.(shelf.object.userData.drink as DrinkId);
     };

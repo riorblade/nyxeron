@@ -28,6 +28,7 @@
   "djMismatchPenalty": 0.15,
   "fightDrunkThreshold": 80,
   "guestsPerSecurity": 40,
+  "escortMinutes": 6,
   "fightChancePerMinute": {
     "understaffed": 0.003,
     "staffed": 0.0002

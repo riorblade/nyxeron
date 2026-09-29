@@ -233,6 +233,9 @@ export function startNight(s: GameState): GameState {
       guestListIn: 0,
       commission: 0,
       bottles: 0,
+      escorts: [],
+      escorted: 0,
+      stretchedLogged: false,
     },
     log: sealed ? [...s.log, { day: s.day, kind: "venueSealed" }] : s.log,
   };
@@ -346,6 +349,25 @@ export function tickNight(s: GameState): GameState {
       },
     };
     ev({ ...at, kind: "tablesSeated", tables: seated, revenue });
+  }
+
+  // Security works on its own: a free guard walks the drunkest at-risk guest out, which keeps that guard busy for a
+  // few minutes. More drunk guests than free guards = they wait (and may start fights): hire more security.
+  n.escorts = n.escorts.filter((e) => e.until > m);
+  const atRisk = n.guests
+    .filter((g) => isInside(g) && g.drunk >= night.fightDrunkThreshold)
+    .sort((a, b) => b.drunk - a.drunk);
+  const free = Math.max(0, st.staff.security - n.escorts.length);
+  for (const g of atRisk.slice(0, free)) {
+    g.state = "left";
+    inside--;
+    n.escorts.push({ guest: g.id, until: m + night.escortMinutes });
+    n.escorted++;
+    ev({ ...at, kind: "guestEscorted", guest: g.id });
+  }
+  if (atRisk.length > free && st.staff.security > 0 && !n.stretchedLogged) {
+    n.stretchedLogged = true;
+    ev({ ...at, kind: "securityStretched", waiting: atRisk.length - free });
   }
 
   // Crowd energy follows how full the room looks and how many are dancing (plus any crowd move in play).
@@ -603,6 +625,7 @@ export function endNight(s: GameState): GameState {
     guestListIn: n.guestListIn,
     commission: n.commission,
     bottles: n.bottles,
+    escorted: n.escorted,
   };
   return checkScenarioEnd(
     r14_checkVictory(

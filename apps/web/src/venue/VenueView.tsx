@@ -1,4 +1,4 @@
-import { escortGuest, type DrinkId, type GameState } from "@nyxeron/core";
+import type { DrinkId, GameState } from "@nyxeron/core";
 import { RotateCw, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { DrinkDetail } from "@/hud/DrinkDetail";
@@ -27,9 +27,7 @@ export function VenueView({
 
   useEffect(() => {
     let cancelled = false;
-    const v = new VenueScene((id) =>
-      useGame.getState().act((g) => escortGuest(g, id)),
-    );
+    const v = new VenueScene();
     v.onSelect = setSelected;
     v.onDrinkClick = setDrink;
     v.init(el.current!).then(() => {

@@ -331,12 +331,13 @@ export const en = {
       "The rest of the night plays out instantly: no more crowd moves, restocks or dealing with trouble. The report opens straight away.",
     skipCancel: "Keep playing",
     paused: "PAUSED",
-    drunkCount: (n: number) =>
-      n === 1
-        ? "1 drunk guest at fight risk"
-        : `${n} drunk guests at fight risk`,
-    sendSecurity: "Send security",
-    needSecurity: "Hire security first (Office → Staff)",
+    securityBusy: (busy: number, total: number) =>
+      `Security: ${busy} of ${total} walking a drunk guest out`,
+    securityStretched: (waiting: number, total: number) =>
+      `${waiting} drunk guest${waiting > 1 ? "s" : ""} waiting · all ${total} security busy`,
+    noSecurity: (waiting: number) =>
+      `${waiting} drunk guest${waiting > 1 ? "s" : ""} and no security on shift`,
+    hireSecurity: "Fights can break out: hire more security (Office → Staff)",
     objectives: "OBJECTIVES",
     panel: "Panels [Tab]",
     speed: (x: number) => `Speed ${x}×`,
@@ -380,6 +381,7 @@ export const en = {
     energy: "Crowd energy",
     energyValue: (avg: number, peak: number) => `avg ${avg} · peak ${peak}`,
     rounds: "Rounds bought for others",
+    escorted: "Walked out by security",
     tables: "Tables reserved",
     vipTables: "VIP tables",
     barSeats: "Bar seats (minimum charge)",
@@ -414,7 +416,7 @@ export const en = {
     saved: (n: number) => `Saved to slot ${n}`,
     quit: "Quit to Menu",
     controls:
-      "Space pause · 1/2/3 speed · O office · L layout · Tab panel · Q CEO Call · S send security · M mute · drag rotate · right-drag / arrows pan · wheel zoom · Esc menu",
+      "Space pause · 1/2/3 speed · O office · L layout · Tab panel · Q CEO Call · M mute · drag rotate · right-drag / arrows pan · wheel zoom · Esc menu",
   },
 
   /** Real-world reference for each bar line: what gets poured under it. */
@@ -981,6 +983,8 @@ export const en = {
         return `A rival club launched a big promo: Hype ${e.hype}`;
       case "supplierDelay":
         return `Suppliers are running late: +${e.days} day on orders`;
+      case "securityStretched":
+        return `Security is stretched: ${e.waiting} drunk guest${e.waiting > 1 ? "s" : ""} waiting for a guard`;
       case "tactic":
         return {
           mcHype: "MC on the mic: hands up, the whole room sings along",

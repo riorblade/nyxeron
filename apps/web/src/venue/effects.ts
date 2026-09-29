@@ -108,14 +108,14 @@ export class StageFx {
   private fire = new ClipFx("fire", [0.3, 3.8], 250, THREE.AdditiveBlending);
   private fogDown = new ClipFx(
     "fog-down",
-    [0, 0.4],
-    2500,
+    [0.15, 0.3],
+    600,
     THREE.NormalBlending,
   );
   private fogFloor = new ClipFx(
     "fog-floor",
-    [0, 1],
-    3000,
+    [0.8, 1.2],
+    800,
     THREE.NormalBlending,
   );
   private lights: THREE.PointLight[] = [];
@@ -189,9 +189,10 @@ export class StageFx {
   /** CO₂ down from the ceiling, fog rolling over the floor, and the whole room hazes over for a while. */
   burstMist() {
     const now = performance.now();
-    this.fogDown.burst(now, 6000);
-    this.fogFloor.burst(now, 9000);
-    this.hazeUntil = now + 9000;
+    // Just the jet itself (the first second or two of the clip), not the whole cloud spreading out.
+    this.fogDown.burst(now, 1800);
+    this.fogFloor.burst(now, 2200);
+    this.hazeUntil = now + 1000;
   }
 
   update() {
@@ -201,9 +202,9 @@ export class StageFx {
     this.fogFloor.update(now);
     const flash = now < this.flashUntil ? 40 + Math.random() * 40 : 0;
     for (const l of this.lights) l.intensity = flash;
-    // Haze rolls in fast and clears slowly.
+    // Haze rolls in fast, holds about a second, and clears within another.
     const target = now < this.hazeUntil ? 1 : 0;
-    this.haze += (target - this.haze) * (target > this.haze ? 0.06 : 0.008);
+    this.haze += (target - this.haze) * (target > this.haze ? 0.15 : 0.06);
   }
 
   dispose() {

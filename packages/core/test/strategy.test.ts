@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createGameState,
   bookPromoter,
+  securityStatus,
   bookingsFor,
   SEAT_TYPES,
   seatSpend,
@@ -534,5 +535,47 @@ describe("auto-refill", () => {
   it("stops when there is no Coin", () => {
     const broke = { ...low(true), coin: 0 };
     expect(tickNight(startNight(broke)).stock.beer).toBeLessThanOrEqual(3);
+  });
+});
+
+describe("security works on its own", () => {
+  // Three drunk guests inside at minute 100.
+  const drunkNight = (security: number) => {
+    const s = ticks(startNight(club()), 100);
+    let k = 0;
+    const guests = s.night!.guests.map((g) =>
+      isInside(g) && k++ < 3 ? { ...g, drunk: 95 } : g,
+    );
+    return {
+      ...s,
+      staff: { ...s.staff, security },
+      night: { ...s.night!, guests },
+    };
+  };
+  const drunkInside = (s: GameState) =>
+    s.night!.guests.filter(
+      (g) => isInside(g) && g.drunk >= night.fightDrunkThreshold,
+    ).length;
+
+  it("free guards walk drunk guests out without being asked", () => {
+    const after = tickNight(drunkNight(6));
+    expect(after.night!.escorted).toBeGreaterThanOrEqual(3);
+    expect(securityStatus(after).busy).toBeGreaterThanOrEqual(3);
+  });
+
+  it("each escort keeps a guard busy; too few guards and the rest wait (with a warning)", () => {
+    const after = tickNight(drunkNight(2));
+    expect(after.night!.escorted).toBe(2);
+    expect(securityStatus(after).waiting).toBeGreaterThanOrEqual(1);
+    expect(after.log.some((e) => e.kind === "securityStretched")).toBe(true);
+    // Guards stay busy for escortMinutes, then take the next one.
+    const later = ticks(after, night.escortMinutes);
+    expect(later.night!.escorted).toBeGreaterThan(2);
+  });
+
+  it("no security, no escorts", () => {
+    const after = tickNight(drunkNight(0));
+    expect(after.night!.escorted).toBe(0);
+    expect(drunkInside(after)).toBeGreaterThan(0);
   });
 });

@@ -60,3 +60,21 @@ export function r10_forceDoorOpen(s: GameState): ActionResult {
     },
   };
 }
+
+/** Security on shift tonight: guards busy with an escort, and drunk guests at fight risk still waiting for one. */
+export function securityStatus(s: GameState): {
+  total: number;
+  busy: number;
+  waiting: number;
+} {
+  const n = s.night;
+  const busy = n ? n.escorts.filter((e) => e.until > n.minute).length : 0;
+  const waiting = n
+    ? n.guests.filter(
+        (g) =>
+          (g.state === "idle" || g.state === "bar" || g.state === "dance") &&
+          g.drunk >= night.fightDrunkThreshold,
+      ).length
+    : 0;
+  return { total: s.staff.security, busy, waiting };
+}

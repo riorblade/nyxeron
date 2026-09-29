@@ -77,6 +77,7 @@ const eventIcons: Record<GameEvent["kind"], LucideIcon> = {
   rivalPromo: TrendingUp,
   supplierDelay: Truck,
   tactic: Mic,
+  securityStretched: ShieldAlert,
   tablesSeated: Wine,
   crowdThinning: TrendingDown,
   policyChanged: ScrollText,

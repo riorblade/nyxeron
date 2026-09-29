@@ -100,6 +100,7 @@ export type GameEvent =
   | Ev<"rivalPromo", { hype: number }>
   | Ev<"supplierDelay", { days: number }>
   | Ev<"tactic", { tactic: TacticId; power: number }>
+  | Ev<"securityStretched", { waiting: number }>
   | Ev<"tablesSeated", { tables: number; revenue: number }>
   | Ev<"crowdThinning", { energy: number }>
   | Ev<"policyChanged", { policy: HousePolicy }>
@@ -179,6 +180,10 @@ export interface NightState {
   guestListIn: number;
   commission: number;
   bottles: number;
+  /** Guards busy walking a drunk guest out, each until `until`. */
+  escorts: { guest: number; until: number }[];
+  escorted: number;
+  stretchedLogged: boolean;
 }
 
 export interface NightReport {
@@ -210,6 +215,7 @@ export interface NightReport {
   guestListIn: number;
   commission: number;
   bottles: number;
+  escorted: number;
 }
 
 export interface GameState {
@@ -327,6 +333,9 @@ const NIGHT_DEFAULTS = {
   guestListIn: 0,
   commission: 0,
   bottles: 0,
+  escorts: [],
+  escorted: 0,
+  stretchedLogged: false,
 };
 
 /**
