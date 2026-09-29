@@ -1,8 +1,10 @@
 import {
   djs,
+  drinks,
   isAtFightRisk,
   isInside,
   night as nightData,
+  type DrinkId,
   type GameState,
 } from "@nyxeron/core";
 import * as THREE from "three";
@@ -46,7 +48,13 @@ const BLOCK_H = 0.45;
 const WALL_H = 3.2;
 /** Club light palette: magenta, electric blue, violet, amber. */
 const PALETTE = [0xff2bd6, 0x22d3ee, 0xa855f7, 0xffb020];
-const GLASS = [0xd9a441, 0x6fbf73, 0xe8e8f0, 0xb8452f, 0x4a8fd6, 0xf2d06b];
+/** Back-bar shelf sections, left to right, and the bottle colours on each. */
+const SHELVES: { drink: DrinkId; glass: number[] }[] = [
+  { drink: "vodka", glass: [0xe8e8f0, 0xcfe3ff, 0xf4f4f4] },
+  { drink: "whisky", glass: [0xd9a441, 0xb86f24, 0xe0b25a] },
+  { drink: "cocktail", glass: [0x6fbf73, 0x1f5a36, 0xb8452f, 0xf2d06b] },
+  { drink: "wine", glass: [0x5a1020, 0x2c4a1e, 0xd8e0a0] },
+];
 
 /** Deterministic 0..1 from an integer, so a guest always picks the same spot and outfit. */
 const hash = (n: number) => {
@@ -150,6 +158,11 @@ export class VenueScene {
   private tron: VideotronData = { dj: null, top: [] };
   /** What each guest has spent tonight, from watching their budget drop. */
   private spent = new Map<number, number>();
+  /** Invisible click targets over the cabinet sections and fridge. */
+  private cabinetHits: THREE.Mesh[] = [];
+  private hovered: THREE.Mesh | null = null;
+  /** Told when a cabinet section is clicked. */
+  onDrinkClick?: (id: DrinkId) => void;
   /** Told when the selection changes in edit mode (-1 = none). */
   onSelect?: (index: number) => void;
 
@@ -287,6 +300,8 @@ export class VenueScene {
     });
     this.root.clear();
     this.grid = this.selBox = null;
+    this.cabinetHits = [];
+    this.hovered = null;
     this.selected = -1;
     this.guests.clear();
     this.staff = [];
@@ -516,7 +531,9 @@ export class VenueScene {
       shelf.position.set(len / 2, y, depth / 2);
       g.add(shelf);
     }
-    const perShelf = Math.floor((len - 1.2) / 0.13);
+    // Four labelled sections of bottles; the fridge at the end holds beer and soft drinks.
+    const secW = (len - 1.1) / SHELVES.length;
+    const perSec = Math.floor((secW - 0.12) / 0.13);
     const bottleGeo = new THREE.CylinderGeometry(0.035, 0.042, 0.24, 10);
     bottleGeo.translate(0, 0.12, 0);
     const bottles = new THREE.InstancedMesh(
@@ -528,21 +545,73 @@ export class VenueScene {
         opacity: 0.88,
         emissive: 0x221100,
       }),
-      perShelf * shelfYs.length,
+      perSec * shelfYs.length * SHELVES.length,
     );
     const m = new THREE.Matrix4();
     let i = 0;
-    for (const y of shelfYs)
-      for (let k = 0; k < perShelf; k++) {
-        m.makeTranslation(0.25 + k * 0.13, y + 0.02, depth * 0.55);
-        bottles.setMatrixAt(i, m);
-        bottles.setColorAt(
-          i,
-          new THREE.Color(GLASS[Math.floor(hash(i + 3) * GLASS.length)]!),
-        );
-        i++;
-      }
+    const hit = (
+      drink: DrinkId,
+      x: number,
+      y: number,
+      w: number,
+      h: number,
+    ) => {
+      const box = new THREE.Mesh(
+        new THREE.BoxGeometry(w, h, depth + 0.06),
+        new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        }),
+      );
+      box.position.set(x, y, (depth + 0.06) / 2);
+      box.userData.drink = drink;
+      g.add(box);
+      this.cabinetHits.push(box);
+    };
+    const plate = (text: string, x: number, y: number) => {
+      const { tex, aspect } = textTexture(text, {
+        size: 44,
+        weight: "700",
+        color: "#ffd9a8",
+      });
+      const hgt = 0.13;
+      const lbl = new THREE.Mesh(
+        new THREE.PlaneGeometry(hgt * aspect, hgt),
+        new THREE.MeshBasicMaterial({
+          map: tex,
+          transparent: true,
+          depthWrite: false,
+        }),
+      );
+      lbl.position.set(x, y, 0.08);
+      g.add(lbl);
+    };
+    SHELVES.forEach(({ drink, glass }, sec) => {
+      const x0 = 0.1 + sec * secW;
+      for (const y of shelfYs)
+        for (let k = 0; k < perSec; k++) {
+          m.makeTranslation(x0 + 0.12 + k * 0.13, y + 0.02, depth * 0.55);
+          bottles.setMatrixAt(i, m);
+          bottles.setColorAt(
+            i,
+            new THREE.Color(glass[Math.floor(hash(i + 3) * glass.length)]!),
+          );
+          i++;
+        }
+      hit(drink, x0 + secW / 2, 1.3, secW - 0.04, 1.5);
+      plate(drinks[drink].name.toUpperCase(), x0 + secW / 2, height - 0.12);
+    });
     g.add(bottles);
+    hit("beer", len - 0.45, 0.83, 0.72, 0.55);
+    hit("softDrink", len - 0.45, 0.28, 0.72, 0.55);
+    plate(
+      `${drinks.beer.name} · ${drinks.softDrink.name}`.toUpperCase(),
+      len - 0.45,
+      1.25,
+    );
     // Beer fridge at the far end, glowing through its glass door.
     const fridge = new THREE.Mesh(
       new THREE.BoxGeometry(0.7, 1.1, depth + 0.05),
@@ -1182,7 +1251,21 @@ export class VenueScene {
       canvas.setPointerCapture(e.pointerId);
     };
     const pmove = (e: PointerEvent) => {
-      if (!drag) return;
+      if (!drag) {
+        if (this.editing || e.buttons) return;
+        aim(e);
+        const over =
+          (ray.intersectObjects(this.cabinetHits, false)[0]?.object as
+            THREE.Mesh | undefined) ?? null;
+        if (over === this.hovered) return;
+        const fade = (b: THREE.Mesh | null, o: number) =>
+          b && ((b.material as THREE.MeshBasicMaterial).opacity = o);
+        fade(this.hovered, 0);
+        fade(over, 0.22);
+        this.hovered = over;
+        canvas.style.cursor = over ? "pointer" : "";
+        return;
+      }
       aim(e);
       if (!ray.ray.intersectPlane(floor, hitPoint)) return;
       const it = this.items[drag.i]!;
@@ -1220,7 +1303,10 @@ export class VenueScene {
           ([, p]) => p.sprite === hit.object || p.alert === hit.object,
         )?.[0];
         if (id !== undefined) this.onGuestClick(id);
+        return;
       }
+      const shelf = ray.intersectObjects(this.cabinetHits, false)[0];
+      if (shelf) this.onDrinkClick?.(shelf.object.userData.drink as DrinkId);
     };
     canvas.addEventListener("pointerdown", pdown);
     canvas.addEventListener("pointerup", pup);

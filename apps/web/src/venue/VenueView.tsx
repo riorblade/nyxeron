@@ -1,6 +1,7 @@
-import { escortGuest, type GameState } from "@nyxeron/core";
+import { escortGuest, type DrinkId, type GameState } from "@nyxeron/core";
 import { RotateCw, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { DrinkDetail } from "@/hud/DrinkDetail";
 import { en } from "@/i18n/en";
 import { cn } from "@/lib/utils";
 import { useGame } from "@/store";
@@ -19,6 +20,7 @@ export function VenueView({
   const el = useRef<HTMLDivElement>(null);
   const r = useRef<VenueScene | null>(null);
   const [selected, setSelected] = useState(-1);
+  const [drink, setDrink] = useState<DrinkId | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -26,6 +28,7 @@ export function VenueView({
       useGame.getState().act((g) => escortGuest(g, id)),
     );
     v.onSelect = setSelected;
+    v.onDrinkClick = setDrink;
     v.init(el.current!).then(() => {
       // StrictMode mounts twice; a renderer torn down before init finished must not become current.
       if (cancelled) return;
@@ -62,6 +65,7 @@ export function VenueView({
   return (
     <>
       <div ref={el} className="absolute inset-0" />
+      {drink && <DrinkDetail s={s} id={drink} onClose={() => setDrink(null)} />}
       {editing && (
         <div className="glass enter absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 flex-col gap-2 rounded-xl p-3">
           <div className="flex items-center justify-between gap-6">
