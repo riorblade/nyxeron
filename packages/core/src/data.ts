@@ -6,6 +6,7 @@ import legalJson from "./data/legal.json";
 import levelsJson from "./data/levels.json";
 import nightJson from "./data/night.json";
 import permitsJson from "./data/permits.json";
+import promotersJson from "./data/promoters.json";
 import segmentsJson from "./data/segments.json";
 import scenariosJson from "./data/scenarios.json";
 import staffJson from "./data/staff.json";
@@ -26,6 +27,7 @@ export const legal = legalJson;
 export const night = nightJson;
 export const scenarios = scenariosJson;
 export const strategy = strategyJson;
+export const promoters = promotersJson;
 
 export type DrinkId = keyof typeof drinks;
 export type SupplierId = keyof typeof suppliers;
@@ -36,6 +38,9 @@ export type StaffRole = keyof typeof staffRoles;
 export type SegmentId = keyof typeof segments;
 export type DressCode = keyof typeof strategy.dressCode;
 export type TacticId = keyof typeof strategy.tactics;
+export type PromoterId = keyof typeof promoters;
+export type UpgradeId = keyof typeof strategy.upgrades;
+export type HappyHourSlot = "off" | keyof typeof strategy.happyHour;
 export type Genre = string;
 export type Level = 1 | 2 | 3 | 4 | 5;
 

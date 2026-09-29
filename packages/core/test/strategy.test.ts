@@ -1,7 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
   createGameState,
+  bookPromoter,
+  bottlePrice,
+  buyUpgrade,
+  commissionOf,
+  coverBudget,
+  coverDemand,
   crowdMove,
+  DEFAULT_POLICY,
+  happyHourAt,
+  nextDay,
+  r18_upgradeLevel,
+  runNight,
+  upgradeCost,
   defaultPrice,
   drinks,
   endNight,
@@ -61,8 +73,8 @@ describe("house rules", () => {
   it("are set by day from Level 3 and stay in force", () => {
     const r = setPolicy(club(), { ladiesNight: true });
     expect(r.ok && r.state.policy).toEqual({
+      ...DEFAULT_POLICY,
       ladiesNight: true,
-      dressCode: "none",
     });
     expect(setPolicy(club({ level: 2 }), { ladiesNight: true }).ok).toBe(false);
     expect(setPolicy(startNight(club()), { dressCode: "smart" }).ok).toBe(
@@ -72,7 +84,7 @@ describe("house rules", () => {
 
   it("ladies' night: more guests, more women, and women skip the cover", () => {
     const plain = club();
-    const ladies = club({ policy: { ladiesNight: true, dressCode: "none" } });
+    const ladies = club({ policy: { ...DEFAULT_POLICY, ladiesNight: true } });
     expect(expectedGuests(ladies)).toBeGreaterThan(expectedGuests(plain));
     const women = (s: GameState) => {
       const g = startNight(s).night!.guests;
@@ -91,7 +103,7 @@ describe("house rules", () => {
 
   it("dress code: fewer guests, some turned away, deeper pockets", () => {
     const strict = club({
-      policy: { ladiesNight: false, dressCode: "strict" },
+      policy: { ...DEFAULT_POLICY, dressCode: "strict" },
     });
     expect(expectedGuests(strict)).toBeLessThan(expectedGuests(club()));
     const avgBudget = (s: GameState) => {
@@ -248,5 +260,133 @@ describe("migrateState", () => {
     expect(m.staff.host).toBe(0);
     expect(m.night!.energy).toBeGreaterThanOrEqual(0);
     expect(m.night!.tactics).toEqual({});
+  });
+});
+
+describe("cover price", () => {
+  const cover = (c: number | null) =>
+    club({ policy: { ...DEFAULT_POLICY, cover: c } });
+  it("the standard cover changes nothing; pricier = fewer but richer guests", () => {
+    expect(coverDemand(cover(null))).toBe(1);
+    expect(coverDemand(cover(levels[4].coverCharge))).toBe(1);
+    expect(coverDemand(cover(1800))).toBeLessThan(1);
+    expect(coverDemand(cover(0))).toBeGreaterThan(1);
+    expect(coverBudget(cover(1800))).toBeGreaterThan(1);
+    expect(coverBudget(cover(0))).toBeLessThan(1);
+    expect(expectedGuests(cover(1800))).toBeLessThan(expectedGuests(club()));
+  });
+  it("is what paying guests are charged at the door", () => {
+    const s = ticks(startNight(cover(1000)), 60);
+    const paid = s.night!.guests.filter((g) => g.admitted).length;
+    expect(s.nightRevenue.cover).toBeLessThanOrEqual(paid * 1000);
+    expect(s.nightRevenue.cover % 1000).toBe(0);
+  });
+  it("rejects a negative or fractional price", () => {
+    expect(setPolicy(club(), { cover: -5 }).ok).toBe(false);
+    expect(setPolicy(club(), { cover: 10.5 }).ok).toBe(false);
+  });
+});
+
+describe("scheduled happy hour", () => {
+  it("runs only in its window", () => {
+    const early = club({ policy: { ...DEFAULT_POLICY, happyHour: "early" } });
+    expect(happyHourAt(early, 30)).toBe(true);
+    expect(happyHourAt(early, 90)).toBe(false);
+    expect(happyHourAt(club(), 30)).toBe(false);
+  });
+  it("early pulls arrivals into the first hour; late keeps guests longer", () => {
+    const arrivals = (s: GameState) =>
+      startNight(s).night!.guests.filter((g) => g.arriveMinute < 60).length;
+    const early = club({ policy: { ...DEFAULT_POLICY, happyHour: "early" } });
+    expect(arrivals(early)).toBeGreaterThan(arrivals(club()));
+    const stay = (s: GameState) =>
+      startNight(s).night!.guests.reduce(
+        (a, g) => a + g.leaveMinute - g.arriveMinute,
+        0,
+      );
+    const late = club({ policy: { ...DEFAULT_POLICY, happyHour: "late" } });
+    expect(stay(late)).toBeGreaterThan(stay(club()));
+  });
+});
+
+describe("promoters", () => {
+  it("are booked by day, cleared the next day", () => {
+    const r = bookPromoter(club(), "campus");
+    expect(r.ok && r.state.promoters).toEqual(["campus"]);
+    if (!r.ok) return;
+    const cancel = bookPromoter(r.state, "campus");
+    expect(cancel.ok && cancel.state.promoters).toEqual([]);
+    expect(nextDay(runNight(r.state)).promoters).toEqual([]);
+    expect(bookPromoter(club({ level: 3 }), "elite").ok).toBe(false);
+  });
+  it("bring an early guest list that skips the cover; paid per head", () => {
+    const s = club({ promoters: ["social"] });
+    const list = startNight(s).night!.guests.filter((g) => g.guestList);
+    expect(list.length).toBeGreaterThan(0);
+    expect(list.every((g) => g.segment === "urban25")).toBe(true);
+    expect(list.every((g) => g.arriveMinute < 75)).toBe(true);
+    const r = playNight(s).lastReport!;
+    expect(r.guestListIn).toBeGreaterThan(0);
+    expect(r.commission).toBe(r.guestListIn * commissionOf(s, "social"));
+  });
+});
+
+describe("sound & lighting", () => {
+  it("tiers cost more each step, max 3, and reset with a new venue", () => {
+    let s = club({ level: 3, reputation: 90, coin: 50_000_000 });
+    const costs: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      costs.push(upgradeCost(s, "sound")!);
+      const r = buyUpgrade(s, "sound");
+      expect(r.ok).toBe(true);
+      if (r.ok) s = r.state;
+    }
+    expect(costs[1]).toBeGreaterThan(costs[0]!);
+    expect(buyUpgrade(s, "sound").ok).toBe(false);
+    const up = r18_upgradeLevel(s);
+    expect(up.ok && up.state.upgrades.sound).toBe(0);
+  });
+  it("lift the room's energy", () => {
+    const rig = club({ upgrades: { sound: 3, lighting: 3 } });
+    const n = startNight(club()).night!;
+    expect(energyTarget(rig, n, 40, 10)).toBeGreaterThan(
+      energyTarget(club(), n, 40, 10),
+    );
+  });
+});
+
+describe("sparkler parade", () => {
+  const gro = club({
+    coin: 5_000_000,
+    staff: { bartender: 4, security: 6, host: 0, relations: 3, mc: 0 },
+  });
+  it("needs seated tables", () => {
+    expect(tacticBlock(at(club(), 120), "sparkler")).toBe("noTables");
+    expect(tacticBlock(at(gro, 30), "sparkler")).toBe("noTables");
+  });
+  it("sells bottles to copycats, as table revenue", () => {
+    const s = ticks(startNight(gro), 120);
+    const r = crowdMove(s, "sparkler");
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const bottles = r.state.night!.bottles;
+    expect(bottles).toBeGreaterThan(0);
+    expect(r.state.nightRevenue.table - s.nightRevenue.table).toBe(
+      bottles * bottlePrice(s),
+    );
+  });
+});
+
+describe("encore", () => {
+  it("in a buzzing room some guests stay past their planned leave time", () => {
+    const s = ticks(startNight(club()), 150);
+    const set = (energy: number): GameState => ({
+      ...s,
+      night: { ...s.night!, energy },
+    });
+    const stayed = (x: GameState) =>
+      x.night!.guests.filter((g) => g.encore && isInside(g)).length;
+    expect(stayed(ticks(set(100), 3))).toBeGreaterThan(0);
+    expect(stayed(ticks(set(10), 3))).toBe(0);
   });
 });

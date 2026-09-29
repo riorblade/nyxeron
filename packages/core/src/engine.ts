@@ -8,6 +8,7 @@ import {
   levelData,
   night,
   priceScale,
+  promoters,
   segments,
   strategy,
   type DrinkId,
@@ -32,12 +33,15 @@ import { dominantGenre, r04_djMultiplier } from "./rules/talent";
 import {
   active,
   barMultiplier,
+  commissionOf,
+  coverBudget,
   coverFor,
   danceMultiplier,
   dressCode,
   dressReject,
   energyTarget,
   femaleShare,
+  happyHourAt,
   maleBudget,
   POLICY_MIN_LEVEL,
   policyDemand,
@@ -109,6 +113,7 @@ function makeGuest(
       rng.int(seg.budget[0]!, seg.budget[1]!) *
         priceScale(s.level) *
         dressCode(s).budgetMultiplier *
+        coverBudget(s) *
         (female ? 1 : maleBudget(s)),
     ),
     drunk: 0,
@@ -137,6 +142,46 @@ export function startNight(s: GameState): GameState {
     guests.push(
       makeGuest(rng, s, weights, rng.int(0, night.arrivalWindow - 1), stay),
     );
+  if (!sealed) {
+    // Promoters' guest lists: their crowd, early, on the list.
+    for (const pid of s.promoters) {
+      const p = promoters[pid];
+      const heads = rng.int(
+        Math.round(p.heads * 0.8),
+        Math.round(p.heads * 1.2),
+      );
+      const only = { [p.segment]: 1 } as Record<SegmentId, number>;
+      for (let i = 0; i < heads; i++)
+        guests.push({
+          ...makeGuest(
+            rng,
+            s,
+            only,
+            rng.int(0, strategy.guestList.arriveWindow - 1),
+            stay,
+          ),
+          guestList: pid,
+        });
+    }
+    // Scheduled happy hour: early pulls part of the crowd in sooner, late keeps it longer.
+    const hh = s.level >= POLICY_MIN_LEVEL ? s.policy.happyHour : "off";
+    if (hh === "early") {
+      const w = strategy.happyHour.early;
+      for (const g of guests)
+        if (g.arriveMinute >= w.end && rng.chance(w.arrivalShift)) {
+          // They come early for the deal and stay on (leave time unchanged).
+          g.arriveMinute = rng.int(w.start, w.end - 1);
+        }
+    } else if (hh === "late") {
+      const w = strategy.happyHour.late;
+      for (const g of guests)
+        if (g.leaveMinute >= w.start - 60 && g.leaveMinute < w.end)
+          g.leaveMinute = Math.min(
+            night.minutes,
+            g.leaveMinute + w.stayExtension,
+          );
+    }
+  }
   guests
     .sort((a, b) => a.arriveMinute - b.arriveMinute)
     .forEach((g, i) => (g.id = i));
@@ -182,6 +227,9 @@ export function startNight(s: GameState): GameState {
       tablesBooked: sealed ? 0 : tablesFor(s),
       rounds: 0,
       rejectedDress: 0,
+      guestListIn: 0,
+      commission: 0,
+      bottles: 0,
     },
     log: sealed ? [...s.log, { day: s.day, kind: "venueSealed" }] : s.log,
   };
@@ -233,9 +281,15 @@ export function tickNight(s: GameState): GameState {
     if (g.underage) n.underageAdmitted++;
     const pay = Math.min(coverFor(st, g), g.budget);
     g.budget -= pay;
+    // The promoter is paid for every guest-list guest who gets in.
+    const fee = g.guestList ? commissionOf(st, g.guestList) : 0;
+    if (g.guestList) {
+      n.guestListIn++;
+      n.commission += fee;
+    }
     st = {
       ...st,
-      coin: st.coin + pay,
+      coin: st.coin + pay - fee,
       nightRevenue: { ...st.nightRevenue, cover: st.nightRevenue.cover + pay },
     };
     g.state = "idle";
@@ -313,7 +367,10 @@ export function tickNight(s: GameState): GameState {
   // The vibe only matters once there is a floor to fill (Level 3+); the booth and shop just sell drinks.
   const vibe = st.level >= POLICY_MIN_LEVEL;
   const perMinute =
-    (vibe ? ((n.energy - 50) / 50) * E.satisfactionPerMinute : 0) +
+    (vibe
+      ? ((n.energy - 50) / 50) * E.satisfactionPerMinute +
+        st.upgrades.lighting * strategy.upgrades.lighting.satisfactionPerTier
+      : 0) +
     coverage * strategy.relations.satisfactionPerMinute +
     (active(n, "mcHype")
       ? strategy.tactics.mcHype.satisfactionPerMinute * n.tactics.mcHype!.power
@@ -331,8 +388,21 @@ export function tickNight(s: GameState): GameState {
   for (const g of n.guests) {
     if (!isInside(g)) continue;
     if (m >= g.leaveMinute) {
-      g.state = "left";
-      continue;
+      // Encore: in a buzzing room some stay for one more round of songs.
+      const enc = strategy.encore;
+      if (
+        vibe &&
+        !g.encore &&
+        n.energy >= enc.energy &&
+        m + enc.minutes < night.minutes &&
+        rng.chance(enc.chance)
+      ) {
+        g.encore = true;
+        g.leaveMinute = m + enc.minutes;
+      } else {
+        g.state = "left";
+        continue;
+      }
     }
     g.drunk = Math.max(0, g.drunk - night.drunkDecayPerMinute);
     // A flat, unhappy room empties early.
@@ -365,9 +435,10 @@ export function tickNight(s: GameState): GameState {
 
     const inStock = menu.filter((d) => st.stock[d] > 0);
     const drink = rng.pick(g.disappointed && inStock.length ? inStock : menu);
-    const price = n.happyHour
-      ? Math.max(1, Math.round(st.prices[drink] * night.happyHourPriceFactor))
-      : st.prices[drink];
+    const price =
+      n.happyHour || happyHourAt(st, m)
+        ? Math.max(1, Math.round(st.prices[drink] * night.happyHourPriceFactor))
+        : st.prices[drink];
     // Pricier than default → fewer orders; drunk guests slow down.
     const barChance =
       barBoost *
@@ -415,7 +486,11 @@ export function tickNight(s: GameState): GameState {
       g.satisfaction += res.satisfactionDelta;
     } else if (r < barChance + night.danceChancePerMinute * danceBoost) {
       g.state = "dance";
-      g.satisfaction += night.danceSatisfactionPerMinute * n.djMultiplier;
+      g.satisfaction +=
+        night.danceSatisfactionPerMinute *
+        n.djMultiplier *
+        (1 +
+          st.upgrades.sound * strategy.upgrades.sound.danceSatisfactionPerTier);
     } else {
       g.state = "idle";
       g.satisfaction += night.idleSatisfactionPerMinute;
@@ -506,6 +581,9 @@ export function endNight(s: GameState): GameState {
     tables: n.tablesBooked,
     rejectedDress: n.rejectedDress,
     tacticsUsed: Object.keys(n.tactics) as NightReport["tacticsUsed"],
+    guestListIn: n.guestListIn,
+    commission: n.commission,
+    bottles: n.bottles,
   };
   return checkScenarioEnd(
     r14_checkVictory(

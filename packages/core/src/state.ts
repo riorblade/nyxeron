@@ -7,14 +7,17 @@ import {
   type ChannelId,
   type DressCode,
   type DrinkId,
+  type HappyHourSlot,
   type Genre,
   type Level,
   type PermitId,
+  type PromoterId,
   type SegmentId,
   type StaffRole,
   type SupplierId,
   type TacticId,
   type TalentId,
+  type UpgradeId,
 } from "./data";
 
 export type Phase = "day" | "night" | "report";
@@ -28,10 +31,16 @@ export interface HousePolicy {
   /** Ladies' night: women get in free (more women come, and more men follow). */
   ladiesNight: boolean;
   dressCode: DressCode;
+  /** Entry price; null = the level's standard cover. */
+  cover: number | null;
+  /** Scheduled happy hour: early pulls the crowd in sooner, late keeps it longer. */
+  happyHour: HappyHourSlot;
 }
 export const DEFAULT_POLICY: HousePolicy = {
   ladiesNight: false,
   dressCode: "none",
+  cover: null,
+  happyHour: "off",
 };
 
 /** A crowd move's state tonight: active until `until`, usable again from `readyAt`. */
@@ -92,6 +101,9 @@ export type GameEvent =
   | Ev<"tablesSeated", { tables: number; revenue: number }>
   | Ev<"crowdThinning", { energy: number }>
   | Ev<"policyChanged", { policy: HousePolicy }>
+  | Ev<"promoterBooked", { promoter: PromoterId }>
+  | Ev<"upgradeBought", { upgrade: UpgradeId; tier: number; cost: number }>
+  | Ev<"sparklerParade", { bottles: number; revenue: number }>
   | Ev<"gameOver", { outcome: Outcome }>;
 
 export interface NightRevenue {
@@ -119,6 +131,10 @@ export interface Guest {
   /** Hit an out-of-stock drink once (R2); afterwards only orders what is in stock. */
   disappointed: boolean;
   female: boolean;
+  /** On a promoter's guest list: arrives early, skips the cover, the promoter is paid per head. */
+  guestList?: PromoterId;
+  /** Already stayed on once past their planned leave time (encore). */
+  encore?: boolean;
 }
 
 export interface NightState {
@@ -158,6 +174,9 @@ export interface NightState {
   /** Drinks guests bought for someone else. */
   rounds: number;
   rejectedDress: number;
+  guestListIn: number;
+  commission: number;
+  bottles: number;
 }
 
 export interface NightReport {
@@ -184,6 +203,9 @@ export interface NightReport {
   tables: number;
   rejectedDress: number;
   tacticsUsed: TacticId[];
+  guestListIn: number;
+  commission: number;
+  bottles: number;
 }
 
 export interface GameState {
@@ -209,6 +231,10 @@ export interface GameState {
   activePromos: ChannelId[];
   staff: Record<StaffRole, number>;
   policy: HousePolicy;
+  /** Promoters booked for tonight (cleared each day). */
+  promoters: PromoterId[];
+  /** Sound system / lighting rig tier (0–3); a new venue starts from scratch. */
+  upgrades: Record<UpgradeId, number>;
   forcedInspection: boolean;
   sealedNights: number;
   /** Extra lead-time days on supplier orders today (scenario event). */
@@ -263,6 +289,8 @@ export function createGameState(
     activePromos: [],
     staff: fill(ids(staffRoles), () => 0),
     policy: DEFAULT_POLICY,
+    promoters: [],
+    upgrades: { sound: 0, lighting: 0 },
     forcedInspection: false,
     sealedNights: 0,
     supplierDelay: 0,
@@ -275,6 +303,8 @@ export function createGameState(
   };
 }
 
+const NO_UPGRADES = { sound: 0, lighting: 0 };
+
 const NIGHT_DEFAULTS = {
   energy: 30,
   energySum: 0,
@@ -284,6 +314,9 @@ const NIGHT_DEFAULTS = {
   tablesBooked: 0,
   rounds: 0,
   rejectedDress: 0,
+  guestListIn: 0,
+  commission: 0,
+  bottles: 0,
 };
 
 /**
@@ -296,6 +329,8 @@ export function migrateState(s: GameState): GameState {
     ...s,
     staff,
     policy: { ...DEFAULT_POLICY, ...s.policy },
+    promoters: s.promoters ?? [],
+    upgrades: { ...NO_UPGRADES, ...s.upgrades },
     night: n && {
       ...NIGHT_DEFAULTS,
       ...n,

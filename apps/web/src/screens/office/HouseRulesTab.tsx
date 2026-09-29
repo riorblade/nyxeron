@@ -1,24 +1,109 @@
 import {
+  coverPrice,
   expectedGuests,
   femaleShare,
+  priceScale,
   setPolicy,
+  standardCover,
+  strategy,
   tablesFor,
   type DressCode,
   type GameState,
+  type HappyHourSlot,
 } from "@nyxeron/core";
-import { en } from "@/i18n/en";
+import { Minus, Plus } from "lucide-react";
+import { en, fmt } from "@/i18n/en";
 import { cn } from "@/lib/utils";
 import { useGame } from "@/store";
 
 const t = en.rules;
 const CODES: DressCode[] = ["none", "smart", "strict"];
+const SLOTS: HappyHourSlot[] = ["off", "early", "late"];
 
 /** Door policy: ladies' night and dress code, with tonight's forecast so the trade-off is visible. */
 export function HouseRulesTab({ s }: { s: GameState }) {
   const act = useGame((x) => x.act);
   const p = s.policy;
+  const cover = coverPrice(s);
+  const std = standardCover(s);
+  // Round steps of about 10% of a typical cover at this level (1, 2 or 5 × 10ⁿ).
+  const raw = (strategy.cover.reference * priceScale(s.level)) / 10;
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 5, 10].map((k) => k * mag).find((v) => v >= raw * 0.75)!;
+  const setCover = (c: number | null) => act((g) => setPolicy(g, { cover: c }));
   return (
     <div className="space-y-4">
+      <section className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <h3 className="font-medium">{t.cover}</h3>
+            <p className="mt-1 text-sm leading-relaxed text-white/65">
+              {t.coverDesc}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              aria-label="Lower cover"
+              disabled={cover <= 0}
+              onClick={() => setCover(Math.max(0, cover - step))}
+              className="flex size-9 items-center justify-center rounded-lg border border-white/20 hover:bg-white/10 disabled:opacity-30"
+            >
+              <Minus className="size-4" />
+            </button>
+            <span className="w-24 text-center font-mono text-xl tabular-nums">
+              {fmt(cover)} C
+            </span>
+            <button
+              aria-label="Raise cover"
+              onClick={() => setCover(cover + step)}
+              className="flex size-9 items-center justify-center rounded-lg border border-white/20 hover:bg-white/10"
+            >
+              <Plus className="size-4" />
+            </button>
+          </div>
+        </div>
+        <div className="mt-2 flex items-center gap-3 text-xs text-white/60">
+          {t.coverStandard(fmt(std))}
+          {p.cover != null && p.cover !== std && (
+            <button
+              className="underline underline-offset-2 hover:text-white"
+              onClick={() => setCover(null)}
+            >
+              {t.coverReset}
+            </button>
+          )}
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+        <h3 className="font-medium">{t.happy}</h3>
+        <p className="mt-1 text-sm leading-relaxed text-white/65">
+          {t.happyDesc}
+        </p>
+        <div
+          className="mt-3 grid gap-2 sm:grid-cols-3"
+          role="radiogroup"
+          aria-label={t.happy}
+        >
+          {SLOTS.map((h) => (
+            <button
+              key={h}
+              role="radio"
+              aria-checked={p.happyHour === h}
+              onClick={() => act((g) => setPolicy(g, { happyHour: h }))}
+              className={cn(
+                "rounded-lg border px-3 py-2.5 text-left text-sm transition-colors",
+                p.happyHour === h
+                  ? "border-white bg-white font-medium text-black"
+                  : "border-white/12 hover:bg-white/[0.06]",
+              )}
+            >
+              {t.happySlots[h]}
+            </button>
+          ))}
+        </div>
+      </section>
+
       <section className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
         <div className="flex items-start justify-between gap-4">
           <div>

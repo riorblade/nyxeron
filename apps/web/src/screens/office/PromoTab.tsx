@@ -1,6 +1,9 @@
 import {
+  bookPromoter,
   channels,
+  commissionOf,
   ids,
+  promoters,
   legal,
   nightPromote,
   r17_controversialPromo,
@@ -18,6 +21,8 @@ import {
   Sparkles,
   Zap,
 } from "lucide-react";
+import { art } from "@/art";
+import { Img } from "@/components/Img";
 import { en, fmt, segmentNames } from "@/i18n/en";
 import { cn } from "@/lib/utils";
 import { useGame } from "@/store";
@@ -117,6 +122,80 @@ export function PromoTab({ s }: { s: GameState }) {
           {en.promo.risk}
         </button>
       </div>
+      <Promoters s={s} />
     </div>
+  );
+}
+
+/** Guest-list promoters: booked by day, paid per head who gets in. */
+function Promoters({ s }: { s: GameState }) {
+  const act = useGame((x) => x.act);
+  const t = en.promoters;
+  return (
+    <section className="space-y-3 pt-2">
+      <div>
+        <h3 className="font-medium">{t.title}</h3>
+        <p className="mt-1 text-sm text-white/65">{t.desc}</p>
+      </div>
+      <ul className="grid gap-3 sm:grid-cols-3">
+        {ids(promoters).map((id) => {
+          const p = promoters[id];
+          const locked = p.minLevel > s.level;
+          const booked = s.promoters.includes(id);
+          return (
+            <li
+              key={id}
+              className={cn(
+                "overflow-hidden rounded-xl border bg-white/[0.03]",
+                booked ? "border-white" : "border-white/10",
+                locked && "opacity-50",
+              )}
+            >
+              <div className="relative h-28">
+                <Img
+                  src={art.staff("promoter")}
+                  alt=""
+                  className="absolute inset-0 size-full object-cover object-top"
+                />
+                <div className="absolute inset-0 bg-black/30" />
+              </div>
+              <div className="space-y-0.5 p-3">
+                <div className="font-medium">{p.name}</div>
+                <div className="text-xs text-white/60">
+                  {t.segment(segmentNames[p.segment] ?? p.segment)} ·{" "}
+                  {t.heads(p.heads)}
+                </div>
+                <div className="font-mono text-xs text-white/70">
+                  {t.perHead(fmt(commissionOf(s, id)))}
+                </div>
+                <button
+                  disabled={locked || s.phase === "night"}
+                  onClick={() => act((g) => bookPromoter(g, id))}
+                  className={cn(
+                    "mt-2 flex h-9 w-full items-center justify-center gap-1.5 rounded-lg text-xs font-semibold tracking-[0.14em] uppercase disabled:opacity-40",
+                    booked
+                      ? "bg-white text-black"
+                      : "border border-white/25 hover:bg-white/10",
+                  )}
+                >
+                  {locked ? (
+                    <>
+                      <Lock className="size-3.5" />
+                      {en.office.lockedTab(p.minLevel)}
+                    </>
+                  ) : booked ? (
+                    <>
+                      <Check className="size-3.5" /> {t.booked}
+                    </>
+                  ) : (
+                    t.book
+                  )}
+                </button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }

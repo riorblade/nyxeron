@@ -1,4 +1,11 @@
-import { channels, djs, drinks, permits, type GameEvent } from "@nyxeron/core";
+import {
+  channels,
+  djs,
+  drinks,
+  permits,
+  promoters,
+  type GameEvent,
+} from "@nyxeron/core";
 import { en } from "@/i18n/en";
 
 const names = {
@@ -6,6 +13,7 @@ const names = {
   dj: (id: string) => djs[id as keyof typeof djs]?.name ?? id,
   channel: (id: string) => channels[id as keyof typeof channels]?.name ?? id,
   permit: (id: string) => permits[id as keyof typeof permits]?.name ?? id,
+  promoter: (id: string) => promoters[id as keyof typeof promoters]?.name ?? id,
 };
 
 export const eventText = (e: GameEvent) => en.event(e, names);

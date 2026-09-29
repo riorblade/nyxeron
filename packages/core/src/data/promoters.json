@@ -1,0 +1,23 @@
+{
+  "campus": {
+    "name": "Campus Crew",
+    "segment": "genZ",
+    "heads": 30,
+    "commission": 25,
+    "minLevel": 3
+  },
+  "social": {
+    "name": "Social Circle",
+    "segment": "urban25",
+    "heads": 20,
+    "commission": 40,
+    "minLevel": 3
+  },
+  "elite": {
+    "name": "Elite List",
+    "segment": "premium",
+    "heads": 12,
+    "commission": 100,
+    "minLevel": 4
+  }
+}

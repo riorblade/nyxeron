@@ -14,6 +14,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { audio } from "@/audio";
 import type { ClipMode } from "@/settings";
 import {
+  canvasTexture,
   loadDjVideo,
   loadVenueAssets,
   shadowTexture,
@@ -131,6 +132,17 @@ export class VenueScene {
   } | null = null;
   private spots: { light: THREE.SpotLight; phase: number }[] = [];
   private beams: THREE.Mesh[] = [];
+  /** Sparkler flames over the lounge tables during a parade. */
+  private sparks: THREE.Sprite[] = [];
+  private sparkTex = canvasTexture(32, 32, (ctx) => {
+    const g = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+    g.addColorStop(0, "rgba(255,255,230,1)");
+    g.addColorStop(0.35, "rgba(255,200,90,.85)");
+    g.addColorStop(1, "rgba(255,140,40,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 32, 32);
+  });
+  private rigLight = 0;
   private walls: {
     mesh: THREE.Object3D;
     visible: (c: THREE.Vector3) => boolean;
@@ -297,8 +309,11 @@ export class VenueScene {
 
     const dj = s.bookedTalent[0];
     const n = s.night;
-    const callout =
-      n.tactics?.djAnthem && tacticActive(n, "djAnthem")
+    const sparkling = !!n.tactics?.sparkler && tacticActive(n, "sparkler");
+    this.syncSparks(sparkling);
+    const callout = sparkling
+      ? { kicker: en.videotron.bottles, text: en.videotron.sparklers }
+      : n.tactics?.djAnthem && tacticActive(n, "djAnthem")
         ? { kicker: en.videotron.anthem, text: dj ? djs[dj].name : "NYXERON" }
         : n.tactics?.mcHype && tacticActive(n, "mcHype")
           ? { kicker: en.videotron.mc, text: en.videotron.handsUp }
@@ -340,6 +355,7 @@ export class VenueScene {
     this.cabinetHits = [];
     this.hovered = null;
     this.selected = -1;
+    this.sparks = [];
     this.guests.clear();
     this.staff = [];
     this.stage = [];
@@ -442,6 +458,8 @@ export class VenueScene {
     this.setEditing(this.editing);
     this.buildWalls(layout);
     this.buildLights();
+    this.buildSpeakers(s.upgrades?.sound ?? 0);
+    this.rigLight = s.upgrades?.lighting ?? 0;
     this.frameCamera(layout);
   }
 
@@ -1202,6 +1220,60 @@ export class VenueScene {
     return `${first} ${String.fromCharCode(65 + Math.floor(hash(id + 78) * 26))}.`;
   }
 
+  /** Speaker stacks either side of the DJ booth, one cabinet per sound tier. */
+  private buildSpeakers(tier: number) {
+    const dj = this.zones.get("dj") ?? this.zones.get("stage");
+    if (!dj || tier <= 0) return;
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0x111114,
+      roughness: 0.6,
+      metalness: 0.3,
+    });
+    const cone = new THREE.MeshStandardMaterial({
+      color: 0x2a2a30,
+      roughness: 0.3,
+      metalness: 0.6,
+    });
+    for (const x of [dj.x - 0.35, dj.x + dj.w + 0.35])
+      for (let i = 0; i < tier; i++) {
+        const box = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.62, 0.5), mat);
+        box.position.set(x, 0.31 + i * 0.64, dj.y + 0.45);
+        const woofer = new THREE.Mesh(new THREE.CircleGeometry(0.19, 20), cone);
+        woofer.position.set(0, -0.04, 0.251);
+        box.add(woofer);
+        this.root.add(box);
+      }
+  }
+
+  private syncSparks(on: boolean) {
+    if (!on) {
+      if (this.sparks.length) {
+        this.sparks.forEach((sp) => {
+          this.root.remove(sp);
+          (sp.material as THREE.SpriteMaterial).dispose();
+        });
+        this.sparks = [];
+      }
+      return;
+    }
+    if (this.sparks.length) return;
+    // One sparkler on every lounge table.
+    for (const it of this.items)
+      if (it.kind === "table") {
+        const sp = new THREE.Sprite(
+          new THREE.SpriteMaterial({
+            map: this.sparkTex,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+          }),
+        );
+        sp.position.set(it.x, 0.75, it.z);
+        this.root.add(sp);
+        this.sparks.push(sp);
+      }
+  }
+
   private syncHosts(s: GameState) {
     const n = s.night!;
     const count = Math.min(6, s.staff.host ?? 0);
@@ -1552,7 +1624,13 @@ export class VenueScene {
       animate(p);
     }
     // The room's energy drives how hard the lights and floor go.
-    const vibe = 0.55 + (this.energy / 100) * 0.7;
+    const vibe =
+      (0.55 + (this.energy / 100) * 0.7) * (1 + this.rigLight * 0.12);
+    for (const sp of this.sparks) {
+      const f = 0.6 + Math.random() * 0.6;
+      sp.scale.set(0.22 * f, 0.22 * f, 1);
+      (sp.material as THREE.SpriteMaterial).opacity = 0.6 + Math.random() * 0.4;
+    }
 
     // LED floor colour sweep; the floor light takes the average hue.
     if (this.led) {
@@ -1590,7 +1668,8 @@ export class VenueScene {
         0,
         Math.sin(tSec * 0.6 + i * 1.7) * 0.7,
       );
-      (b.material as THREE.MeshBasicMaterial).opacity = 0.05 + pulse * 0.05;
+      (b.material as THREE.MeshBasicMaterial).opacity =
+        (0.05 + pulse * 0.05) * (1 + this.rigLight * 0.35);
     });
 
     for (let i = this.floats.length - 1; i >= 0; i--) {

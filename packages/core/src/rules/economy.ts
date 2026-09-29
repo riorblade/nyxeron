@@ -28,6 +28,7 @@ export function r12_newDay(s: GameState): GameState {
     safety: Math.min(100, s.safety + economy.safetyRecoveryPerDay),
     bookedTalent: [],
     activePromos: [],
+    promoters: [],
     nightRevenue: { bar: 0, cover: 0, table: 0 },
     night: null,
     log: [...s.log, { day, kind: "upkeepPaid", wages, rent }],

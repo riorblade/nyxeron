@@ -87,11 +87,64 @@
       "matchFactor": 1.2,
       "mismatchFactor": 0.7,
       "fatigue": 1
+    },
+    "sparkler": {
+      "staff": "",
+      "duration": 10,
+      "cooldown": 45,
+      "energy": 15,
+      "fatigue": 0.35,
+      "copycat": 0.2,
+      "bottleShare": 0.35,
+      "satisfaction": 8,
+      "cost": 20,
+      "splurge": 0.6
     }
   },
   "impress": {
     "perFemaleShare": 0.5,
     "perHost": 0.05,
     "maxHost": 0.3
+  },
+  "cover": {
+    "reference": 12,
+    "elasticity": 0.2,
+    "minDemand": 0.3,
+    "maxDemand": 1.5,
+    "budgetElasticity": 0.15,
+    "minBudget": 0.8,
+    "maxBudget": 1.3
+  },
+  "happyHour": {
+    "early": {
+      "start": 0,
+      "end": 60,
+      "arrivalShift": 0.25
+    },
+    "late": {
+      "start": 300,
+      "end": 360,
+      "stayExtension": 30
+    }
+  },
+  "upgrades": {
+    "sound": {
+      "cost": [300, 900, 2000],
+      "energyPerTier": 5,
+      "danceSatisfactionPerTier": 0.1
+    },
+    "lighting": {
+      "cost": [250, 800, 1800],
+      "energyPerTier": 5,
+      "satisfactionPerTier": 0.01
+    }
+  },
+  "guestList": {
+    "arriveWindow": 75
+  },
+  "encore": {
+    "energy": 75,
+    "chance": 0.5,
+    "minutes": 25
   }
 }

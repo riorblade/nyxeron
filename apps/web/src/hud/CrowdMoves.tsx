@@ -1,13 +1,14 @@
 import {
   active,
   crowdMove,
+  sparklerCost,
   strategy,
   tacticBlock,
   type GameState,
   type TacticId,
 } from "@nyxeron/core";
-import { Disc3, Mic, Users } from "lucide-react";
-import { en } from "@/i18n/en";
+import { Disc3, Mic, Sparkles, Users } from "lucide-react";
+import { en, fmt } from "@/i18n/en";
 import { cn } from "@/lib/utils";
 import { useGame } from "@/store";
 
@@ -16,8 +17,14 @@ const MOVES: { id: TacticId; icon: typeof Mic }[] = [
   { id: "mcHype", icon: Mic },
   { id: "hostsFloor", icon: Users },
   { id: "djAnthem", icon: Disc3 },
+  { id: "sparkler", icon: Sparkles },
 ];
-const need = { mcHype: t.needMc, hostsFloor: t.needHost, djAnthem: t.needDj };
+const need: Record<TacticId, string> = {
+  mcHype: t.needMc,
+  hostsFloor: t.needHost,
+  djAnthem: t.needDj,
+  sparkler: t.needTables,
+};
 
 /** Room energy 0–100; below the leave threshold it pulses as a warning. */
 export function EnergyMeter({ s }: { s: GameState }) {
@@ -85,7 +92,9 @@ export function CrowdMoves({ s }: { s: GameState }) {
               <span className="min-w-0 flex-1 leading-tight">
                 <span className="block text-sm">{t[id]}</span>
                 <span className="block truncate text-[11px] text-white/60">
-                  {t[`${id}Desc`]}
+                  {id === "sparkler"
+                    ? t.sparklerDesc(fmt(sparklerCost(s)))
+                    : t[`${id}Desc`]}
                 </span>
               </span>
               <span className="shrink-0 font-mono text-[11px] text-white/70">

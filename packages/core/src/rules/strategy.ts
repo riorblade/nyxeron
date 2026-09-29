@@ -2,11 +2,15 @@ import {
   levelData,
   night,
   priceScale,
+  promoters,
   strategy,
   type DressCode,
+  type PromoterId,
   type StaffRole,
   type TacticId,
+  type UpgradeId,
 } from "../data";
+import { createRng } from "../rng";
 import { fail, type ActionResult } from "../result";
 import {
   clamp,
@@ -30,6 +34,11 @@ export function setPolicy(
 ): ActionResult {
   if (s.phase !== "day") return fail("wrongPhase");
   if (s.level < POLICY_MIN_LEVEL) return fail("levelLocked");
+  if (
+    patch.cover != null &&
+    (!Number.isInteger(patch.cover) || patch.cover < 0)
+  )
+    return fail("invalidPrice");
   const policy = { ...s.policy, ...patch };
   return {
     ok: true,
@@ -54,7 +63,44 @@ export const femaleShare = (s: GameState) =>
 export const policyDemand = (s: GameState) =>
   (policyOn(s) && s.policy.ladiesNight
     ? 1 + strategy.ladiesNight.demandBonus
-    : 1) * dressCode(s).demand;
+    : 1) *
+  dressCode(s).demand *
+  coverDemand(s);
+
+/** The standard entry price at this level, and the one the player set. */
+export const standardCover = (s: GameState) => levelData(s.level).coverCharge;
+export const coverPrice = (s: GameState) =>
+  policyOn(s) && s.policy.cover != null ? s.policy.cover : standardCover(s);
+
+/** Pricier door, fewer people bother; a cheap door pulls more in. 1 at the standard cover. */
+export function coverDemand(s: GameState): number {
+  const c = strategy.cover;
+  const ref = c.reference * priceScale(s.level);
+  return clamp(
+    1 - (c.elasticity * (coverPrice(s) - standardCover(s))) / ref,
+    c.minDemand,
+    c.maxDemand,
+  );
+}
+
+/** A cheap door brings a thriftier crowd; an expensive one, bigger spenders. 1 at the standard cover. */
+export function coverBudget(s: GameState): number {
+  const c = strategy.cover;
+  const ref = c.reference * priceScale(s.level);
+  return clamp(
+    1 + (c.budgetElasticity * (coverPrice(s) - standardCover(s))) / ref,
+    c.minBudget,
+    c.maxBudget,
+  );
+}
+
+/** Is the scheduled happy hour on at this minute? */
+export function happyHourAt(s: GameState, minute: number): boolean {
+  const slot = policyOn(s) ? s.policy.happyHour : "off";
+  if (slot === "off") return false;
+  const w = strategy.happyHour[slot];
+  return minute >= w.start && minute < w.end;
+}
 
 /**
  * Men spend more in a room with women in it (buying rounds, impressing): budget multiplier for a male guest,
@@ -73,10 +119,76 @@ export const dressReject = (s: GameState, g: Pick<Guest, "female">) =>
   g.female ? dressCode(s).rejectFemale : dressCode(s).rejectMale;
 
 /** Cover this guest pays at the door (women free on ladies' night). */
-export const coverFor = (s: GameState, g: Pick<Guest, "female">) =>
-  policyOn(s) && s.policy.ladiesNight && g.female
+/** Guest list and (on ladies' night) women get in free; everyone else pays the cover. */
+export const coverFor = (
+  s: GameState,
+  g: Pick<Guest, "female" | "guestList">,
+) =>
+  g.guestList || (policyOn(s) && s.policy.ladiesNight && g.female)
     ? 0
-    : levelData(s.level).coverCharge;
+    : coverPrice(s);
+
+// ---------- promoters (guest list) ----------
+
+/** What a promoter is paid for each guest-list guest who gets in. */
+export const commissionOf = (s: GameState, id: PromoterId) =>
+  Math.round(promoters[id].commission * priceScale(s.level));
+
+/** Book (or cancel) a promoter for tonight: their guest list arrives early and skips the cover; paid per head. */
+export function bookPromoter(s: GameState, id: PromoterId): ActionResult {
+  if (s.phase !== "day") return fail("wrongPhase");
+  if (s.level < promoters[id].minLevel) return fail("levelLocked");
+  if (s.promoters.includes(id))
+    return {
+      ok: true,
+      state: { ...s, promoters: s.promoters.filter((p) => p !== id) },
+    };
+  return {
+    ok: true,
+    state: {
+      ...s,
+      promoters: [...s.promoters, id],
+      log: [...s.log, { day: s.day, kind: "promoterBooked", promoter: id }],
+    },
+  };
+}
+
+// ---------- sound & lighting ----------
+
+export const MAX_UPGRADE = 3;
+export const upgradeCost = (s: GameState, id: UpgradeId) =>
+  s.upgrades[id] >= MAX_UPGRADE
+    ? null
+    : Math.round(
+        strategy.upgrades[id].cost[s.upgrades[id]]! * priceScale(s.level),
+      );
+
+/** Next tier of the sound system or lighting rig (by day). A new venue starts with the house rig again. */
+export function buyUpgrade(s: GameState, id: UpgradeId): ActionResult {
+  if (s.phase !== "day") return fail("wrongPhase");
+  if (s.level < POLICY_MIN_LEVEL) return fail("levelLocked");
+  const cost = upgradeCost(s, id);
+  if (cost === null) return fail("maxLevel");
+  if (s.coin < cost) return fail("notEnoughCoin", cost - s.coin);
+  const tier = s.upgrades[id] + 1;
+  return {
+    ok: true,
+    state: {
+      ...s,
+      coin: s.coin - cost,
+      upgrades: { ...s.upgrades, [id]: tier },
+      log: [
+        ...s.log,
+        { day: s.day, kind: "upgradeBought", upgrade: id, tier, cost },
+      ],
+    },
+  };
+}
+
+/** Energy the rig adds to the room. */
+export const rigEnergy = (s: GameState) =>
+  s.upgrades.sound * strategy.upgrades.sound.energyPerTier +
+  s.upgrades.lighting * strategy.upgrades.lighting.energyPerTier;
 
 // ---------- staff effects ----------
 
@@ -127,8 +239,11 @@ export function energyTarget(
   const crowd = inside + s.staff.host * strategy.hosts.crowdEquivalent;
   const full = Math.min(1, crowd / (cap * e.fullAtCapacityShare));
   const dance = inside ? Math.min(1, dancing / inside / e.danceShareForMax) : 0;
-  let target = 100 * (e.danceWeight * dance + e.fullWeight * full);
+  let target =
+    100 * (e.danceWeight * dance + e.fullWeight * full) + rigEnergy(s);
   const t = strategy.tactics;
+  if (active(n, "sparkler"))
+    target += t.sparkler.energy * n.tactics.sparkler!.power;
   if (active(n, "mcHype")) target += t.mcHype.energy * n.tactics.mcHype!.power;
   if (active(n, "djAnthem"))
     target += t.djAnthem.energy * n.tactics.djAnthem!.power;
@@ -154,7 +269,14 @@ export const barMultiplier = (energy: number) =>
 export const active = (n: NightState, id: TacticId) =>
   (n.tactics[id]?.until ?? -1) > n.minute;
 
-export type TacticBlock = "wrongPhase" | "noStaff" | "noDj" | "cooldown" | null;
+export type TacticBlock =
+  "wrongPhase" | "noStaff" | "noDj" | "noTables" | "cooldown" | null;
+
+/** Price of one bottle bought by a copycat after the sparkler parade. */
+export const bottlePrice = (s: GameState) =>
+  Math.round(tableSpend(s) * strategy.tactics.sparkler.bottleShare);
+export const sparklerCost = (s: GameState) =>
+  Math.round(strategy.tactics.sparkler.cost * priceScale(s.level));
 
 /** Why a crowd move can't be used right now (null = ready). */
 export function tacticBlock(s: GameState, id: TacticId): TacticBlock {
@@ -167,6 +289,11 @@ export function tacticBlock(s: GameState, id: TacticId): TacticBlock {
     (!s.bookedTalent.length || n.minute < night.djSetStartMinute)
   )
     return "noDj";
+  if (
+    id === "sparkler" &&
+    (n.tablesBooked <= 0 || n.minute < strategy.relations.tablesArriveMinute)
+  )
+    return "noTables";
   if ((n.tactics[id]?.readyAt ?? 0) > n.minute) return "cooldown";
   return null;
 }
@@ -178,7 +305,10 @@ export function tacticBlock(s: GameState, id: TacticId): TacticBlock {
 export function crowdMove(s: GameState, id: TacticId): ActionResult {
   const block = tacticBlock(s, id);
   if (block === "wrongPhase") return fail("wrongPhase");
-  if (block === "noStaff" || block === "noDj") return fail("noStaff");
+  if (block === "noStaff" || block === "noDj" || block === "noTables")
+    return fail("noStaff");
+  if (id === "sparkler" && s.coin < sparklerCost(s))
+    return fail("notEnoughCoin", sparklerCost(s) - s.coin);
   if (block === "cooldown") return fail("alreadyActive");
   const n = s.night!;
   const t = strategy.tactics[id];
@@ -211,13 +341,56 @@ export function crowdMove(s: GameState, id: TacticId): ActionResult {
         : g,
     );
   }
+  // Sparkler parade: the bottles go out lit up; other big spenders want theirs too.
+  let coin = s.coin;
+  let seed = s.seed;
+  let table = s.nightRevenue.table;
+  let bottles = 0;
+  const log = [...s.log];
+  if (id === "sparkler") {
+    const sp = strategy.tactics.sparkler;
+    const price = bottlePrice(s);
+    const rng = createRng(s.seed);
+    coin -= sparklerCost(s);
+    guests = guests.map((g) => {
+      const inside =
+        g.state === "idle" || g.state === "bar" || g.state === "dance";
+      if (!inside) return g;
+      const copy = g.budget >= price && rng.chance(sp.copycat * power);
+      if (copy) bottles++;
+      return {
+        ...g,
+        // Showing off: most of the bottle is an impulse on top of what they planned to spend.
+        budget: copy
+          ? g.budget - Math.round(price * (1 - sp.splurge))
+          : g.budget,
+        satisfaction: clamp(
+          g.satisfaction + (copy ? sp.satisfaction : 2) * power,
+        ),
+      };
+    });
+    seed = rng.seed;
+    coin += bottles * price;
+    table += bottles * price;
+    log.push({
+      day: s.day,
+      minute: n.minute,
+      kind: "sparklerParade",
+      bottles,
+      revenue: bottles * price,
+    });
+  }
   const power2 = Math.round(power * 100) / 100;
   return {
     ok: true,
     state: {
       ...s,
+      coin,
+      seed,
+      nightRevenue: { ...s.nightRevenue, table },
       night: {
         ...n,
+        bottles: n.bottles + bottles,
         guests,
         tactics: {
           ...n.tactics,
@@ -230,7 +403,7 @@ export function crowdMove(s: GameState, id: TacticId): ActionResult {
         },
       },
       log: [
-        ...s.log,
+        ...log,
         {
           day: s.day,
           minute: n.minute,

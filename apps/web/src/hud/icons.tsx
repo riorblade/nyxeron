@@ -19,6 +19,8 @@ import {
   Shield,
   ShieldAlert,
   Siren,
+  Sparkles,
+  Speaker,
   Star,
   Swords,
   TrendingDown,
@@ -78,6 +80,9 @@ const eventIcons: Record<GameEvent["kind"], LucideIcon> = {
   tablesSeated: Wine,
   crowdThinning: TrendingDown,
   policyChanged: ScrollText,
+  promoterBooked: Megaphone,
+  upgradeBought: Speaker,
+  sparklerParade: Sparkles,
   gameOver: Check,
 };
 export const eventIcon = (e: GameEvent) => eventIcons[e.kind];

@@ -361,6 +361,9 @@ export const en = {
     rounds: "Rounds bought for others",
     tables: "Tables reserved",
     rejectedDress: "Turned away (dress code)",
+    guestList: "Guest list guests",
+    commission: "Promoter commission",
+    bottles: "Bottles from sparkler parades",
     factorEnergyHigh: (avg: number) =>
       `The room was buzzing (energy ${avg}): more dancing, more spending`,
     factorEnergyLow: (avg: number) =>
@@ -670,7 +673,42 @@ export const en = {
     women: "Women in the crowd",
     tables: "Tables booked (Guest Relations)",
     locked: "House rules unlock at Level 3.",
+    cover: "Cover charge",
+    coverDesc:
+      "A cheaper door pulls more people in, but a thriftier crowd. A pricier door keeps the numbers down and the spenders in.",
+    coverStandard: (n: string) => `Standard ${n} C`,
+    coverReset: "Use standard",
+    happy: "Happy hour",
+    happyDesc:
+      "Half-price drinks for one hour. Early fills the room sooner (and they stay); late keeps the crowd until close.",
+    happySlots: {
+      off: "Off",
+      early: "Early · 22:00–23:00",
+      late: "Late · 03:00–04:00",
+    },
     dayOnly: "Change the rules by day.",
+  },
+
+  promoters: {
+    title: "Promoters · guest list",
+    desc: "A promoter fills tonight's guest list with their crowd. List guests arrive early and skip the cover; you pay per head who gets in.",
+    heads: (n: number) => `~${n} guests`,
+    perHead: (n: string) => `${n} C per head`,
+    book: "Book",
+    booked: "Booked",
+    segment: (s: string) => `Crowd: ${s}`,
+  },
+
+  rig: {
+    title: "Sound & lighting",
+    desc: "Better rig, hotter room: more energy, happier dancers. A new venue starts with its house rig again.",
+    sound: "Sound system",
+    soundDesc: "Bigger speakers: more energy, dancing feels better",
+    lighting: "Lighting rig",
+    lightingDesc: "More beams and lasers: more energy, happier guests",
+    tier: (t: number) => `Tier ${t} / 3`,
+    buy: (c: string) => `Upgrade · ${c} C`,
+    maxed: "Maxed out",
   },
 
   moves: {
@@ -684,6 +722,9 @@ export const en = {
     hostsFloorDesc: "Fill an empty dance floor",
     djAnthem: "DJ anthem",
     djAnthemDesc: "Signature set: everyone stays",
+    sparkler: "Sparkler parade",
+    sparklerDesc: (cost: string) => `Bottle service show · ${cost} C`,
+    needTables: "Tables seated first",
     active: (m: number) => `Live · ${m} min`,
     ready: "Ready",
     cooldown: (m: number) => `Again in ${m} min`,
@@ -736,6 +777,8 @@ export const en = {
   videotron: {
     shoutout: "SHOUTOUT",
     anthem: "THE ANTHEM",
+    bottles: "BOTTLE SERVICE",
+    sparklers: "SPARKLERS UP",
     mc: "MC ON THE MIC",
     handsUp: "HANDS UP!",
     floor: "HOSTS ON THE FLOOR",
@@ -833,6 +876,7 @@ export const en = {
       drink: (id: string) => string;
       dj: (id: string) => string;
       channel: (id: string) => string;
+      promoter: (id: string) => string;
       permit: (id: string) => string;
     },
   ): string => {
@@ -888,6 +932,7 @@ export const en = {
       case "tactic":
         return {
           mcHype: "MC on the mic: hands up, the whole room sings along",
+          sparkler: "Bottles out with sparklers",
           hostsFloor: "Hosts hit the dance floor: the crowd follows",
           djAnthem: "The DJ drops the anthem: nobody is going home",
         }[e.tactic];
@@ -895,8 +940,25 @@ export const en = {
         return `${e.tables} reserved table${e.tables > 1 ? "s" : ""} seated: +${fmt(e.revenue)} C bottle service`;
       case "crowdThinning":
         return `The room is going flat (energy ${e.energy}): guests are starting to leave`;
+      case "promoterBooked":
+        return `Promoter booked: ${names.promoter(e.promoter)} is filling the guest list`;
+      case "upgradeBought":
+        return `${e.upgrade === "sound" ? "Sound system" : "Lighting rig"} upgraded to tier ${e.tier} (−${fmt(e.cost)} C)`;
+      case "sparklerParade":
+        return e.bottles
+          ? `Sparkler parade! ${e.bottles} more table${e.bottles > 1 ? "s" : ""} ordered bottles: +${fmt(e.revenue)} C`
+          : "Sparkler parade lit up the room";
       case "policyChanged":
-        return `House rules: ${e.policy.ladiesNight ? "ladies' night, " : ""}dress code ${e.policy.dressCode}`;
+        return `House rules: ${[
+          e.policy.cover != null ? `cover ${fmt(e.policy.cover)} C` : null,
+          e.policy.happyHour !== "off"
+            ? `${e.policy.happyHour} happy hour`
+            : null,
+          e.policy.ladiesNight ? "ladies' night" : null,
+          `dress code ${e.policy.dressCode}`,
+        ]
+          .filter(Boolean)
+          .join(" · ")}`;
       case "gameOver":
         return `Game over: ${e.outcome}`;
     }
