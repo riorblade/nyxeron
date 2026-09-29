@@ -431,6 +431,8 @@ export class VenueScene {
     this.wallScreens = [];
     this.screenKey = "";
     this.root.clear();
+    this.screenBox = null;
+    this.cineShots = null;
     this.shadows = new THREE.InstancedMesh(
       new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
       new THREE.MeshBasicMaterial({
@@ -1231,6 +1233,7 @@ export class VenueScene {
     bezel.position.set(scr.position.x, scr.position.y, 0);
     this.walls[0]!.mesh.add(bezel, scr);
     this.screen = { mat: mat2, idle };
+    this.screenBox = { x: scr.position.x, y: scr.position.y, w: sw, h: sh };
 
     // Videotron on top of the wall, right above the DJ: shoutouts and top spenders.
     this.videotron = new Videotron();
@@ -1390,11 +1393,22 @@ export class VenueScene {
 
   // ---------- cinematic camera ----------
 
-  private cine = { on: false, at: 0, angle: 0 };
+  /** The concert screen's centre and size (for framing it whole). */
+  private screenBox: { x: number; y: number; w: number; h: number } | null =
+    null;
+  private cine = {
+    on: false,
+    at: 0,
+    angle: 0,
+    order: [] as number[],
+    shot: -1,
+  };
+  private cineShots:
+    ((t: number) => [THREE.Vector3, THREE.Vector3, number])[] | null = null;
   /** Told when the player takes the camera back (click / drag / wheel). */
   onCinematicEnd?: () => void;
 
-  /** Auto camera: a loop of ~10 s shots round the venue, gliding between them. */
+  /** Auto camera: drone-style shots in shuffled order, cut like an edit, each ~9 s. */
   setCinematic(on: boolean) {
     if (!this.ready || this.cine.on === on) return;
     const c = this.camera.position,
@@ -1403,98 +1417,182 @@ export class VenueScene {
       on,
       at: performance.now(),
       angle: Math.atan2(c.x - t.x, c.z - t.z),
+      order: [],
+      shot: -1,
     };
+    this.cineShots = null;
     this.controls.enabled = !on;
     if (!on) {
       this.camera.fov = 40;
       this.camera.updateProjectionMatrix();
+      this.camera.up.set(0, 1, 0);
       this.controls.update();
     }
   }
 
-  /** The shot list for this venue: [camera position, look-at] for progress t (0–1) through the shot. */
-  private shots(): ((t: number) => [THREE.Vector3, THREE.Vector3])[] {
+  /**
+   * The shots for this venue. Each maps progress t (0–1, eased) to a camera position, a look-at point and a roll
+   * (radians, drone banking).
+   */
+  private shots(): ((t: number) => [THREE.Vector3, THREE.Vector3, number])[] {
     const l = this.layout!;
     const H = l.hall ?? l.h;
     const R = Math.max(l.w, H);
     const C = new THREE.Vector3(l.w / 2, 0, H / 2);
-    const a0 = this.cine.angle;
     const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
-    const mid = (z: { x: number; y: number; w: number; h: number }, y = 0) =>
-      V(z.x + z.w / 2, y, z.y + z.h / 2);
-    const list: ((t: number) => [THREE.Vector3, THREE.Vector3])[] = [
-      // Wide orbit round the whole room.
-      (t) => {
-        const a = a0 + t * 0.9;
-        return [
-          V(
-            C.x + Math.sin(a) * R * 0.85,
-            R * 0.5,
-            C.z + Math.cos(a) * R * 0.85,
-          ),
-          C,
-        ];
-      },
-    ];
-    const dance = this.zones.get("dance");
-    if (dance) {
-      const d = mid(dance, 1);
-      // Tight enough to stay over the crowd (clear of balconies and walls).
-      const r = Math.min(dance.w, dance.h) * 0.6;
-      // Low sweep round the dance floor, in the crowd.
-      list.push((t) => {
-        const a = a0 + 1.5 + t * 1.4;
-        return [V(d.x + Math.sin(a) * r, 2.7, d.z + Math.cos(a) * r), d];
-      });
-    }
-    const dj = this.zones.get("dj");
-    if (dj) {
-      const front = dj.y + dj.h;
-      const look = V(dj.x + dj.w / 2, 1.6, dj.y + dj.h * 0.5);
-      // Push in on the DJ from the floor.
-      list.push((t) => [
-        V(look.x + Math.sin(t * 2) * 2, 2.4 + (1 - t) * 2.2, front + 8 - t * 5),
-        look,
-      ]);
-    }
-    // Straight down, slowly turning.
-    list.push((t) => {
-      const a = a0 + t * 0.6;
+    const a0 = this.cine.angle;
+    const out: ((t: number) => [THREE.Vector3, THREE.Vector3, number])[] = [];
+    const dz = this.zones.get("dance");
+    const dj = this.zones.get("dj") ?? this.zones.get("stage");
+    const d = dz ? V(dz.x + dz.w / 2, 0, dz.y + dz.h / 2) : C.clone();
+    const djc = dj ? V(dj.x + dj.w / 2, 1.4, dj.y + dj.h / 2) : C.clone();
+    // Frame the whole concert screen: back off until its height fits the 40° lens (plus some air).
+    const sb = this.screenBox;
+    const scrMid = sb ? V(sb.x, sb.y, 0) : V(djc.x, 2, 0);
+    const fit = sb ? (sb.h * 0.72) / Math.tan((20 * Math.PI) / 180) + 2 : 9;
+
+    // Wide orbit round the whole room.
+    out.push((t) => {
+      const a = a0 + t * 1.2;
       return [
-        V(C.x + Math.sin(a) * 2, R * 1.05, C.z + Math.cos(a) * 2 + 0.01),
+        V(C.x + Math.sin(a) * R * 0.85, R * 0.48, C.z + Math.cos(a) * R * 0.85),
         C,
+        0,
       ];
     });
+    // Crane reveal: from inside the crowd, up and back until the whole club is in shot.
+    out.push((t) => [
+      V(d.x, 1.6 + t * R * 0.5, d.z + (dz ? dz.h * 0.3 : 2) + t * R * 0.45),
+      djc.clone().lerp(C, t),
+      0,
+    ]);
+    // Screen hero: the DJ and the whole screen, a slow push with a slight drift.
+    out.push((t) => [
+      V(
+        scrMid.x + Math.sin(t * 2) * 2.5,
+        scrMid.y * 0.7 + 0.6,
+        fit * (1.25 - 0.25 * t),
+      ),
+      V(scrMid.x, scrMid.y * 0.8, 0),
+      0,
+    ]);
+    // Drone flythrough: in at the door, over the crowd, rising in front of the screen, banking into the turns.
+    const door = this.zones.get("entrance");
+    const start = door
+      ? V(door.x + door.w / 2, 3, door.y + door.h / 2)
+      : V(C.x, 3, H - 1);
+    const path = new THREE.CatmullRomCurve3([
+      start,
+      V(d.x - 2, 4.4, d.z + 2),
+      V(d.x + 2, 4, d.z - 1),
+      V(
+        scrMid.x,
+        Math.max(3.5, scrMid.y * 0.75),
+        Math.max(dj ? dj.y + dj.h + 4 : 5, fit * 0.9),
+      ),
+    ]);
+    out.push((t) => {
+      const p = path.getPointAt(Math.min(1, t));
+      const ahead = path.getPointAt(Math.min(1, t + 0.14));
+      const side = path.getTangentAt(Math.min(1, t));
+      return [
+        p,
+        // Looking ahead along the path at first, turning to the stage and screen by the end.
+        ahead
+          .setY(Math.max(1, ahead.y - 0.5))
+          .lerp(V(scrMid.x, scrMid.y * 0.8, 0), t * t),
+        Math.max(-0.14, Math.min(0.14, side.x * 0.2)),
+      ];
+    });
+    // Orbit the DJ booth, rising.
+    out.push((t) => {
+      const a = a0 + Math.PI * (0.6 + t * 1.1);
+      return [
+        V(
+          djc.x + Math.sin(a) * 4.5,
+          1.8 + t * 2.2,
+          djc.z + 2 + Math.abs(Math.cos(a)) * 4,
+        ),
+        djc,
+        0,
+      ];
+    });
+    // Top-down drop: straight above, spinning down towards the floor.
+    out.push((t) => {
+      const a = a0 + t * 1.6;
+      return [
+        V(
+          C.x + Math.sin(a) * 1.5,
+          R * (1.1 - t * 0.6),
+          C.z + Math.cos(a) * 1.5 + 0.01,
+        ),
+        C,
+        0,
+      ];
+    });
+    if (dz)
+      // Crowd skim: low and sideways across the dance floor, looking at the stage.
+      out.push((t) => [
+        V(dz.x + dz.w * (0.05 + t * 0.9), 1.5, dz.y + dz.h + 1.2),
+        V(dz.x + dz.w * (0.1 + t * 0.8), 1.2, dz.y),
+        Math.sin(t * Math.PI) * 0.08,
+      ]);
     const pool = this.zones.get("pool");
     const counter = this.zones.get("counter");
-    if (pool) {
-      const p = mid(pool, 0.3);
-      list.push((t) => {
-        const a = a0 + t * 1.1;
-        return [V(p.x + Math.sin(a) * 9, 3.6, p.z + Math.cos(a) * 9), p];
-      });
-    } else if (counter) {
-      const b = mid(counter, 1.1);
-      // Along the bar, drinks going out.
-      list.push((t) => [
-        V(b.x + 3.5, 2, b.z - counter.h * 0.4 + t * counter.h * 0.8),
-        b,
+    if (pool)
+      // Low over the water from the deck, then up towards the stage.
+      out.push((t) => [
+        V(
+          pool.x + pool.w * (0.2 + t * 0.6),
+          1 + t * 3.5,
+          pool.y + pool.h + 3 - t * (pool.h + 6),
+        ),
+        V(scrMid.x, 2 + t * 2, 0),
+        Math.sin(t * Math.PI) * -0.1,
       ]);
-    }
-    return list;
+    else if (counter)
+      // Along the bar, drinks going out.
+      out.push((t) => [
+        V(counter.x + 3.5, 2, counter.y + counter.h * (0.1 + t * 0.8)),
+        V(
+          counter.x + counter.w / 2,
+          1.1,
+          counter.y + counter.h * (0.2 + t * 0.8),
+        ),
+        0,
+      ]);
+    return out;
   }
 
   private cineFrame(now: number, dt: number, pulse: number) {
-    const SHOT_MS = 10000;
-    const list = this.shots();
+    const SHOT_MS = 9000;
+    const list = (this.cineShots ??= this.shots());
     const elapsed = now - this.cine.at;
-    const shot = list[Math.floor(elapsed / SHOT_MS) % list.length]!;
-    const [pos, look] = shot((elapsed % SHOT_MS) / SHOT_MS);
-    // Glide (a cut between shots becomes a smooth move of a second or two).
-    const k = 1 - Math.exp(-dt / 450);
-    this.camera.position.lerp(pos, k);
-    this.controls.target.lerp(look, k);
+    const n = Math.floor(elapsed / SHOT_MS);
+    // A shuffled running order, never the same shot twice in a row.
+    while (this.cine.order.length <= n) {
+      const prev = this.cine.order.at(-1);
+      let next = Math.floor(Math.random() * list.length);
+      if (next === prev) next = (next + 1) % list.length;
+      this.cine.order.push(next);
+    }
+    const idx = this.cine.order[n]! % list.length;
+    const raw = (elapsed % SHOT_MS) / SHOT_MS;
+    const t = raw * raw * (3 - 2 * raw); // ease in and out
+    const [pos, look, roll] = list[idx]!(t);
+    if (n !== this.cine.shot) {
+      // A cut, like an edit: jump straight to the new shot.
+      this.cine.shot = n;
+      this.camera.position.copy(pos);
+      this.controls.target.copy(look);
+    } else {
+      const k = 1 - Math.exp(-dt / 140);
+      this.camera.position.lerp(pos, k);
+      this.controls.target.lerp(look, k);
+    }
+    this.camera.up.set(0, 1, 0);
     this.camera.lookAt(this.controls.target);
+    this.camera.rotateZ(roll);
     // A small zoom kick on the beat while the DJ plays.
     this.camera.fov = 40 - (this.djOn ? pulse * 1.6 : 0);
     this.camera.updateProjectionMatrix();
