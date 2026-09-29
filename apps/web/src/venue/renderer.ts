@@ -14,6 +14,7 @@ import {
   Text,
   type Texture,
 } from "pixi.js";
+import { audio } from "@/audio";
 import { loadDjVideo, loadVenueAssets, type VenueAssets } from "./assets";
 import {
   layoutFor,
@@ -119,6 +120,7 @@ export class VenueRenderer {
   private screenDj = "";
   private videoCache = new Map<string, Promise<Texture | undefined>>();
   private logSeen = 0;
+  private lastCash = 0;
   private layout: Layout | null = null;
   private zones = new Map<ZoneId, Zone>();
   private zoom = 1;
@@ -758,6 +760,11 @@ export class VenueRenderer {
 
   private float(p: Person, text: string) {
     if (this.fx.children.length > 40) return;
+    const now = performance.now();
+    if (now - this.lastCash > 180) {
+      this.lastCash = now;
+      audio.cash();
+    }
     const t = new Text({
       text,
       style: {
@@ -829,7 +836,8 @@ export class VenueRenderer {
     // House playlist ~100 BPM, the DJ set 124 BPM.
     const beatMs = this.djOn ? 60000 / 124 : 60000 / 100;
     const beat = (now % beatMs) / beatMs; // 0..1 within the beat
-    const pulse = Math.pow(1 - beat, 3); // sharp hit, quick decay
+    // With music playing, the venue moves on the track's real kick; otherwise on its own clock.
+    const pulse = audio.live ? audio.pulse() : Math.pow(1 - beat, 3); // sharp hit, quick decay
 
     const animate = (p: Person) => {
       const moving = Math.hypot(p.tx - p.c.x, p.ty - p.c.y) > 1.5;

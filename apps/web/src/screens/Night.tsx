@@ -10,7 +10,16 @@ import {
   tickNight,
   type GameState,
 } from "@nyxeron/core";
-import { useEffect, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+} from "react";
+import { Volume2, VolumeX } from "lucide-react";
+import { audio, LOUNGE, TRACKS, useMusic } from "@/audio";
+import { isAlert } from "@/hud/eventText";
 import { Button } from "@/components/ui/button";
 import { EventFeed } from "@/hud/EventFeed";
 import { Objectives } from "@/hud/Objectives";
@@ -77,11 +86,48 @@ function CeoCall({ s, onDone }: { s: GameState; onDone?: () => void }) {
   );
 }
 
+/** Night soundtrack: house playlist until the DJ set, then the booked DJ; silent during the cutscene. */
+function useNightAudio(s: GameState, intro: boolean, paused: boolean) {
+  const dj = s.bookedTalent[0];
+  const setOn = !!s.night && s.night.minute >= nightData.djSetStartMinute;
+  // Lounge (continuing from the office) until the set starts, then the booked DJ. The cutscene and the pause menu
+  // muffle it rather than stopping it, so the music never cuts out.
+  useMusic(dj && setOn ? dj : LOUNGE, intro || paused);
+
+  // A short alert tone whenever something needs the CEO's attention.
+  const seen = useRef(s.log.length);
+  useEffect(() => {
+    const fresh = s.log.slice(seen.current);
+    seen.current = s.log.length;
+    if (fresh.some(isAlert)) audio.alert();
+  }, [s.log]);
+}
+
+function MuteButton({ className }: { className?: string }) {
+  const muted = useSyncExternalStore(
+    (cb) => audio.subscribe(cb),
+    () => audio.muted,
+  );
+  const Icon = muted ? VolumeX : Volume2;
+  return (
+    <button
+      className={className}
+      onClick={() => audio.toggleMute()}
+      aria-label={muted ? en.night.unmute : en.night.mute}
+      title={`${muted ? en.night.unmute : en.night.mute} [M]`}
+    >
+      <Icon className="mx-auto size-4" />
+    </button>
+  );
+}
+
 export function Night({ s }: { s: GameState }) {
-  const { running, speed, setRunning, setSpeed, act } = useGame();
+  const { running, speed, setRunning, setSpeed, act, intro, paused } =
+    useGame();
   const [panel, setPanel] = useState(true);
   const [ceoOpen, setCeoOpen] = useState(false);
   useNightLoop();
+  useNightAudio(s, intro, paused);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -96,6 +142,7 @@ export function Night({ s }: { s: GameState }) {
         e.preventDefault();
         setPanel((p) => !p);
       } else if (e.key.toLowerCase() === "q") setCeoOpen((o) => !o);
+      else if (e.key.toLowerCase() === "m") audio.toggleMute();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -151,6 +198,7 @@ export function Night({ s }: { s: GameState }) {
               >
                 {en.night.skip} ⏭
               </button>
+              <MuteButton className={seg(false)} />
             </div>
           }
         />
@@ -268,6 +316,11 @@ export function Night({ s }: { s: GameState }) {
                     ? `${djs[dj].name} · ${clock(setStart)}`
                     : en.night.noDj}
               </p>
+              {dj && n.minute >= setStart && TRACKS[dj]?.title && (
+                <p className="mt-0.5 truncate text-xs text-white/60">
+                  ♪ {TRACKS[dj]!.title}
+                </p>
+              )}
               <p className="mt-2 flex items-center gap-2 text-xs text-white/55">
                 {en.night.mood}
                 <span className="flex h-3 items-end gap-0.5">

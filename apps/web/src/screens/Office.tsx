@@ -1,3 +1,4 @@
+import { LOUNGE, useMusic } from "@/audio";
 import {
   djs,
   expectedGuests,
@@ -76,6 +77,7 @@ function Card({
 }
 
 export function Office({ s }: { s: GameState }) {
+  useMusic(LOUNGE, true); // the club, heard through the wall
   const { set, setIntro } = useGame();
   const [tab, setTab] = useState<TabId>("stock");
   const expected = expectedGuests(s);

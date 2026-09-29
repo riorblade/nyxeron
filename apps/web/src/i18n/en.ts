@@ -78,6 +78,8 @@ export const en = {
     newCareer: "New Career",
     basement: "The Basement",
     loadTitle: "Load game",
+    soundOn: "Sound on",
+    soundOff: "Sound off",
   },
 
   intro: {
@@ -295,6 +297,8 @@ export const en = {
     drunkAlert: "Drunk guest! Click to send security",
     objectives: "OBJECTIVES",
     panel: "Panel [Tab]",
+    mute: "Mute",
+    unmute: "Unmute",
   },
 
   report: {

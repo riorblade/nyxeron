@@ -4,8 +4,10 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
 } from "react";
+import { audio, LOUNGE, useMusic } from "@/audio";
 import { Cta } from "@/components/Cta";
 import { en, fmt } from "@/i18n/en";
 import { readSave, type Slot } from "@/save";
@@ -129,7 +131,30 @@ function useVeltraClock() {
   return t;
 }
 
+/** Landing sound switch. The first click anywhere already starts the music; this makes it discoverable. */
+function SoundToggle() {
+  const state = useSyncExternalStore(
+    (cb) => audio.subscribe(cb),
+    () => (!audio.unlocked ? "off" : audio.muted ? "muted" : "on"),
+  );
+  const on = state === "on";
+  return (
+    <button
+      className="hit micro nx-in"
+      style={vars({ "--d": "830ms" })}
+      aria-pressed={on}
+      onClick={() => {
+        audio.unlock();
+        if (state === "muted" || state === "on") audio.toggleMute();
+      }}
+    >
+      ♪ {on ? en.landing.soundOn : en.landing.soundOff}
+    </button>
+  );
+}
+
 export function Landing() {
+  useMusic(LOUNGE);
   const { go, start, load } = useGame();
   const [loading, setLoading] = useState(false);
   const [ctaLive, setCtaLive] = useState(false);
@@ -456,6 +481,7 @@ export function Landing() {
           <span className="nx-in" style={vars({ "--d": "800ms" })}>
             {L.copyright}
           </span>
+          <SoundToggle />
           <span className="nx-in" style={vars({ "--d": "860ms" })}>
             {L.scroll}
           </span>

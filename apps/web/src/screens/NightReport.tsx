@@ -1,3 +1,4 @@
+import { LOUNGE, useMusic } from "@/audio";
 import { nextDay, type GameState } from "@nyxeron/core";
 import type { CSSProperties, ReactNode } from "react";
 import { Backdrop } from "@/components/Backdrop";
@@ -70,6 +71,7 @@ function factors(s: GameState): string[] {
 }
 
 export function NightReport({ s }: { s: GameState }) {
+  useMusic(LOUNGE, true); // the club, heard through the wall
   const { set, go } = useGame();
   const r = s.lastReport!;
   return (

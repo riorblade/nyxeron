@@ -1,3 +1,4 @@
+import { LOUNGE, useMusic } from "@/audio";
 import type { Difficulty } from "@nyxeron/core";
 import { useEffect, useState } from "react";
 import { Backdrop } from "@/components/Backdrop";
@@ -9,6 +10,7 @@ import { en, genres } from "@/i18n/en";
 import { useGame } from "@/store";
 
 export function ClubSetup() {
+  useMusic(LOUNGE);
   const { start, go } = useGame();
   const [name, setName] = useState("");
   const [genre, setGenre] = useState("edm");

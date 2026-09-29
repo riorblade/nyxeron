@@ -1,3 +1,4 @@
+import { LOUNGE, useMusic } from "@/audio";
 import { levels, type GameState } from "@nyxeron/core";
 import type { CSSProperties } from "react";
 import { Backdrop } from "@/components/Backdrop";
@@ -9,6 +10,7 @@ import { useGame } from "@/store";
 const d = (ms: number) => ({ "--d": `${ms}ms` }) as CSSProperties;
 
 export function GameOver({ s }: { s: GameState }) {
+  useMusic(LOUNGE, true); // the club, heard through the wall
   const { origin, start, home } = useGame();
   const o = s.outcome ?? "survived";
   const stats: [string, string][] = [
