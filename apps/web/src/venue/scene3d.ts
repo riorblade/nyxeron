@@ -3,6 +3,7 @@ import {
   drinks,
   isAtFightRisk,
   isPeakTime,
+  capacityOf,
   strategy,
   active as tacticActive,
   isInside,
@@ -37,6 +38,7 @@ import {
 } from "./layouts";
 import {
   buildFurniture,
+  mergeFurniture,
   loadFurniture,
   saveFurniture,
   seatsOf,
@@ -50,7 +52,12 @@ import { Videotron, VIDEOTRON_ASPECT, type VideotronData } from "./videotron";
 
 /** World units: 1 floor tile = 1 unit; people ~1.15 tall. */
 const PERSON_H = 1.15;
-const MAX_GUEST_SPRITES = 300;
+/**
+ * People on screen: enough to look packed, not one sprite per simulated guest. A fixed share of guests (by id) is
+ * drawn so that a full venue shows about CROWD_SPRITES; the hard cap is a safety net.
+ */
+const CROWD_SPRITES = 150;
+const MAX_GUEST_SPRITES = 220;
 const BLOCK_H = 0.45;
 const WALL_H = 3.2;
 /** Club light palette: magenta, electric blue, violet, amber. */
@@ -109,12 +116,27 @@ export class VenueScene {
   private root = new THREE.Group();
   private assets: VenueAssets | null = null;
   private shadowTex = shadowTexture();
+  // Shared by every drunk-guest marker (they pulse together).
+  private ringMat = new THREE.MeshBasicMaterial({
+    color: 0xff2a2a,
+    transparent: true,
+    depthWrite: false,
+  });
+  private ringGeo = new THREE.RingGeometry(0.22, 0.32, 28).rotateX(
+    -Math.PI / 2,
+  );
+  /** Every person's floor shadow in one instanced draw. */
+  private shadows: THREE.InstancedMesh | null = null;
   private alertTex = textTexture("!", {
     size: 96,
     color: "#ff3b3b",
     weight: "900",
     font: "Inter Tight, sans-serif",
     stroke: true,
+  });
+  private alertMat = new THREE.SpriteMaterial({
+    map: this.alertTex.tex,
+    depthTest: false,
   });
   private floatCache = new Map<
     string,
@@ -161,6 +183,10 @@ export class VenueScene {
   private kicks = 0;
   private prevPulse = 0;
   private anthem = false;
+  private frameAvg = 16;
+  private startedAt = performance.now();
+  /** Share of guests drawn as sprites (1 = everyone). */
+  private drawShare = 1;
   private lastKick = 0;
   private dropSeen = -99;
   /** Pool ripple texture, drifted every frame. */
@@ -206,6 +232,7 @@ export class VenueScene {
   private items: Item[] = [];
   private pieces: THREE.Group[] = [];
   private furnitureRoot = new THREE.Group();
+  private mergedFurniture: THREE.Group | null = null;
   private seats = new Map<ZoneId, [number, number][]>();
   private editing = false;
   private selected = -1;
@@ -232,7 +259,8 @@ export class VenueScene {
     ]);
     if (this.dead) return;
     const r = new THREE.WebGLRenderer({ antialias: true });
-    r.setPixelRatio(Math.min(devicePixelRatio, 2));
+    // Retina at 2× is 4× the pixels: cap at 1.5, and drop to 1 if the frame rate sags (see frame()).
+    r.setPixelRatio(Math.min(devicePixelRatio, 1.5));
     r.outputColorSpace = THREE.SRGBColorSpace;
     r.toneMapping = THREE.ACESFilmicToneMapping;
     r.toneMappingExposure = 1.15;
@@ -273,6 +301,16 @@ export class VenueScene {
     this.off.push(() => ro.disconnect());
     r.setAnimationLoop(() => this.frame());
     this.ready = true;
+    // Dev-only handle for automated perf checks (stripped from production builds).
+    if (import.meta.env.DEV)
+      (window as unknown as { __venue: VenueScene }).__venue = this;
+  }
+
+  /** Stop drawing while something covers the venue (the office overlay); state keeps syncing. */
+  setActive(on: boolean) {
+    if (!this.ready) return;
+    this.last = performance.now();
+    this.renderer.setAnimationLoop(on ? () => this.frame() : null);
   }
 
   destroy() {
@@ -301,6 +339,7 @@ export class VenueScene {
     this.energy = s.night.energy ?? 50;
     this.syncScreen(s);
     this.peak = isPeakTime(s);
+    this.drawShare = Math.min(1, CROWD_SPRITES / capacityOf(s));
     this.anthem =
       !!s.night.tactics?.djAnthem && tacticActive(s.night, "djAnthem");
     this.applyScreens();
@@ -310,8 +349,12 @@ export class VenueScene {
     for (const g of s.night.guests) {
       let p = this.guests.get(g.id);
       if (g.state === "pending" || (g.state === "left" && !p)) continue;
-      // ponytail: past this many sprites the extra guests aren't drawn (the sim still counts them). Raise with GPU headroom.
-      if (!p && this.guests.size >= MAX_GUEST_SPRITES) continue;
+      if (
+        !p &&
+        (hash(g.id + 4242) > this.drawShare ||
+          this.guests.size >= MAX_GUEST_SPRITES)
+      )
+        continue;
       const [tx, tz] = this.spot(zoneFor[g.state], g.id, queueIndex.get(g.id));
       // Guests already inside when the scene (re)opens appear in place instead of all walking in again.
       if (!p)
@@ -322,7 +365,7 @@ export class VenueScene {
       // Satisfaction as brightness: unhappy guests fade toward grey.
       const v = 0.6 + (g.satisfaction / 100) * 0.4;
       (p.sprite.material as THREE.SpriteMaterial).color.setRGB(v, v, v);
-      p.alert!.visible = p.ring!.visible = isAtFightRisk(g);
+      this.markRisk(p, isAtFightRisk(g));
 
       const prev = this.budgets.get(g.id);
       if (prev !== undefined && g.budget < prev)
@@ -383,6 +426,18 @@ export class VenueScene {
     this.wallScreens = [];
     this.screenKey = "";
     this.root.clear();
+    this.shadows = new THREE.InstancedMesh(
+      new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({
+        map: this.shadowTex,
+        transparent: true,
+        depthWrite: false,
+      }),
+      600,
+    );
+    this.shadows.count = 0;
+    this.shadows.frustumCulled = false;
+    this.root.add(this.shadows);
     this.grid = this.selBox = null;
     this.cabinetHits = [];
     this.hovered = null;
@@ -1372,7 +1427,10 @@ export class VenueScene {
   // ---------- furniture & layout editor ----------
 
   private rebuildFurniture() {
-    this.disposeTree(this.furnitureRoot);
+    // Pieces use shared, cached geometry and materials; only the merged copy is ours to free.
+    this.mergedFurniture?.children.forEach((m) =>
+      (m as THREE.Mesh).geometry.dispose(),
+    );
     this.furnitureRoot.clear();
     this.pieces = this.items.map((it, i) => {
       const g = buildFurniture(it.kind, PALETTE[i % PALETTE.length]!);
@@ -1381,6 +1439,10 @@ export class VenueScene {
       this.furnitureRoot.add(g);
       return g;
     });
+    // Drawn as one mesh per material; the separate pieces only show while editing (for picking and dragging).
+    this.mergedFurniture = mergeFurniture(this.pieces);
+    this.furnitureRoot.add(this.mergedFurniture);
+    this.showFurniture();
     // Seats belong to whichever guest zone they fall in.
     this.seats.clear();
     for (const it of this.items)
@@ -1414,8 +1476,14 @@ export class VenueScene {
     this.onSelect?.(this.editing ? i : -1);
   }
 
+  private showFurniture() {
+    this.pieces.forEach((p) => (p.visible = this.editing));
+    if (this.mergedFurniture) this.mergedFurniture.visible = !this.editing;
+  }
+
   setEditing(on: boolean) {
     this.editing = on;
+    this.showFurniture();
     if (!this.ready || !this.layout) return;
     if (on && !this.grid) {
       const { w, h } = this.layout;
@@ -1480,16 +1548,6 @@ export class VenueScene {
     seed: number,
   ): Person {
     const g = new THREE.Group();
-    const shadow = new THREE.Mesh(
-      new THREE.PlaneGeometry(h * 0.55, h * 0.3),
-      new THREE.MeshBasicMaterial({
-        map: this.shadowTex,
-        transparent: true,
-        depthWrite: false,
-      }),
-    );
-    shadow.rotation.x = -Math.PI / 2;
-    shadow.position.y = 0.015;
     const mat = new THREE.SpriteMaterial({
       map: tex ?? null,
       color: tex ? 0xffffff : 0xdddddd,
@@ -1502,7 +1560,7 @@ export class VenueScene {
         (tex.image as HTMLImageElement).height
       : 0.35;
     sprite.scale.set(h * aspect, h, 1);
-    g.add(shadow, sprite);
+    g.add(sprite); // its floor shadow is drawn by the shared instanced mesh (frame())
     g.position.set(x, 0, z);
     this.root.add(g);
     return {
@@ -1543,30 +1601,24 @@ export class VenueScene {
       "idle",
       id,
     );
-    const alert = new THREE.Sprite(
-      new THREE.SpriteMaterial({ map: this.alertTex.tex, depthTest: false }),
-    );
-    alert.center.set(0.5, 0);
-    alert.scale.set(0.42 * this.alertTex.aspect, 0.42, 1);
-    alert.position.y = p.h + 0.08;
-    alert.visible = false;
-    alert.userData.guest = id;
-    const ring = new THREE.Mesh(
-      new THREE.RingGeometry(0.22, 0.32, 28),
-      new THREE.MeshBasicMaterial({
-        color: 0xff2a2a,
-        transparent: true,
-        depthWrite: false,
-      }),
-    );
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.y = 0.025;
-    ring.visible = false;
-    p.g.add(alert, ring);
-    p.alert = alert;
-    p.ring = ring;
     this.guests.set(id, p);
     return p;
+  }
+
+  /** The "!" and red ring over a drunk guest, created only when someone actually gets drunk. */
+  private markRisk(p: Person, on: boolean) {
+    if (on && !p.alert) {
+      const alert = new THREE.Sprite(this.alertMat);
+      alert.center.set(0.5, 0);
+      alert.scale.set(0.42 * this.alertTex.aspect, 0.42, 1);
+      alert.position.y = p.h + 0.08;
+      const ring = new THREE.Mesh(this.ringGeo, this.ringMat);
+      ring.position.y = 0.025;
+      p.g.add(alert, ring);
+      p.alert = alert;
+      p.ring = ring;
+    }
+    if (p.alert) p.alert.visible = p.ring!.visible = on;
   }
 
   private zonePoint(
@@ -1719,9 +1771,9 @@ export class VenueScene {
 
     const flames: FlameSpot[] = [
       // Stage front: the lit pyro line.
-      ...[x0 + 0.85, x0 + 1.85, x1 - 1.85, x1 - 0.85].map((x) => ({
+      ...[x0 + 0.85, x0 + 1.85, x1 - 1.85, x1 - 0.85].map((x, i) => ({
         at: V(x, 0, zf + 0.35),
-        lit: true,
+        lit: i === 0 || i === 3, // two lights are enough for the flash
       })),
     ];
     // On top of every bar counter.
@@ -2226,6 +2278,14 @@ export class VenueScene {
     const now = performance.now();
     const dt = Math.min(100, now - this.last);
     this.last = now;
+    // Adaptive resolution: a sustained slow frame (avg > 25 ms over ~2 s) drops to 1× pixels once.
+    this.frameAvg += (dt - this.frameAvg) * 0.02;
+    if (
+      this.frameAvg > 25 &&
+      this.renderer.getPixelRatio() > 1 &&
+      now - this.startedAt > 4000
+    )
+      this.renderer.setPixelRatio(1);
     const tSec = now / 1000;
     // With music playing the club moves on the track's real kick; otherwise on its own clock.
     const beatMs = this.djOn ? 60000 / 124 : 60000 / 100;
@@ -2252,11 +2312,14 @@ export class VenueScene {
       } else if (p.mode === "work") y = Math.abs(Math.sin(t * 4)) * 0.02;
       else y = Math.sin(t * 1.6) * 0.008;
       p.sprite.position.y = p.lift + y;
-      p.g.children[0]!.position.y = p.lift + 0.015; // shadow on the block top when raised
       p.sprite.scale.y = p.h * sy;
       (p.sprite.material as THREE.SpriteMaterial).rotation = rot;
     };
 
+    // Drunk-guest markers share materials, so they pulse together.
+    const markBeat = 0.5 + 0.5 * Math.sin(now / 120);
+    this.alertMat.opacity = 0.5 + 0.5 * markBeat;
+    this.ringMat.opacity = 0.4 + 0.5 * markBeat;
     for (const [id, p] of this.guests) {
       if (p.leaving && !p.held) {
         p.fade -= dt / 800;
@@ -2275,13 +2338,7 @@ export class VenueScene {
       p.g.position.x += (p.tx - p.g.position.x) * kk;
       p.g.position.z += (p.tz - p.g.position.z) * kk;
       animate(p);
-      if (p.alert?.visible) {
-        const beat = 0.5 + 0.5 * Math.sin(now / 120);
-        (p.alert.material as THREE.SpriteMaterial).opacity = 0.5 + 0.5 * beat;
-        p.ring!.scale.setScalar(1 + beat * 0.35);
-        (p.ring!.material as THREE.MeshBasicMaterial).opacity =
-          0.4 + 0.5 * beat;
-      }
+      if (p.alert?.visible) p.ring!.scale.setScalar(1 + markBeat * 0.35);
     }
     for (const p of this.staff) {
       if (p.task) this.stepSecurity(p, dt);
@@ -2289,6 +2346,23 @@ export class VenueScene {
     }
     this.stage.forEach(animate);
     this.vipGuests.forEach(animate);
+    // Floor shadows for everyone, one instanced draw.
+    if (this.shadows) {
+      const m = new THREE.Matrix4();
+      let i = 0;
+      const put = (p: Person) => {
+        if (i >= 600 || p.fade < 0.5) return;
+        m.makeScale(p.h * 0.55, 1, p.h * 0.3);
+        m.setPosition(p.g.position.x, p.lift + 0.015, p.g.position.z);
+        this.shadows!.setMatrixAt(i++, m);
+      };
+      this.guests.forEach(put);
+      [this.staff, this.stage, this.hosts, this.vipGuests].forEach((l) =>
+        l.forEach(put),
+      );
+      this.shadows.count = i;
+      this.shadows.instanceMatrix.needsUpdate = true;
+    }
     if (this.pool) this.pool.offset.set((tSec * 0.03) % 1, (tSec * 0.05) % 1);
     for (const p of this.hosts) {
       p.g.position.x += (p.tx - p.g.position.x) * k * 0.6;

@@ -1,15 +1,21 @@
 import { SettingsDialog } from "@/components/SettingsDialog";
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Toast } from "@/hud/Toast";
 import { ClubSetup } from "@/screens/ClubSetup";
 import { GameOver } from "@/screens/GameOver";
 import { IntroVideo } from "@/screens/IntroVideo";
 import { Landing } from "@/screens/Landing";
-import { Night } from "@/screens/Night";
 import { NightReport } from "@/screens/NightReport";
 import { Office } from "@/screens/Office";
 import { PauseMenu } from "@/screens/PauseMenu";
 import { useGame } from "@/store";
+
+/**
+ * The night screen carries three.js and the 3D venue (most of the JS). It loads on demand, and is fetched in the
+ * background as soon as the office is up, so opening the club never waits on it.
+ */
+const loadNight = () => import("@/screens/Night");
+const Night = lazy(() => loadNight().then((m) => ({ default: m.Night })));
 
 export function App() {
   const { screen, game, paused, setPaused, intro } = useGame();
@@ -38,7 +44,12 @@ export function App() {
   else {
     key = `${game.phase}-${game.day}`;
     if (game.phase === "day") view = <Office s={game} />;
-    else if (game.phase === "night") view = <Night s={game} />;
+    else if (game.phase === "night")
+      view = (
+        <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
+          <Night s={game} />
+        </Suspense>
+      );
     else view = <NightReport s={game} />;
   }
 

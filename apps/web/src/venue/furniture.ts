@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { Layout, Zone } from "./layouts";
 
 /** Movable venue furniture, built from primitives. The player's arrangement is saved per layout in this browser. */
@@ -230,14 +231,31 @@ export function saveFurniture(layout: Layout, items: Item[] | null) {
 
 // ---------- models ----------
 
-const mat = (color: number, rough = 0.7, metal = 0.1, emissive = 0) =>
-  new THREE.MeshStandardMaterial({
-    color,
-    roughness: rough,
-    metalness: metal,
-    emissive,
-    emissiveIntensity: emissive ? 1.4 : 0,
-  });
+// Materials and geometries are shared across every piece (one per look / shape), so the whole room can be merged
+// into a handful of draw calls (see mergeFurniture) and nothing is allocated per item.
+const mats = new Map<string, THREE.MeshStandardMaterial>();
+const mat = (color: number, rough = 0.7, metal = 0.1, emissive = 0) => {
+  const key = `${color}|${rough}|${metal}|${emissive}`;
+  let m = mats.get(key);
+  if (!m)
+    mats.set(
+      key,
+      (m = new THREE.MeshStandardMaterial({
+        color,
+        roughness: rough,
+        metalness: metal,
+        emissive,
+        emissiveIntensity: emissive ? 1.4 : 0,
+      })),
+    );
+  return m;
+};
+const geos = new Map<string, THREE.BufferGeometry>();
+const geo = (key: string, make: () => THREE.BufferGeometry) => {
+  let g = geos.get(key);
+  if (!g) geos.set(key, (g = make()));
+  return g;
+};
 
 const box = (
   w: number,
@@ -248,7 +266,10 @@ const box = (
   y = 0,
   z = 0,
 ) => {
-  const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
+  const o = new THREE.Mesh(
+    geo(`b${w},${h},${d}`, () => new THREE.BoxGeometry(w, h, d)),
+    m,
+  );
   o.position.set(x, y + h / 2, z);
   return o;
 };
@@ -260,10 +281,41 @@ const cyl = (
   y = 0,
   seg = 20,
 ) => {
-  const o = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), m);
+  const o = new THREE.Mesh(
+    geo(
+      `c${rt},${rb},${h},${seg}`,
+      () => new THREE.CylinderGeometry(rt, rb, h, seg),
+    ),
+    m,
+  );
   o.position.y = y + h / 2;
   return o;
 };
+
+/**
+ * Bake every placed piece into one mesh per material (static furniture → a few draw calls instead of hundreds).
+ * The per-piece groups stay around for picking and dragging in the layout editor.
+ */
+export function mergeFurniture(pieces: THREE.Object3D[]): THREE.Group {
+  const buckets = new Map<THREE.Material, THREE.BufferGeometry[]>();
+  for (const piece of pieces) {
+    piece.updateWorldMatrix(true, true);
+    piece.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const g = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
+      const m = mesh.material as THREE.Material;
+      buckets.set(m, [...(buckets.get(m) ?? []), g]);
+    });
+  }
+  const out = new THREE.Group();
+  for (const [m, list] of buckets) {
+    const merged = mergeGeometries(list);
+    list.forEach((g) => g.dispose());
+    if (merged) out.add(new THREE.Mesh(merged, m));
+  }
+  return out;
+}
 
 /** One mesh group per kind; `accent` is the LED colour underneath. */
 export function buildFurniture(

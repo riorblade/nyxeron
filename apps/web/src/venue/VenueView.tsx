@@ -12,10 +12,13 @@ import { VenueScene } from "./scene3d";
 export function VenueView({
   s,
   editing = false,
+  active = true,
   onDone,
 }: {
   s: GameState;
   editing?: boolean;
+  /** false while another screen covers the venue: rendering pauses. */
+  active?: boolean;
   onDone?: () => void;
 }) {
   const el = useRef<HTMLDivElement>(null);
@@ -49,6 +52,10 @@ export function VenueView({
   useEffect(() => {
     r.current?.update(s);
   }, [s]);
+
+  useEffect(() => {
+    r.current?.setActive(active);
+  }, [active]);
 
   useEffect(() => {
     r.current?.setScreenPrefs({ clips, ads });

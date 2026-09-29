@@ -360,7 +360,7 @@ export function Landing() {
           ref={hero}
           className="stage__media"
           src="/landing-hero.mp4"
-          poster="/landing-hero.jpg"
+          poster="/landing-hero.webp"
           muted
           playsInline
           preload="auto"

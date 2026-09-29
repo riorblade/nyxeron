@@ -68,7 +68,7 @@ export function IntroVideo({ day }: { day: number }) {
       <video
         ref={video}
         src="/intro.mp4"
-        poster="/intro-poster.jpg"
+        poster="/intro-poster.webp"
         playsInline
         preload="auto"
         onEnded={done}

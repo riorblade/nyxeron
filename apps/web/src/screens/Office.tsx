@@ -12,7 +12,7 @@ import {
   capacityOf,
 } from "@nyxeron/core";
 import { Building2, DoorOpen, Lock, Moon, Target } from "lucide-react";
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { art } from "@/art";
 import { Img } from "@/components/Img";
 import { EventFeed } from "@/hud/EventFeed";
@@ -80,7 +80,24 @@ function Card({
   );
 }
 
+/** Warm the night screen (3D venue) and the Open Club cutscene while the player is in the office. */
+function usePrefetchNight() {
+  useEffect(() => {
+    const id = setTimeout(() => {
+      void import("@/screens/Night");
+      if (!document.querySelector('link[href="/intro.mp4"]')) {
+        const l = document.createElement("link");
+        l.rel = "prefetch";
+        l.href = "/intro.mp4";
+        document.head.appendChild(l);
+      }
+    }, 1500);
+    return () => clearTimeout(id);
+  }, []);
+}
+
 export function Office({ s }: { s: GameState }) {
+  usePrefetchNight();
   const atNight = s.phase === "night";
   // The club, heard through the wall: the lounge by day, whatever is playing downstairs at night.
   useMusic(atNight ? nightTrack(s) : LOUNGE, true, atNight ? "venue" : "menu");

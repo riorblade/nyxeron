@@ -359,6 +359,7 @@ export function Night({ s }: { s: GameState }) {
       <VenueView
         s={s}
         editing={view === "edit"}
+        active={view !== "office"}
         onDone={() => setView("venue")}
       />
       {/* HUD floats over the full-bleed venue; the layer ignores clicks except on panels. */}
