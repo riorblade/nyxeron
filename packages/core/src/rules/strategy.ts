@@ -328,6 +328,8 @@ export function energyTarget(
   const dance = inside ? Math.min(1, dancing / inside / e.danceShareForMax) : 0;
   let target =
     100 * (e.danceWeight * dance + e.fullWeight * full) + rigEnergy(s);
+  // A live band on stage lifts the room (more when its genre suits the crowd).
+  if (n.bandMultiplier) target += night.band.energy * n.bandMultiplier;
   const t = strategy.tactics;
   if (active(n, "sparkler"))
     target += t.sparkler.energy * n.tactics.sparkler!.power;

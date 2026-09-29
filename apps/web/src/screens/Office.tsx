@@ -33,7 +33,7 @@ import { TalentTab } from "./office/TalentTab";
 
 const TABS = [
   { id: "stock", minLevel: 1, C: StockTab },
-  { id: "talent", minLevel: 4, C: TalentTab },
+  { id: "talent", minLevel: 3, C: TalentTab },
   { id: "promo", minLevel: 1, C: PromoTab },
   { id: "staff", minLevel: 2, C: StaffTab },
   { id: "rules", minLevel: 3, C: HouseRulesTab },

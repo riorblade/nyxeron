@@ -1,5 +1,7 @@
 import {
   ceoCall,
+  bandPlaying,
+  bands,
   djs,
   endNight,
   securityStatus,
@@ -350,6 +352,8 @@ export function Night({ s }: { s: GameState }) {
     () => audio.nowPlaying,
   );
   const dj = s.bookedTalent[0];
+  // A live band on stage right now (main act, or opening before the DJ).
+  const band = bandPlaying(s) ? s.bookedBand : null;
   const setStart = nightData.djSetStartMinute;
   const revenue =
     s.nightRevenue.bar + s.nightRevenue.cover + s.nightRevenue.table;
@@ -600,33 +604,46 @@ export function Night({ s }: { s: GameState }) {
             <EventFeed s={s} max={5} />
           </div>
           <section className="flex min-w-0 gap-3 text-sm">
-            {dj && (
+            {band ? (
               <Img
-                src={art.dj(dj)}
+                src={art.band(band)}
                 alt=""
-                className={cn(
-                  "size-14 shrink-0 rounded-lg border border-white/15 object-cover object-top",
-                  n.minute >= setStart &&
-                    "shadow-[0_0_20px_rgba(255,255,255,.25)]",
-                )}
+                className="size-14 shrink-0 rounded-lg border border-white/15 object-cover object-top shadow-[0_0_20px_rgba(255,255,255,.25)]"
               />
+            ) : (
+              dj && (
+                <Img
+                  src={art.dj(dj)}
+                  alt=""
+                  className={cn(
+                    "size-14 shrink-0 rounded-lg border border-white/15 object-cover object-top",
+                    n.minute >= setStart &&
+                      "shadow-[0_0_20px_rgba(255,255,255,.25)]",
+                  )}
+                />
+              )
             )}
             <div className="min-w-0">
               <h3 className="mb-1 text-[10px] tracking-[0.2em] text-white/60">
                 {en.night.nowPlaying}
               </h3>
               <p>
-                {dj && n.minute >= setStart
-                  ? en.night.djLeft(
-                      djs[dj].name,
-                      genres[djs[dj].genre] ?? "",
-                      duration(nightData.minutes - n.minute),
+                {band
+                  ? en.night.bandLive(
+                      bands[band].name,
+                      genres[bands[band].genre] ?? "",
                     )
-                  : dj
-                    ? `${djs[dj].name} · ${clock(setStart)}`
-                    : en.night.noDj}
+                  : dj && n.minute >= setStart
+                    ? en.night.djLeft(
+                        djs[dj].name,
+                        genres[djs[dj].genre] ?? "",
+                        duration(nightData.minutes - n.minute),
+                      )
+                    : dj
+                      ? `${djs[dj].name} · ${clock(setStart)}`
+                      : en.night.noDj}
               </p>
-              {dj && n.minute >= setStart && nowPlaying && (
+              {(band || (dj && n.minute >= setStart)) && nowPlaying && (
                 <p className="mt-0.5 truncate text-xs text-white/60">
                   ♪ {nowPlaying}
                 </p>

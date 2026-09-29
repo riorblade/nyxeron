@@ -4,6 +4,7 @@ import {
   ids,
   permits,
   staffRoles,
+  type BandId,
   type ChannelId,
   type DressCode,
   type DrinkId,
@@ -86,6 +87,8 @@ export type GameEvent =
   | Ev<"permitRenewed", { permit: PermitId; expiresDay: number }>
   | Ev<"levelUp", { level: Level }>
   | Ev<"djStarted", { dj: TalentId; crowdGenre: Genre; match: boolean }>
+  | Ev<"bandBooked", { band: BandId; hype: number }>
+  | Ev<"bandStarted", { band: BandId; crowdGenre: Genre; match: boolean }>
   | Ev<"doorClosed">
   | Ev<"doorForced">
   | Ev<"fight", { guest: number }>
@@ -146,6 +149,8 @@ export interface NightState {
   startReputation: number;
   guests: Guest[];
   djMultiplier: number;
+  /** Live band's dance multiplier while its set runs (null = not playing). */
+  bandMultiplier: number | null;
   inspectionMinute: number | null;
   doorForced: boolean;
   /** CEO Call "Close Door": no more admissions tonight. */
@@ -238,6 +243,8 @@ export interface GameState {
   pendingOrders: Order[];
   permits: Record<PermitId, Permit>;
   bookedTalent: TalentId[];
+  /** Live band on the stage tonight (cleared each day). */
+  bookedBand: BandId | null;
   activePromos: ChannelId[];
   staff: Record<StaffRole, number>;
   policy: HousePolicy;
@@ -300,6 +307,7 @@ export function createGameState(
         : { valid: false, expiresDay: 0 },
     ),
     bookedTalent: [],
+    bookedBand: null,
     activePromos: [],
     staff: fill(ids(staffRoles), () => 0),
     policy: DEFAULT_POLICY,
@@ -336,6 +344,7 @@ const NIGHT_DEFAULTS = {
   escorts: [],
   escorted: 0,
   stretchedLogged: false,
+  bandMultiplier: null,
 };
 
 /**
@@ -349,6 +358,7 @@ export function migrateState(s: GameState): GameState {
     staff,
     policy: { ...DEFAULT_POLICY, ...s.policy },
     promoters: s.promoters ?? [],
+    bookedBand: s.bookedBand ?? null,
     minSpend: s.minSpend ?? {},
     autoRefill: s.autoRefill ?? false,
     upgrades: { ...NO_UPGRADES, ...s.upgrades },

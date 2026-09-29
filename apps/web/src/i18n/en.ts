@@ -167,7 +167,7 @@ export const en = {
       },
       talent: {
         title: "Talent Agency",
-        desc: "Book a DJ who fits tonight's crowd.",
+        desc: "Book a DJ or a live band who fits tonight's crowd.",
       },
       promo: {
         title: "Social Media",
@@ -226,6 +226,17 @@ export const en = {
       "Forecast for tonight: expected guests × ~3 drinks, spread over the menu",
     fill: "Fill to forecast",
     low: (name: string) => `${name} running low`,
+  },
+
+  bands: {
+    title: "Live bands",
+    main: "No DJ tonight: the band is the main act on stage, 22:30–01:00. A genre that suits the crowd fills the floor.",
+    opener:
+      "With a DJ booked, the band opens the night on stage, 22:00–23:00, then hands over to the decks.",
+    fans: (n: number) => `${n} fans`,
+    book: (fee: string) => `Book · ${fee} C`,
+    booked: "Booked",
+    live: "LIVE ON STAGE",
   },
 
   talent: {
@@ -341,6 +352,7 @@ export const en = {
     objectives: "OBJECTIVES",
     panel: "Panels [Tab]",
     speed: (x: number) => `Speed ${x}×`,
+    bandLive: (name: string, genre: string) => `Live: ${name} · ${genre}`,
     toOffice: "Office",
     cinematic: "Cinematic camera",
     cinematicExit: "Exit cinematic",
@@ -935,6 +947,7 @@ export const en = {
       dj: (id: string) => string;
       channel: (id: string) => string;
       promoter: (id: string) => string;
+      band: (id: string) => string;
       permit: (id: string) => string;
     },
   ): string => {
@@ -961,6 +974,10 @@ export const en = {
         return `${names.permit(e.permit)} valid until Day ${e.expiresDay}`;
       case "levelUp":
         return `Upgraded to Level ${e.level}`;
+      case "bandBooked":
+        return `${names.band(e.band)} booked for the stage: Hype +${e.hype}`;
+      case "bandStarted":
+        return `${names.band(e.band)} is live on stage · crowd is into ${genres[e.crowdGenre] ?? e.crowdGenre}${e.match ? " · perfect match" : " · mismatch"}`;
       case "djStarted":
         return `${names.dj(e.dj)} started set · crowd is into ${genres[e.crowdGenre] ?? e.crowdGenre}${e.match ? " · perfect match" : " · mismatch"}`;
       case "doorClosed":

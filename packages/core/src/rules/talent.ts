@@ -1,4 +1,12 @@
-import { djs, economy, night, type Genre, type TalentId } from "../data";
+import {
+  bands,
+  djs,
+  economy,
+  night,
+  type BandId,
+  type Genre,
+  type TalentId,
+} from "../data";
 import { fail, type ActionResult } from "../result";
 import { clamp, type GameState, type Guest } from "../state";
 
@@ -41,3 +49,41 @@ export function r04_djMultiplier(
     ? 1 + night.djMatchBonus
     : 1 - night.djMismatchPenalty;
 }
+
+/** Book tonight's live band (one per night): costs its fee, brings its fans (hype). */
+export function bookBand(s: GameState, band: BandId): ActionResult {
+  const b = bands[band];
+  if (s.phase !== "day") return fail("wrongPhase");
+  if (s.level < b.minLevel) return fail("levelLocked");
+  if (s.bookedBand) return fail("alreadyBooked");
+  if (s.coin < b.fee) return fail("notEnoughCoin", b.fee - s.coin);
+  const hype = Math.round(b.fanbase * economy.djHypeFactor);
+  return {
+    ok: true,
+    state: {
+      ...s,
+      coin: s.coin - b.fee,
+      hype: clamp(s.hype + hype),
+      bookedBand: band,
+      log: [...s.log, { day: s.day, kind: "bandBooked", band, hype }],
+    },
+  };
+}
+
+/**
+ * When the band plays tonight, in night minutes [start, end): the main act from 22:30 without a DJ, or the opening
+ * act 22:00–23:00 when a DJ follows.
+ */
+export function bandSet(s: GameState): [number, number] | null {
+  if (!s.bookedBand) return null;
+  const b = night.band;
+  return s.bookedTalent.length
+    ? [b.openerStart, b.openerStart + b.openerLength]
+    : [b.start, b.start + b.length];
+}
+
+export const bandPlaying = (s: GameState) => {
+  const w = bandSet(s);
+  const m = s.night?.minute;
+  return !!w && m !== undefined && m >= w[0] && m < w[1];
+};

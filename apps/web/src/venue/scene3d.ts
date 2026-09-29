@@ -3,6 +3,8 @@ import {
   drinks,
   isAtFightRisk,
   isPeakTime,
+  bandPlaying,
+  bands,
   capacityOf,
   strategy,
   active as tacticActive,
@@ -172,6 +174,7 @@ export class VenueScene {
     ctx.fillRect(0, 0, 32, 32);
   });
   private rigLight = 0;
+  private bandKit: THREE.Group | null = null;
   private heads: THREE.MeshBasicMaterial[] = [];
   private lasers: THREE.Mesh[] = [];
   private ringMats: THREE.MeshBasicMaterial[] = [];
@@ -392,7 +395,9 @@ export class VenueScene {
           ? { kicker: en.videotron.mc, text: en.videotron.handsUp }
           : n.tactics?.hostsFloor && tacticActive(n, "hostsFloor")
             ? { kicker: en.videotron.floor, text: en.videotron.everybody }
-            : null;
+            : bandPlaying(s) && s.bookedBand
+              ? { kicker: en.bands.live, text: bands[s.bookedBand].name }
+              : null;
     this.tron = {
       callout,
       dj: this.djOn && dj ? djs[dj].name : null,
@@ -569,6 +574,7 @@ export class VenueScene {
     this.buildLights();
     this.buildRig(this.rigLight);
     this.buildSpeakers(s.upgrades?.sound ?? 0);
+    this.buildBandKit();
     this.buildFx();
     this.frameCamera(layout);
   }
@@ -1805,12 +1811,16 @@ export class VenueScene {
     const dj = s.bookedTalent[0];
     // The MC takes the stage for "MC hype"; otherwise dancers during the set.
     const hype = !!s.night?.tactics?.mcHype && tacticActive(s.night, "mcHype");
+    const band = bandPlaying(s) ? s.bookedBand : null;
     const stageAct = this.zones.has("stage")
-      ? s.level >= 4 && this.djOn && !hype
-        ? "dancers"
-        : "mc"
+      ? band
+        ? "band"
+        : s.level >= 4 && this.djOn && !hype
+          ? "dancers"
+          : "mc"
       : "none";
-    const key = `${this.djOn ? dj : ""}|${stageAct}`;
+    if (this.bandKit) this.bandKit.visible = stageAct === "band";
+    const key = `${this.djOn ? dj : ""}|${stageAct}|${band ?? ""}`;
     if (key === this.stageKey) return;
     this.stageKey = key;
     this.stage.forEach((p) => this.remove(p));
@@ -1822,8 +1832,9 @@ export class VenueScene {
       mode: Person["mode"],
       seed: number,
       h = PERSON_H,
+      fz = zone === "dj" ? 0.55 : 0.5,
     ) => {
-      const pos = this.zonePoint(zone, fx, zone === "dj" ? 0.55 : 0.5);
+      const pos = this.zonePoint(zone, fx, fz);
       if (!pos) return;
       const p = this.addPerson(tex, h, pos[0], pos[1], mode, seed);
       p.lift = BLOCK_H; // standing on the booth / stage
@@ -1834,18 +1845,57 @@ export class VenueScene {
     if (stageAct === "dancers") {
       add(a.dancers[0], "stage", 0.3, "dance", 991);
       add(a.dancers[1] ?? a.dancers[0], "stage", 0.72, "dance", 992);
+    } else if (stageAct === "band") {
+      // Singer at the mic out front; drums at the back, keys and guitar either side.
+      const g = a.guests;
+      const pick = (i: number) => g[i % Math.max(1, g.length)];
+      add(pick(1), "stage", 0.5, "perform", 994, PERSON_H, 0.25);
+      add(pick(7), "stage", 0.2, "perform", 995, PERSON_H, 0.5);
+      add(pick(3), "stage", 0.82, "perform", 996, PERSON_H, 0.55);
+      add(a.mc, "stage", 0.5, "perform", 997, PERSON_H, 0.85);
     } else if (stageAct === "mc") add(a.mc, "stage", 0.5, "perform", 993);
   }
 
   /** The LED wall plays the booked DJ's loop during their set, and an idle logo otherwise. */
   private syncScreen(s: GameState) {
     if (!this.screen) return;
+    const band = bandPlaying(s) ? s.bookedBand : null;
     const dj = this.djOn ? (s.bookedTalent[0] ?? "") : "";
-    if (dj === this.screenDj) return;
-    this.screenDj = dj;
+    const key = dj || (band ? `band:${band}` : "");
+    if (key === this.screenDj) return;
+    this.screenDj = key;
     const scr = this.screen;
     scr.mat.map = scr.idle;
     scr.mat.needsUpdate = true;
+    if (!dj && band) {
+      // The band's poster, "LIVE" and its name on the concert screen.
+      const img = new Image();
+      img.onload = () => {
+        if (this.screen !== scr || this.screenDj !== key) return;
+        const tex = canvasTexture(1280, 540, (ctx) => {
+          ctx.fillStyle = "#07050c";
+          ctx.fillRect(0, 0, 1280, 540);
+          const h = 540,
+            w = (img.width / img.height) * h;
+          ctx.drawImage(img, 60, 0, w, h);
+          ctx.fillStyle = "#ff2bd6";
+          ctx.font = "800 64px Inter Tight, sans-serif";
+          ctx.fillText("LIVE", 120 + w, 220);
+          ctx.fillStyle = "#fff";
+          ctx.font = "800 72px Inter Tight, sans-serif";
+          ctx.fillText(
+            bands[band].name.toUpperCase(),
+            120 + w,
+            310,
+            1280 - w - 160,
+          );
+        });
+        scr.mat.map = tex;
+        scr.mat.needsUpdate = true;
+      };
+      img.src = `/art/band-${band}.webp`;
+      return;
+    }
     if (!dj) return;
     if (!this.videos.has(dj)) this.videos.set(dj, loadDjVideo(dj));
     this.videos.get(dj)!.then((tex) => {
@@ -1949,6 +1999,128 @@ export class VenueScene {
 
     this.fx = new StageFx(flames, mist, floor, layout.w / 2, this.wallH);
     this.root.add(this.fx.group);
+  }
+
+  /** Drum kit, keyboard, amp and a mic stand on the stage; shown while a band plays. */
+  private buildBandKit() {
+    this.bandKit = null;
+    const st = this.zones.get("stage");
+    if (!st) return;
+    const g = new THREE.Group();
+    const y = BLOCK_H;
+    const at = (fx: number, fz: number) =>
+      new THREE.Vector3(st.x + st.w * fx, y, st.y + st.h * fz);
+    const metal = new THREE.MeshStandardMaterial({
+      color: 0xb8b8c8,
+      metalness: 0.9,
+      roughness: 0.25,
+    });
+    const black = new THREE.MeshStandardMaterial({
+      color: 0x141418,
+      roughness: 0.6,
+    });
+    const shell = new THREE.MeshStandardMaterial({
+      color: 0xa3122e,
+      metalness: 0.4,
+      roughness: 0.35,
+    });
+    const skin = new THREE.MeshStandardMaterial({
+      color: 0xf2eee6,
+      roughness: 0.8,
+    });
+    const put = (m: THREE.Mesh, p: THREE.Vector3, dy = 0) => {
+      m.position.set(p.x, p.y + dy, p.z);
+      g.add(m);
+      return m;
+    };
+    // Drums: kick, two toms, snare, a cymbal on a stand.
+    const d = at(0.5, 0.22);
+    const kick = put(
+      new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.3, 20), shell),
+      d,
+      0.28,
+    );
+    kick.rotation.x = Math.PI / 2;
+    const face = put(
+      new THREE.Mesh(new THREE.CircleGeometry(0.26, 20), skin),
+      d.clone().add(new THREE.Vector3(0, 0, 0.16)),
+      0.28,
+    );
+    face.rotation.y = 0;
+    for (const dx of [-0.2, 0.2])
+      put(
+        new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.14, 16), shell),
+        d.clone().add(new THREE.Vector3(dx, 0, 0)),
+        0.66,
+      );
+    put(
+      new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.1, 16), metal),
+      d.clone().add(new THREE.Vector3(-0.36, 0, 0.2)),
+      0.5,
+    );
+    put(
+      new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1, 6), metal),
+      d.clone().add(new THREE.Vector3(0.42, 0, 0.1)),
+      0.5,
+    );
+    put(
+      new THREE.Mesh(
+        new THREE.CylinderGeometry(0.2, 0.2, 0.01, 20),
+        new THREE.MeshStandardMaterial({
+          color: 0xd4a93a,
+          metalness: 1,
+          roughness: 0.2,
+        }),
+      ),
+      d.clone().add(new THREE.Vector3(0.42, 0, 0.1)),
+      1.0,
+    );
+    // Keyboard on an X stand.
+    const k = at(0.2, 0.5);
+    put(new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.06, 0.24), black), k, 0.72);
+    put(
+      new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.01, 0.1), skin),
+      k.clone().add(new THREE.Vector3(0, 0, 0.05)),
+      0.755,
+    );
+    for (const r of [0.5, -0.5]) {
+      const leg = put(
+        new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.8, 0.03), metal),
+        k,
+        0.36,
+      );
+      leg.rotation.z = r;
+    }
+    // Guitar amp.
+    const amp = at(0.82, 0.3);
+    put(
+      new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.45, 0.3), black),
+      amp,
+      0.225,
+    );
+    put(
+      new THREE.Mesh(
+        new THREE.BoxGeometry(0.42, 0.3, 0.01),
+        new THREE.MeshStandardMaterial({ color: 0x3a3228, roughness: 1 }),
+      ),
+      amp.clone().add(new THREE.Vector3(0, 0, 0.155)),
+      0.2,
+    );
+    // Mic stand out front.
+    const mic = at(0.5, 0.95);
+    put(
+      new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1.3, 6), metal),
+      mic,
+      0.65,
+    );
+    put(
+      new THREE.Mesh(new THREE.SphereGeometry(0.04, 10, 8), black),
+      mic,
+      1.32,
+    );
+    g.visible = false;
+    this.root.add(g);
+    this.bandKit = g;
   }
 
   /**

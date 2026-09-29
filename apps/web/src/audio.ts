@@ -1,4 +1,4 @@
-import { night, type GameState } from "@nyxeron/core";
+import { bandPlaying, night, type GameState } from "@nyxeron/core";
 import { useEffect } from "react";
 import { useSettings } from "./settings";
 
@@ -42,11 +42,13 @@ export const LOUNGE = "landing";
 /** Inside the club before the DJ: the house warm-up (never the landing track). */
 export const HOUSE = "house";
 
-/** What plays at the club right now: the booked DJ's set (several tracks, mixed) once it starts, the house warm-up before. */
+/** What plays at the club right now: the booked DJ's set once it starts, a live band's set while it plays, else the house warm-up. */
 export const nightTrack = (s: GameState) =>
   s.bookedTalent[0] && s.night && s.night.minute >= night.djSetStartMinute
     ? `set:${s.bookedTalent[0]}`
-    : HOUSE;
+    : bandPlaying(s)
+      ? "set:live" // the band's set: the crate, from the top
+      : HOUSE;
 
 function stored(key: string, fallback: string) {
   try {

@@ -1,0 +1,37 @@
+{
+  "soulAvenue": {
+    "name": "Soul Avenue",
+    "genre": "rnb",
+    "fanbase": 40,
+    "fee": 1500,
+    "minLevel": 3
+  },
+  "brasshouse": {
+    "name": "Brasshouse",
+    "genre": "house",
+    "fanbase": 45,
+    "fee": 1800,
+    "minLevel": 3
+  },
+  "bassline": {
+    "name": "The Bassline Collective",
+    "genre": "hiphop",
+    "fanbase": 50,
+    "fee": 2200,
+    "minLevel": 3
+  },
+  "neonPulse": {
+    "name": "Neon Pulse Live",
+    "genre": "edm",
+    "fanbase": 60,
+    "fee": 4000,
+    "minLevel": 4
+  },
+  "ironLoop": {
+    "name": "Iron Loop",
+    "genre": "techno",
+    "fanbase": 55,
+    "fee": 3500,
+    "minLevel": 4
+  }
+}

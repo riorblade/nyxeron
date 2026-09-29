@@ -1,4 +1,5 @@
 import {
+  bands,
   channels,
   djs,
   drinks,
@@ -13,6 +14,7 @@ const names = {
   dj: (id: string) => djs[id as keyof typeof djs]?.name ?? id,
   channel: (id: string) => channels[id as keyof typeof channels]?.name ?? id,
   permit: (id: string) => permits[id as keyof typeof permits]?.name ?? id,
+  band: (id: string) => bands[id as keyof typeof bands]?.name ?? id,
   promoter: (id: string) => promoters[id as keyof typeof promoters]?.name ?? id,
 };
 

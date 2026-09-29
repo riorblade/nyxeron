@@ -27,6 +27,7 @@ export function r12_newDay(s: GameState): GameState {
     hype: Math.max(0, s.hype - economy.hypeDecayPerDay),
     safety: Math.min(100, s.safety + economy.safetyRecoveryPerDay),
     bookedTalent: [],
+    bookedBand: null,
     activePromos: [],
     promoters: [],
     nightRevenue: { bar: 0, cover: 0, table: 0 },

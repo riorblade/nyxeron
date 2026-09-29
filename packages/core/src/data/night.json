@@ -45,5 +45,12 @@
   "slowServicePenalty": 1,
   "drunkSlowdown": 150,
   "forecastDrinksPerGuest": 3,
-  "lateArrivalCutoff": 60
+  "lateArrivalCutoff": 60,
+  "band": {
+    "start": 30,
+    "length": 150,
+    "openerStart": 0,
+    "openerLength": 60,
+    "energy": 15
+  }
 }

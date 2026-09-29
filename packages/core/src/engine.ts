@@ -1,4 +1,5 @@
 import {
+  bands,
   channels,
   defaultPrice,
   djs,
@@ -30,7 +31,7 @@ import { inspect, permitActive, r06_inspectionChance } from "./rules/legal";
 import { r14_checkVictory } from "./rules/progression";
 import { r11_reputationDelta } from "./rules/reputation";
 import { r08_rejectAtDoor, r09_fightChance } from "./rules/security";
-import { dominantGenre, r04_djMultiplier } from "./rules/talent";
+import { bandSet, dominantGenre, r04_djMultiplier } from "./rules/talent";
 import {
   active,
   barMultiplier,
@@ -205,6 +206,7 @@ export function startNight(s: GameState): GameState {
       startReputation: s.reputation,
       guests,
       djMultiplier: night.noDjDanceFactor,
+      bandMultiplier: null,
       inspectionMinute: sealed ? null : inspectionMinute,
       doorForced: false,
       doorClosedByCeo: false,
@@ -314,6 +316,25 @@ export function tickNight(s: GameState): GameState {
       return { ...st, seed: rng.seed, night: n, log: [...s.log, ...log] };
     }
   }
+
+  // Live band: the set starts (genre vs. the crowd, like a DJ) and ends.
+  const set = bandSet(st);
+  if (set && st.bookedBand && m === set[0]) {
+    const crowdGenre =
+      dominantGenre(n.guests.filter(isInside)) ??
+      dominantGenre(n.guests) ??
+      st.clubGenre;
+    const band = bands[st.bookedBand];
+    n.bandMultiplier = r04_djMultiplier(band.genre, crowdGenre);
+    ev({
+      ...at,
+      kind: "bandStarted",
+      band: st.bookedBand,
+      crowdGenre,
+      match: band.genre === crowdGenre,
+    });
+  }
+  if (set && m === set[1]) n.bandMultiplier = null;
 
   // DJ set start (R4).
   const dj = st.bookedTalent[0];
@@ -517,7 +538,7 @@ export function tickNight(s: GameState): GameState {
       g.state = "dance";
       g.satisfaction +=
         night.danceSatisfactionPerMinute *
-        n.djMultiplier *
+        Math.max(n.djMultiplier, n.bandMultiplier ?? 0) *
         (1 +
           st.upgrades.sound * strategy.upgrades.sound.danceSatisfactionPerTier);
     } else {

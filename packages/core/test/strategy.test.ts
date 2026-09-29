@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   createGameState,
   bookPromoter,
+  bandPlaying,
+  bandSet,
+  bookBand,
   securityStatus,
   bookingsFor,
   SEAT_TYPES,
@@ -577,5 +580,39 @@ describe("security works on its own", () => {
     const after = tickNight(drunkNight(0));
     expect(after.night!.escorted).toBe(0);
     expect(drunkInside(after)).toBeGreaterThan(0);
+  });
+});
+
+describe("live bands", () => {
+  const bar = (over: Partial<GameState> = {}) =>
+    club({ level: 3, bookedTalent: [], ...over });
+  it("are booked by day, one a night, from their level; bring hype; clear the next day", () => {
+    const r = bookBand(bar(), "soulAvenue");
+    expect(r.ok && r.state.bookedBand).toBe("soulAvenue");
+    if (!r.ok) return;
+    expect(r.state.hype).toBeGreaterThan(bar().hype);
+    expect(bookBand(r.state, "brasshouse").ok).toBe(false);
+    expect(bookBand(bar(), "neonPulse").ok).toBe(false); // Level 4 act
+    expect(nextDay(runNight(r.state)).bookedBand).toBe(null);
+  });
+  it("play the main set without a DJ, and open for one when a DJ is booked", () => {
+    const main = bandSet(bar({ bookedBand: "brasshouse" }))!;
+    const opener = bandSet(club({ bookedBand: "brasshouse" }))!;
+    expect(main[0]).toBe(night.band.start);
+    expect(opener[1]).toBeLessThanOrEqual(night.djSetStartMinute);
+    expect(bandSet(bar())).toBe(null);
+  });
+  it("lift the dance floor and the room's energy while they play", () => {
+    const s = bar({ bookedBand: "brasshouse" });
+    const [start, end] = bandSet(s)!;
+    const on = ticks(startNight(s), start + 1);
+    expect(on.night!.bandMultiplier).toBeGreaterThan(0);
+    expect(on.log.some((e) => e.kind === "bandStarted")).toBe(true);
+    expect(bandPlaying(on)).toBe(true);
+    const n = on.night!;
+    expect(energyTarget(on, n, 40, 10)).toBeGreaterThan(
+      energyTarget(on, { ...n, bandMultiplier: null }, 40, 10),
+    );
+    expect(ticks(on, end - start).night!.bandMultiplier).toBe(null);
   });
 });
