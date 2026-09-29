@@ -1,0 +1,26 @@
+{
+  "business": {
+    "name": "Business permit",
+    "cost": 1000,
+    "durationDays": 30,
+    "minLevel": 1
+  },
+  "liquorTakeaway": {
+    "name": "Liquor permit (takeaway)",
+    "cost": 5000,
+    "durationDays": 30,
+    "minLevel": 2
+  },
+  "liquorOnPremise": {
+    "name": "Liquor permit (on-premise)",
+    "cost": 15000,
+    "durationDays": 30,
+    "minLevel": 3
+  },
+  "crowd": {
+    "name": "Crowd permit",
+    "cost": 10000,
+    "durationDays": 7,
+    "minLevel": 4
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "nyxeron",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "build": "pnpm -r build",
+    "test": "vitest run",
+    "lint": "tsc -p packages/core && tsc -p apps/web && eslint . && prettier --check .",
+    "format": "prettier --write .",
+    "balance": "tsx packages/core/scripts/balance.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.3",
+    "eslint": "^10.11.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "prettier": "^3.9.9",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.0",
+    "vitest": "^5.0.2"
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "posters": {
+    "name": "Posters",
+    "cost": 500,
+    "hype": 4,
+    "segment": "locals",
+    "minLevel": 1
+  },
+  "x": {
+    "name": "X",
+    "cost": 800,
+    "hype": 6,
+    "segment": "community",
+    "minLevel": 2
+  },
+  "instagram": {
+    "name": "Instagram",
+    "cost": 1500,
+    "hype": 10,
+    "segment": "urban25",
+    "minLevel": 2
+  },
+  "tiktok": {
+    "name": "TikTok",
+    "cost": 2000,
+    "hype": 14,
+    "segment": "genZ",
+    "minLevel": 3
+  },
+  "influencer": {
+    "name": "Influencer",
+    "cost": 5000,
+    "hype": 25,
+    "segment": "premium",
+    "minLevel": 4
+  }
+}

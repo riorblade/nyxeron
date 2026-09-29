@@ -1,0 +1,19 @@
+{
+  "locals": { "weight": 3, "budget": [40, 120], "genres": ["hiphop", "rnb"] },
+  "community": {
+    "weight": 2,
+    "budget": [60, 150],
+    "genres": ["house", "techno"]
+  },
+  "urban25": {
+    "weight": 2,
+    "budget": [100, 250],
+    "genres": ["house", "rnb", "edm"]
+  },
+  "genZ": { "weight": 2, "budget": [50, 140], "genres": ["edm", "hiphop"] },
+  "premium": {
+    "weight": 1,
+    "budget": [250, 600],
+    "genres": ["techno", "house"]
+  }
+}

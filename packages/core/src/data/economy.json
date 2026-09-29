@@ -1,0 +1,26 @@
+{
+  "startCoin": 10000,
+  "startReputation": 20,
+  "startHype": 0,
+  "startSafety": 100,
+  "ceoEnergyPerDay": 5,
+  "hypeDecayPerDay": 10,
+  "safetyRecoveryPerDay": 10,
+  "outOfStockSatisfactionPenalty": 10,
+  "bankruptAfterNegativeDays": 3,
+  "victoryReputation": 80,
+  "maxDays": 60,
+  "djHypeFactor": 0.3,
+  "maxDjsPerNight": 1,
+  "difficulty": {
+    "easy": {
+      "coinMultiplier": 1.5
+    },
+    "normal": {
+      "coinMultiplier": 1
+    },
+    "hard": {
+      "coinMultiplier": 0.6
+    }
+  }
+}

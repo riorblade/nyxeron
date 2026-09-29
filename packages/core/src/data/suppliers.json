@@ -1,0 +1,20 @@
+{
+  "corner": {
+    "name": "Corner Store",
+    "leadDays": 0,
+    "costMultiplier": 1.1,
+    "minLevel": 1
+  },
+  "wholesale": {
+    "name": "City Wholesale",
+    "leadDays": 1,
+    "costMultiplier": 1,
+    "minLevel": 2
+  },
+  "import": {
+    "name": "Harbor Imports",
+    "leadDays": 2,
+    "costMultiplier": 0.8,
+    "minLevel": 2
+  }
+}

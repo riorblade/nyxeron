@@ -1,0 +1,39 @@
+{
+  "basement": {
+    "clubName": "The Basement",
+    "clubGenre": "edm",
+    "level": 4,
+    "coin": 500000,
+    "reputation": 55,
+    "hype": 0,
+    "stock": {
+      "beer": 150,
+      "softDrink": 100,
+      "vodka": 80,
+      "whisky": 60,
+      "cocktail": 60,
+      "wine": 40
+    },
+    "staff": {
+      "bartender": 3,
+      "security": 0
+    },
+    "permitExpiresDay": {
+      "business": 30,
+      "liquorOnPremise": 5
+    },
+    "lastDay": 7,
+    "goalReputation": 60,
+    "events": {
+      "5": {
+        "rivalHype": -15
+      },
+      "6": {
+        "supplierDelay": 1
+      },
+      "7": {
+        "forcedInspection": true
+      }
+    }
+  }
+}

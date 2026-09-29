@@ -1,0 +1,58 @@
+{
+  "rhea": {
+    "name": "DJ Rhea",
+    "genre": "edm",
+    "fanbase": 70,
+    "fee": 6000,
+    "minLevel": 4
+  },
+  "kalu": {
+    "name": "DJ Kalu",
+    "genre": "hiphop",
+    "fanbase": 55,
+    "fee": 4000,
+    "minLevel": 4
+  },
+  "mira": {
+    "name": "DJ Mira",
+    "genre": "house",
+    "fanbase": 45,
+    "fee": 3000,
+    "minLevel": 4
+  },
+  "jax": {
+    "name": "DJ Jax",
+    "genre": "rnb",
+    "fanbase": 40,
+    "fee": 2500,
+    "minLevel": 4
+  },
+  "nova": {
+    "name": "DJ Nova",
+    "genre": "techno",
+    "fanbase": 62,
+    "fee": 5000,
+    "minLevel": 4
+  },
+  "sable": {
+    "name": "DJ Sable",
+    "genre": "edm",
+    "fanbase": 80,
+    "fee": 9000,
+    "minLevel": 4
+  },
+  "orion": {
+    "name": "DJ Orion",
+    "genre": "techno",
+    "fanbase": 92,
+    "fee": 20000,
+    "minLevel": 5
+  },
+  "lux": {
+    "name": "DJ Lux",
+    "genre": "house",
+    "fanbase": 95,
+    "fee": 25000,
+    "minLevel": 5
+  }
+}

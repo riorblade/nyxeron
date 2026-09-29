@@ -1,0 +1,44 @@
+{
+  "beer": {
+    "name": "Beer",
+    "buyCost": 6,
+    "defaultPrice": 25,
+    "alcohol": 10,
+    "minLevel": 1
+  },
+  "softDrink": {
+    "name": "Soft drink",
+    "buyCost": 3,
+    "defaultPrice": 15,
+    "alcohol": 0,
+    "minLevel": 1
+  },
+  "vodka": {
+    "name": "Vodka",
+    "buyCost": 10,
+    "defaultPrice": 40,
+    "alcohol": 18,
+    "minLevel": 2
+  },
+  "whisky": {
+    "name": "Whisky",
+    "buyCost": 13,
+    "defaultPrice": 55,
+    "alcohol": 18,
+    "minLevel": 2
+  },
+  "cocktail": {
+    "name": "Cocktail",
+    "buyCost": 12,
+    "defaultPrice": 50,
+    "alcohol": 14,
+    "minLevel": 3
+  },
+  "wine": {
+    "name": "Wine",
+    "buyCost": 15,
+    "defaultPrice": 60,
+    "alcohol": 12,
+    "minLevel": 3
+  }
+}

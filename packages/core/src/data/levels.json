@@ -1,0 +1,67 @@
+{
+  "1": {
+    "name": "Drink Booth",
+    "cost": 0,
+    "repRequired": 0,
+    "capacity": 20,
+    "demand": 260,
+    "rentPerDay": 100,
+    "coverCharge": 0,
+    "entertainmentTaxRate": 0,
+    "requiredPermits": ["business"],
+    "stayMinutes": [20, 60],
+    "priceScale": 1.5
+  },
+  "2": {
+    "name": "Drink Shop",
+    "cost": 50000,
+    "repRequired": 20,
+    "capacity": 40,
+    "demand": 260,
+    "rentPerDay": 500,
+    "coverCharge": 0,
+    "entertainmentTaxRate": 0,
+    "requiredPermits": ["business", "liquorTakeaway"],
+    "stayMinutes": [20, 60],
+    "priceScale": 4
+  },
+  "3": {
+    "name": "Bar & Live Music",
+    "cost": 250000,
+    "repRequired": 40,
+    "capacity": 90,
+    "demand": 300,
+    "rentPerDay": 2000,
+    "coverCharge": 0,
+    "entertainmentTaxRate": 0.4,
+    "requiredPermits": ["business", "liquorOnPremise"],
+    "stayMinutes": [45, 150],
+    "priceScale": 12
+  },
+  "4": {
+    "name": "Nightclub",
+    "cost": 1000000,
+    "repRequired": 60,
+    "capacity": 190,
+    "demand": 160,
+    "rentPerDay": 8000,
+    "coverCharge": 600,
+    "entertainmentTaxRate": 0.4,
+    "requiredPermits": ["business", "liquorOnPremise"],
+    "stayMinutes": [60, 240],
+    "priceScale": 48
+  },
+  "5": {
+    "name": "Premium Venue",
+    "cost": 5000000,
+    "repRequired": 75,
+    "capacity": 350,
+    "demand": 450,
+    "rentPerDay": 30000,
+    "coverCharge": 2500,
+    "entertainmentTaxRate": 0.4,
+    "requiredPermits": ["business", "liquorOnPremise"],
+    "stayMinutes": [60, 240],
+    "priceScale": 60
+  }
+}

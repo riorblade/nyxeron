@@ -1,0 +1,541 @@
+/*
+ * Landing: scroll-scrubbed cinematic one-pager (adapted from the "Tokyo Nocturne" spec).
+ * Every visible layer is position:fixed; three invisible runways create the scroll height.
+ * JS writes only CSS custom properties (+ video.currentTime); everything else is CSS math,
+ * so scrolling backwards replays the whole thing in perfect reverse.
+ */
+.nx {
+  --frame: 24px;
+  --ink: #ffffff; /* zero accent: all colour comes from the footage */
+  --fs-display: clamp(42px, 8.2vw, 160px);
+  --shrink-end: 0.51; /* overwritten by measure() */
+  --fs-statement: calc(var(--fs-display) * var(--shrink-end));
+  --leading-display: 1;
+  --fs-greek: clamp(11px, 1.4vw, 26px);
+  --fs-micro: 12px;
+  --fs-nano: 12px;
+  --fs-lede: 14px;
+  --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --noise-opacity: 0.08;
+  --runway: 350vh;
+  --runway-2: 120vh;
+  --runway-3: 220vh;
+  /* Written per frame by JS; these rested values are the correct first paint. */
+  --shrink: 1;
+  --exit: 0;
+  --exit-greek: 0;
+  --reveal: 0;
+  --s2: 0;
+  --s3: 0;
+  --stage-out: clamp(0, calc((var(--reveal) - 0.93) / 0.05), 1);
+
+  font-family:
+    "Inter Tight",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
+  color: var(--ink);
+  line-height: 1.3;
+  background: #000;
+  -webkit-font-smoothing: antialiased;
+}
+.nx * {
+  letter-spacing: -0.02em;
+}
+.nx ::selection {
+  background: var(--ink);
+  color: #000;
+}
+
+/* ---------- 1. stage (hero video, scrubbed) ---------- */
+.nx .stage {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background: #000;
+  overflow: hidden;
+  opacity: calc(1 - var(--stage-out));
+}
+.nx .stage__media {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 50%;
+  display: block;
+  animation: nx-stage-in 1.6s var(--ease-expo) both;
+}
+.nx .stage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+/* ---------- 2. reveal (diagonal split → card) ---------- */
+.nx .reveal {
+  --reveal-span: calc(72vw + 72vh);
+  --card-k: 0.26;
+  --rot: calc(var(--reveal) * 45deg * (1 - var(--s3)));
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: calc(var(--reveal) * var(--reveal-span));
+  height: var(--reveal-span);
+  transform: translate(-50%, -50%) rotate(var(--rot))
+    scale(calc(1 - var(--s3) * (1 - var(--card-k))));
+  overflow: hidden;
+  z-index: 5;
+  pointer-events: none;
+  background: rgba(0, 0, 0, calc(1 - var(--s3)));
+}
+.nx .reveal__video {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover;
+  transform: translate(-50%, -50%) rotate(calc(var(--rot) * -1));
+  display: block;
+}
+
+/* ---------- 3. film grain ---------- */
+.nx .nx-grain {
+  position: fixed;
+  top: -50vh;
+  left: -50vw;
+  width: 200vw;
+  height: 200vh;
+  z-index: 6;
+  pointer-events: none;
+  opacity: var(--noise-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncR type='linear' slope='3.5' intercept='-1.48'/%3E%3CfeFuncG type='linear' slope='3.5' intercept='-1.48'/%3E%3CfeFuncB type='linear' slope='3.5' intercept='-1.48'/%3E%3CfeFuncA type='linear' slope='0' intercept='1'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 200px 200px;
+  animation: nx-grain 500ms steps(1) infinite;
+}
+@keyframes nx-grain {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  10% {
+    transform: translate(-4%, -6%);
+  }
+  20% {
+    transform: translate(-8%, 3%);
+  }
+  30% {
+    transform: translate(4%, -8%);
+  }
+  40% {
+    transform: translate(-6%, 6%);
+  }
+  50% {
+    transform: translate(-9%, -3%);
+  }
+  60% {
+    transform: translate(6%, 4%);
+  }
+  70% {
+    transform: translate(-3%, 8%);
+  }
+  80% {
+    transform: translate(7%, -5%);
+  }
+  90% {
+    transform: translate(-4%, 7%);
+  }
+}
+
+/* ---------- runways: the only in-flow elements ---------- */
+.nx .runway {
+  height: var(--runway);
+  pointer-events: none;
+}
+.nx .runway-2 {
+  height: var(--runway-2);
+  pointer-events: none;
+}
+.nx .runway-3 {
+  height: var(--runway-3);
+  pointer-events: none;
+}
+
+/* ---------- 5. frame (hero type layer) ---------- */
+.nx .frame,
+.nx .sec2,
+.nx .sec3 {
+  position: fixed;
+  inset: 0;
+  padding: max(var(--frame), env(safe-area-inset-top))
+    max(var(--frame), env(safe-area-inset-right))
+    max(var(--frame), env(safe-area-inset-bottom))
+    max(var(--frame), env(safe-area-inset-left));
+  pointer-events: none;
+  /* The blend lives on the fixed layer itself: a fixed element is its own stacking context. */
+  mix-blend-mode: difference;
+}
+.nx .frame {
+  z-index: 10;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto 1fr auto;
+}
+.nx .frame > * {
+  min-width: 0;
+}
+.nx .frame a,
+.nx .frame button {
+  pointer-events: auto;
+}
+.nx .micro {
+  font-size: var(--fs-micro);
+  font-weight: 500;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.nx .hit {
+  position: relative;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+}
+.nx .hit::after {
+  content: "";
+  position: absolute;
+  inset: -16px -8px;
+}
+
+/* Brand */
+.nx .brand {
+  grid-area: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: fit-content;
+  transform: scale(var(--shrink));
+  transform-origin: top left;
+  margin: 0;
+}
+.nx .brand__slot {
+  display: grid;
+  overflow: hidden;
+  margin-left: -0.02em;
+  animation: nx-rise 1s var(--ease-expo) both;
+}
+.nx .brand__slot:first-child {
+  margin-top: -0.13em;
+  animation-delay: 150ms;
+}
+.nx .brand__slot:nth-child(2) {
+  animation-delay: 230ms;
+}
+.nx .brand__line {
+  grid-area: 1 / 1;
+  font-size: var(--fs-display);
+  font-weight: 700;
+  line-height: var(--leading-display);
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition: transform 380ms var(--ease-expo);
+  will-change: transform;
+}
+.nx .brand__slot:nth-child(2) .brand__line {
+  transition-delay: 80ms;
+}
+.nx .brand__line[data-role="alt"],
+.nx .brand__line[data-role="crew"] {
+  transform: translateY(100%);
+}
+.nx .brand[data-title="alt"] .brand__line[data-role="main"] {
+  transform: translateY(-100%);
+}
+.nx .brand[data-title="alt"] .brand__line[data-role="alt"] {
+  transform: translateY(0);
+}
+.nx .brand[data-title="crew"] .brand__line[data-role="main"],
+.nx .brand[data-title="crew"] .brand__line[data-role="alt"] {
+  transform: translateY(-100%);
+}
+.nx .brand[data-title="crew"] .brand__line[data-role="crew"] {
+  transform: translateY(0);
+}
+.nx .brand__char {
+  display: inline-block;
+  text-align: center;
+}
+/* Greek flicker glyph: condensed a touch to sit inside the locked Latin width. */
+.nx .brand__char[data-greek] {
+  transform: scaleX(0.9);
+}
+.nx .brand__greek {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.05em;
+  font-weight: 400;
+  font-size: var(--fs-greek);
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+/* Shared scroll exit: opacity + blur + lift. Never redeclare `filter` on these later. */
+.nx .brand__greek,
+.nx .lede,
+.nx .foot {
+  opacity: calc(1 - var(--exit));
+  filter: blur(calc(var(--exit) * 12px));
+  transform: translate3d(0, calc(var(--exit) * -28px), 0);
+}
+.nx .brand__greek {
+  --exit: var(--exit-greek);
+}
+
+/* Chrome */
+.nx .chrome {
+  grid-area: 1 / 2;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.nx .clock__time {
+  font-variant-numeric: tabular-nums;
+}
+.nx .clock__zone {
+  display: block;
+  margin-top: 3px;
+  font-size: var(--fs-nano);
+  line-height: 1.15;
+  opacity: 0.92;
+}
+.nx .nav {
+  display: flex;
+  gap: clamp(14px, 1.5vw, 26px);
+}
+.nx .nav .hit,
+.nx .contact {
+  transition: opacity 200ms var(--ease-expo);
+}
+@media (hover: hover) and (pointer: fine) {
+  .nx .nav .hit:hover,
+  .nx .contact:hover {
+    opacity: 0.55;
+  }
+}
+
+/* Lede + foot */
+.nx .lede {
+  grid-area: 2 / 2;
+  align-self: end;
+  margin: 0 0 clamp(40px, 19vh, 220px);
+  max-width: clamp(240px, 23vw, 340px);
+  font-size: var(--fs-lede);
+  font-weight: 400;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+}
+.nx .foot {
+  grid-area: 3 / 2;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+/* Intro cascade on wrappers (the exit vars own the outer elements' transform/filter). */
+.nx .nx-in {
+  display: block;
+  animation: nx-rise 0.8s var(--ease-expo) both;
+  animation-delay: var(--d, 0ms);
+}
+@keyframes nx-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 18px, 0);
+    filter: blur(10px);
+  }
+}
+@keyframes nx-stage-in {
+  from {
+    opacity: 0;
+    transform: scale(1.06);
+    filter: blur(12px);
+  }
+}
+
+/* ---------- 8. section 2 ---------- */
+.nx .sec2 {
+  z-index: 8;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr auto;
+}
+.nx .s2-statement,
+.nx .s3-bottom {
+  font-size: var(--fs-statement);
+  font-weight: 700;
+  line-height: var(--leading-display);
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+  margin: 0;
+}
+.nx .s2-statement {
+  grid-area: 2 / 2;
+  align-self: end;
+}
+.nx .s2-word,
+.nx .s3-word {
+  display: inline-block;
+}
+.nx .s2-word {
+  --in: clamp(0, calc((var(--s2) - var(--w0)) / 0.09), 1);
+  --out: clamp(0, calc((var(--s3) - var(--x0)) / 0.09), 1);
+  opacity: calc(var(--in) - var(--out));
+  filter: blur(calc((1 - var(--in)) * 12px + var(--out) * 12px));
+  transform: translate3d(
+    0,
+    calc((1 - var(--in)) * 18px + var(--out) * -28px),
+    0
+  );
+}
+
+/* ---------- 9. section 3 ---------- */
+.nx .sec3 {
+  z-index: 8;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto 1fr auto;
+}
+.nx .sec3 > * {
+  margin: 0;
+}
+.nx .s3-left,
+.nx .s3-right {
+  grid-row: 2;
+  align-self: center;
+  max-width: 24ch;
+  font-size: var(--fs-lede);
+  font-weight: 400;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+  --in: clamp(0, calc((var(--s3) - (0.62 + var(--i) * 0.1)) / 0.22), 1);
+  opacity: var(--in);
+  filter: blur(calc((1 - var(--in)) * 12px));
+  transform: translate3d(0, calc((1 - var(--in)) * 18px), 0);
+}
+.nx .s3-left {
+  grid-column: 1;
+  justify-self: start;
+}
+.nx .s3-right {
+  grid-column: 2;
+  justify-self: end;
+  text-align: right;
+}
+.nx .s3-bottom {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  align-self: end;
+  text-align: center;
+}
+.nx .s3-word {
+  --in: clamp(0, calc((var(--s3) - var(--w0)) / 0.09), 1);
+  opacity: var(--in);
+  filter: blur(calc((1 - var(--in)) * 12px));
+  transform: translate3d(0, calc((1 - var(--in)) * 18px), 0);
+}
+
+/* ---------- game CTAs under the card (normal blend, clickable) ---------- */
+.nx .nx-cta {
+  --in: clamp(0, calc((var(--s3) - 0.8) / 0.15), 1);
+  position: fixed;
+  left: 50%;
+  top: calc(50% + 13vh + 20px);
+  z-index: 11;
+  display: flex;
+  gap: 10px;
+  transform: translate3d(-50%, calc((1 - var(--in)) * 14px), 0);
+  opacity: var(--in);
+  pointer-events: none;
+}
+.nx .nx-cta[data-live] {
+  pointer-events: auto;
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 899px) {
+  .nx .nav {
+    display: none;
+  }
+}
+@media (max-width: 767px) {
+  .nx {
+    --frame: 20px;
+    --fs-display: clamp(38px, 12.6vw, 96px);
+    --fs-greek: clamp(10px, 2.1vw, 18px);
+    --fs-lede: 16px;
+  }
+  .nx .frame {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 1fr auto;
+  }
+  .nx .chrome {
+    grid-area: 1 / 1;
+  }
+  .nx .brand {
+    grid-area: 2 / 1;
+    margin-top: 5vh;
+  }
+  .nx .lede {
+    grid-area: 3 / 1;
+    margin-bottom: 7vh;
+    max-width: 42ch;
+  }
+  .nx .foot {
+    grid-area: 4 / 1;
+  }
+  .nx .stage__media {
+    object-position: 66% 50%;
+  }
+  .nx .sec2 {
+    grid-template-columns: 1fr;
+  }
+  .nx .s2-statement {
+    grid-area: 2 / 1;
+  }
+  .nx .sec3 {
+    grid-template-rows: auto 1fr auto auto;
+    column-gap: var(--frame);
+  }
+  .nx .s3-bottom {
+    grid-row: 3;
+  }
+  .nx .s3-left,
+  .nx .s3-right {
+    grid-row: 4;
+    align-self: end;
+    max-width: none;
+    margin-top: 1.2em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nx .nav .hit,
+  .nx .contact,
+  .nx .brand__line {
+    transition: none;
+  }
+  .nx .nx-grain {
+    animation: none;
+  }
+  .nx .s2-word {
+    filter: none;
+    transform: none;
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "inspectionChanceMissingPermit": 0.4,
+  "baseInspectionChance": 0.05,
+  "inspectionFine": 5000,
+  "maxViolations": 3,
+  "crowdPermitThreshold": 150,
+  "crowdShutdownChance": 0.5,
+  "shutdownRevenuePenalty": 0.5,
+  "shutdownRepPenalty": 10,
+  "sealedNightsOnTakeawayOnly": 1,
+  "controversialPromo": {
+    "cost": 3000,
+    "hype": 30,
+    "backfireChance": 0.25,
+    "repPenalty": 20
+  }
+}
