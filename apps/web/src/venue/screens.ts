@@ -11,11 +11,14 @@ interface Playlist {
   ad: string[];
 }
 
+/** Clip screens are 3:4 (between landscape and a phone's portrait); ads stay 16:9. Scaled up on tall walls. */
 export const SCREEN_SIZE: Record<ScreenKind, { w: number; h: number }> = {
-  clip: { w: 3, h: 1.69 },
+  clip: { w: 2.1, h: 2.8 },
   ad: { w: 2.6, h: 1.46 },
 };
-const MAX_PLAYERS = 4; // decoding more videos at once costs more than it adds
+const MAX_PLAYERS = 6; // one decoder per clip; more costs more than it adds
+/** Screens cut between these many live edits (neighbouring screens show different ones). */
+const EDITORS = 3;
 
 let playlist: Promise<Playlist> | null = null;
 /** Fetched once per session; a missing or broken file just means "no clips yet". */
@@ -102,7 +105,7 @@ class Fallback {
 
   constructor(private kind: ScreenKind) {
     const c = document.createElement("canvas");
-    [c.width, c.height] = [320, 180];
+    [c.width, c.height] = kind === "clip" ? [240, 320] : [320, 180];
     this.ctx = c.getContext("2d")!;
     this.tex = new THREE.CanvasTexture(c);
     this.tex.colorSpace = THREE.SRGBColorSpace;
@@ -132,7 +135,7 @@ class Fallback {
       ctx.textAlign = "left";
       ctx.fillText("AD", 16, 26);
     } else {
-      const bars = 16;
+      const bars = this.kind === "clip" ? 9 : 16;
       const bw = W / bars;
       for (let i = 0; i < bars; i++) {
         const level =
@@ -163,26 +166,189 @@ function cover(tex: THREE.Texture, source: number, plane: number) {
   }
 }
 
+type Rect = [number, number, number, number];
+const SHOTS: { rects: Rect[]; weight: number }[] = [
+  { rects: [[0, 0, 1, 1]], weight: 6 }, // one clip, full frame
+  {
+    rects: [
+      [0, 0, 0.5, 1],
+      [0.5, 0, 0.5, 1],
+    ],
+    weight: 2,
+  }, // split
+  {
+    rects: [
+      [0, 0, 0.5, 0.5],
+      [0.5, 0, 0.5, 0.5],
+      [0, 0.5, 0.5, 0.5],
+      [0.5, 0.5, 0.5, 0.5],
+    ],
+    weight: 2,
+  }, // 2×2 grid
+];
+
+/**
+ * A live "party edit" on one canvas: cuts on the beat between full-frame clips, and now and then a split or a 2×2
+ * grid, with a white flash on every cut and a zoom punch on every kick.
+ */
+class Editor {
+  readonly tex: THREE.CanvasTexture;
+  private ctx: CanvasRenderingContext2D;
+  private drawnAt = 0;
+  private prevPulse = 0;
+  private kicks = 0;
+  private nextCut = 4;
+  private cutAt = 0;
+  private shot: { rects: Rect[]; vids: number[] } = {
+    rects: [[0, 0, 1, 1]],
+    vids: [0],
+  };
+  private flash = 0;
+  private punch = 0;
+
+  constructor(
+    private videos: HTMLVideoElement[],
+    private seed: number,
+  ) {
+    const c = document.createElement("canvas");
+    [c.width, c.height] = [480, 640];
+    this.ctx = c.getContext("2d")!;
+    this.tex = new THREE.CanvasTexture(c);
+    this.tex.colorSpace = THREE.SRGBColorSpace;
+    this.cut(0);
+  }
+
+  private cut(now: number) {
+    const total = SHOTS.reduce((a, s) => a + s.weight, 0);
+    let r = Math.random() * total;
+    const pick = SHOTS.find((s) => (r -= s.weight) < 0) ?? SHOTS[0]!;
+    // Different clips in each panel, and a different lead clip from the last shot.
+    const n = this.videos.length;
+    const start =
+      (this.shot.vids[0]! +
+        1 +
+        Math.floor(Math.random() * Math.max(1, n - 1))) %
+      n;
+    this.shot = {
+      rects: pick.rects,
+      vids: pick.rects.map((_, i) => (start + i + this.seed) % n),
+    };
+    this.flash = 1;
+    this.kicks = 0;
+    this.cutAt = now;
+    // A full clip holds a bar or two; splits and grids are quick hits.
+    this.nextCut =
+      pick.rects.length > 1 ? 4 : [4, 8, 8, 16][Math.floor(Math.random() * 4)]!;
+  }
+
+  draw(now: number, pulse: number) {
+    if (now - this.drawnAt < 33) return; // ~30 fps
+    this.drawnAt = now;
+    if (pulse > 0.8 && this.prevPulse < 0.4) {
+      this.kicks++;
+      this.punch = 1;
+      if (this.kicks >= this.nextCut) this.cut(now);
+    }
+    this.prevPulse = pulse;
+    // No beat to follow (music off): keep cutting on a clock.
+    if (now - this.cutAt > 6000) this.cut(now);
+
+    const { ctx } = this;
+    const { width: W, height: H } = ctx.canvas;
+    ctx.fillStyle = "#050308";
+    ctx.fillRect(0, 0, W, H);
+    const zoom = 1 + this.punch * (this.shot.rects.length === 1 ? 0.07 : 0.03);
+    this.shot.rects.forEach(([x, y, w, h], i) => {
+      const v = this.videos[this.shot.vids[i]!]!;
+      drawCover(ctx, v, x * W, y * H, w * W, h * H, zoom);
+    });
+    if (this.shot.rects.length > 1) {
+      // Hairline gutters between panels.
+      ctx.fillStyle = "#000";
+      ctx.fillRect(W / 2 - 2, 0, 4, H);
+      if (this.shot.rects.length === 4) ctx.fillRect(0, H / 2 - 2, W, 4);
+    }
+    if (this.flash > 0.02) {
+      ctx.fillStyle = `rgba(255,255,255,${this.flash * 0.7})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+    this.flash *= 0.72;
+    this.punch *= 0.8;
+    this.tex.needsUpdate = true;
+  }
+}
+
+/** Draw a video cropped to fill the rectangle (cover), optionally zoomed in from the centre. */
+function drawCover(
+  ctx: CanvasRenderingContext2D,
+  v: HTMLVideoElement,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  zoom: number,
+) {
+  if (v.readyState < 2 || !v.videoWidth) {
+    ctx.fillStyle = "#0b0914";
+    ctx.fillRect(x, y, w, h);
+    return;
+  }
+  const src = v.videoWidth / v.videoHeight,
+    dst = w / h;
+  let sw = v.videoWidth,
+    sh = v.videoHeight;
+  if (src > dst) sw = sh * dst;
+  else sh = sw / dst;
+  sw /= zoom;
+  sh /= zoom;
+  ctx.drawImage(
+    v,
+    (v.videoWidth - sw) / 2,
+    (v.videoHeight - sh) * 0.4,
+    sw,
+    sh,
+    x,
+    y,
+    w,
+    h,
+  );
+}
+
 export class ScreenWall {
   private players: Record<ScreenKind, Player[]> = { clip: [], ad: [] };
   private fallbacks: Record<ScreenKind, Fallback>;
   private used = { clip: 0, ad: 0 };
+  private editors: Editor[] = [];
+  private clipsOn = true;
   private textures: THREE.Texture[] = [];
 
   constructor(list: Playlist, slots: Record<ScreenKind, number>) {
     this.fallbacks = { clip: new Fallback("clip"), ad: new Fallback("ad") };
-    for (const k of ["clip", "ad"] as const) {
-      // Spread start points so neighbouring screens don't show the same clip.
-      const n = Math.min(MAX_PLAYERS, list[k].length, Math.max(1, slots[k]));
-      for (let i = 0; i < n && list[k].length; i++)
-        this.players[k].push(
-          new Player(list[k], i * Math.max(1, Math.floor(list[k].length / n))),
+    // Clips: one looping player per clip, cut together live by a few editors.
+    for (const clip of list.clip.slice(0, MAX_PLAYERS))
+      this.players.clip.push(new Player([clip], 0));
+    if (this.players.clip.length)
+      for (let i = 0; i < Math.min(EDITORS, Math.max(1, slots.clip)); i++)
+        this.editors.push(
+          new Editor(
+            this.players.clip.map((p) => p.video),
+            i,
+          ),
         );
-    }
+    // Ads: rotate through the list, start points spread so neighbouring screens differ.
+    const n = Math.min(MAX_PLAYERS, list.ad.length, Math.max(1, slots.ad));
+    for (let i = 0; i < n && list.ad.length; i++)
+      this.players.ad.push(
+        new Player(list.ad, i * Math.max(1, Math.floor(list.ad.length / n))),
+      );
   }
 
   /** Texture for the next screen of this kind, cropped to `planeAspect`. */
   texture(kind: ScreenKind, planeAspect: number): THREE.Texture {
+    if (kind === "clip")
+      return this.editors.length
+        ? this.editors[this.used.clip++ % this.editors.length]!.tex
+        : this.fallbacks.clip.tex;
     const pool = this.players[kind];
     if (!pool.length) return this.fallbacks[kind].tex;
     const p = pool[this.used[kind]++ % pool.length]!;
@@ -206,17 +372,20 @@ export class ScreenWall {
 
   /** Hidden clips stop decoding. */
   setPlaying(kind: ScreenKind, on: boolean) {
+    if (kind === "clip") this.clipsOn = on;
     this.players[kind].forEach((p) => p.setPlaying(on));
   }
 
   tick(now: number, pulse: number) {
     for (const f of Object.values(this.fallbacks)) f.draw(now, pulse);
+    if (this.clipsOn) this.editors.forEach((e) => e.draw(now, pulse));
   }
 
   dispose() {
     for (const k of ["clip", "ad"] as const)
       this.players[k].forEach((p) => p.dispose());
     this.textures.forEach((t) => t.dispose());
+    this.editors.forEach((e) => e.tex.dispose());
     for (const f of Object.values(this.fallbacks)) f.tex.dispose();
   }
 }

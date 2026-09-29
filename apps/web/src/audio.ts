@@ -20,19 +20,31 @@ export const TRACKS: Record<string, { file: string; title?: string }> = {
   rhea: { file: "shakalaka-boom", title: "Shakalaka Boom" },
   jax: { file: "papi-jarang-pulang", title: "Papi Jarang Pulang" },
   nova: { file: "dj-main-serong", title: "DJ Main Serong" },
+  kalu: { file: "kalu", title: "Kalu" },
+  sable: { file: "sable", title: "Sable" },
+};
+/** Every club track the DJs can mix from. */
+const CRATE = [...new Set(Object.values(TRACKS).map((t) => t.file))];
+const titleOf = (file: string) =>
+  Object.values(TRACKS).find((t) => t.file === file)?.title ?? file;
+/** Seconds of overlap when the DJ mixes into the next track. */
+const XFADE = 8;
+
+/** A DJ's set: their own track first (if they have one), then the rest of the crate. */
+export const setFor = (dj: string) => {
+  const own = TRACKS[dj]?.file;
+  return own ? [own, ...CRATE.filter((f) => f !== own)] : CRATE;
 };
 /** One continuous lounge track outside the club: landing → setup → office by day (muffled) → report. */
 export const LOUNGE = "landing";
 /** Inside the club before the DJ: the house warm-up (never the landing track). */
 export const HOUSE = "house";
 
-/** What plays at the club right now: the booked DJ once their set starts, the house warm-up before that. */
+/** What plays at the club right now: the booked DJ's set (several tracks, mixed) once it starts, the house warm-up before. */
 export const nightTrack = (s: GameState) =>
   s.bookedTalent[0] && s.night && s.night.minute >= night.djSetStartMinute
-    ? s.bookedTalent[0]
+    ? `set:${s.bookedTalent[0]}`
     : HOUSE;
-
-const trackUrl = (id: string) => `/audio/${TRACKS[id]?.file ?? id}.mp3`;
 
 function stored(key: string, fallback: string) {
   try {
@@ -164,6 +176,13 @@ class ClubAudio {
   private prevBass = 0;
   private fluxAvg = 0;
   private kickAt = 0;
+  private loudShort = 0;
+  private loudLong = 0;
+  private quietAt = -99;
+  /** Music loudness now relative to the last few seconds (≈1 steady, >1.15 lifting). */
+  intensity = 1;
+  /** AudioContext time of the last detected drop. */
+  dropAt = -99;
   private lastProbe = 0;
   volume = Number(stored(VOLUME_KEY, "0.8"));
   muted = stored(MUTE_KEY, "0") === "1";
@@ -206,7 +225,10 @@ class ClubAudio {
     this.applyVolume();
   }
 
-  /** Switch the music to a track (crossfade). Missing files fall back to the synthesized beat. */
+  /**
+   * Switch the music (crossfade). An id is a track ("landing", a DJ id) or "set:<dj>", a DJ set that mixes through the
+   * crate. Missing files are skipped in a set, or fall back to the synthesized beat.
+   */
   play(id: string | null) {
     if (id === this.current) return;
     this.current = id ?? "";
@@ -214,44 +236,94 @@ class ClubAudio {
       this.pending = !!id; // browsers block sound until the first gesture; unlock() starts it
       return;
     }
-    const now = this.ctx.currentTime;
-    if (this.el && this.elGain) {
-      const [el, g] = [this.el, this.elGain];
-      g.gain.setTargetAtTime(0, now, FADE / 3);
-      setTimeout(() => {
-        el.pause();
-        g.disconnect();
-      }, FADE * 1500);
-      this.el = this.elGain = null;
-    }
-    this.synth?.stop(now);
+    this.fadeOutCurrent(FADE / 3);
+    this.synth?.stop(this.ctx.currentTime);
     this.synth = null;
-    if (!id) return;
+    this.set = null;
+    this.nowPlaying = "";
+    if (!id) return this.listeners.forEach((f) => f());
+    if (id.startsWith("set:")) {
+      this.set = { files: setFor(id.slice(4)), i: 0, failed: 0, id };
+      this.startFile(this.set.files[0]!, false, id);
+    } else this.startFile(TRACKS[id]?.file ?? id, true, id);
+  }
 
-    const el = new Audio(trackUrl(id));
-    el.loop = true;
+  /** Title of the track sounding now (for Now Playing); "" for the lounge or the synth. */
+  nowPlaying = "";
+  private set: {
+    files: string[];
+    i: number;
+    failed: number;
+    id: string;
+  } | null = null;
+
+  private fadeOutCurrent(tau: number) {
+    if (!this.el || !this.elGain || !this.ctx) return;
+    const [el, g] = [this.el, this.elGain];
+    g.gain.setTargetAtTime(0, this.ctx.currentTime, tau);
+    setTimeout(() => {
+      el.pause();
+      g.disconnect();
+    }, tau * 5000);
+    this.el = this.elGain = null;
+  }
+
+  private startFile(
+    file: string,
+    loop: boolean,
+    id: string,
+    fadeIn = FADE / 3,
+  ) {
+    const ctx = this.ctx!;
+    const el = new Audio(`/audio/${file}.mp3`);
+    el.loop = loop;
     el.crossOrigin = "anonymous";
-    const g = this.ctx.createGain();
+    const g = ctx.createGain();
     g.gain.value = 0;
-    this.ctx.createMediaElementSource(el).connect(g).connect(this.muffle);
+    ctx.createMediaElementSource(el).connect(g).connect(this.muffle);
     this.el = el;
     this.elGain = g;
+    if (this.set) {
+      this.nowPlaying = titleOf(file);
+      this.listeners.forEach((f) => f());
+      // Mix into the next track a few seconds before this one ends.
+      el.addEventListener("timeupdate", () => {
+        if (
+          this.el === el &&
+          el.duration &&
+          el.duration - el.currentTime < XFADE
+        )
+          this.nextInSet();
+      });
+    }
+    el.addEventListener("playing", () => this.set && (this.set.failed = 0));
     el.addEventListener("error", () => {
-      // No file for this DJ yet: keep the club going with the synth beat (softer for the lounge playlist).
       if (this.el !== el || !this.ctx) return;
+      // In a set, skip a missing track; if the whole crate is missing, keep the club going on the synth beat.
+      if (this.set && ++this.set.failed < this.set.files.length)
+        return this.nextInSet(true);
       this.el = this.elGain = null;
       g.disconnect();
+      this.nowPlaying = "";
       this.synth = new SynthBeat(
         this.ctx,
         this.muffle,
-        id === "house" ? 112 : 124,
-        id === "house",
+        id === HOUSE ? 112 : 124,
+        id === HOUSE,
       );
       this.synth.start();
     });
     el.play()
-      .then(() => g.gain.setTargetAtTime(1, this.ctx!.currentTime, FADE / 3))
+      .then(() => g.gain.setTargetAtTime(1, ctx.currentTime, fadeIn))
       .catch(() => {});
+  }
+
+  private nextInSet(skip = false) {
+    const s = this.set;
+    if (!s) return;
+    s.i = (s.i + 1) % s.files.length;
+    this.fadeOutCurrent(skip ? 0.05 : XFADE / 3);
+    this.startFile(s.files[s.i]!, false, s.id, skip ? FADE / 3 : XFADE / 4);
   }
 
   stop() {
@@ -315,6 +387,19 @@ class ClubAudio {
       let bass = 0;
       for (let i = 1; i <= top; i++) bass += this.bins[i]!;
       bass /= top;
+      // Loudness now vs. the last few seconds: >1 = the track is lifting (a drop, a big chorus).
+      let all = 0;
+      const upTo = Math.floor(this.bins.length / 3);
+      for (let i = 1; i < upTo; i++) all += this.bins[i]!;
+      all /= upTo;
+      this.loudShort += (all - this.loudShort) * 0.15;
+      this.loudLong += (all - this.loudLong) * 0.003;
+      const ratio = this.loudLong > 1 ? this.loudShort / this.loudLong : 1;
+      this.intensity = ratio;
+      // A drop: the room was quiet (breakdown / build-up) within the last few seconds and now it slams back.
+      if (ratio < 0.8) this.quietAt = now;
+      if (ratio > 1.2 && now - this.quietAt < 4 && now - this.dropAt > 8)
+        this.dropAt = now;
       // Spectral flux on the bass band: a kick is a sudden jump, even over a loud sustained bassline.
       const flux = Math.max(0, bass - this.prevBass);
       this.prevBass = bass;

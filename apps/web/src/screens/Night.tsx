@@ -21,7 +21,7 @@ import {
 } from "react";
 import { Briefcase, PanelsTopLeft, Sofa, Volume2, VolumeX } from "lucide-react";
 import { Office } from "./Office";
-import { audio, nightTrack, TRACKS, useMusic } from "@/audio";
+import { audio, nightTrack, useMusic } from "@/audio";
 import { isAlert } from "@/hud/eventText";
 import { Button } from "@/components/ui/button";
 import { EventFeed } from "@/hud/EventFeed";
@@ -254,6 +254,11 @@ export function Night({ s }: { s: GameState }) {
     ? inside.reduce((a, g) => a + g.satisfaction, 0) / inside.length
     : 0;
   const drunk = atRisk(s);
+  // The track the DJ is on right now (they mix through several per set).
+  const nowPlaying = useSyncExternalStore(
+    (cb) => audio.subscribe(cb),
+    () => audio.nowPlaying,
+  );
   const dj = s.bookedTalent[0];
   const setStart = nightData.djSetStartMinute;
   const revenue =
@@ -491,9 +496,9 @@ export function Night({ s }: { s: GameState }) {
                     ? `${djs[dj].name} · ${clock(setStart)}`
                     : en.night.noDj}
               </p>
-              {dj && n.minute >= setStart && TRACKS[dj]?.title && (
+              {dj && n.minute >= setStart && nowPlaying && (
                 <p className="mt-0.5 truncate text-xs text-white/60">
-                  ♪ {TRACKS[dj]!.title}
+                  ♪ {nowPlaying}
                 </p>
               )}
               <p className="mt-2 flex items-center gap-2 text-xs text-white/55">

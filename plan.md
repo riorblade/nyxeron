@@ -301,4 +301,7 @@ P0–P5 done (MVP playable). P6 Web3 and P7 deploy not started.
 - Venue capacity (+15%/tier) and stock room (+50%/tier; orders past it fail) are upgradable with Coin in Build; storage per level in `levels.json`.
 - Superclub hall walls are 8 m (per-layout `wallHeight`) with a 12 m concert screen behind the DJ (`mainScreen`).
 - Stage pyro (`venue/effects.ts`): flame jets beside the stage and ceiling CO₂/mist cannons, fired on the DJ's detected kick (fire every 8 kicks, 4 at peak hours, 2 during the anthem; mist every 16 / 8).
+- DJ sets mix several tracks: the booked DJ opens with their own track (if any), then mixes through the crate (`TRACKS`), crossfading 8 s before each track ends; Now Playing shows the live track; missing files are skipped.
+- Pyro follows the music (Web Audio loudness now vs. the last few seconds): bursts when the beat comes back after a break, on every detected drop, fire on the kick through loud lifting parts, nothing in quiet stretches; peak hours and the anthem add more. Without live audio it falls back to counting kicks.
+- Clip screens are 3:4 (scaled up on tall walls) and play a live beat-cut "party edit": mostly one clip full-frame with a zoom punch on the kick, now and then a split or a 2×2 grid, a white flash on every cut; a few edits are shared round the room.
 - Not built yet: performers/bands.

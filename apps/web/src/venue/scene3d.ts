@@ -157,6 +157,8 @@ export class VenueScene {
   private kicks = 0;
   private prevPulse = 0;
   private anthem = false;
+  private lastKick = 0;
+  private dropSeen = -99;
   /** Pool ripple texture, drifted every frame. */
   private pool: THREE.Texture | null = null;
   private walls: {
@@ -1088,9 +1090,17 @@ export class VenueScene {
     // Clip / ad screens on the walls, facing into the room (each hides with its wall).
     const wallIndex = { n: 0, w: 1, e: 2, s: 3 } as const;
     for (const slot of layout.screens) {
-      const { w: sw, h: sh } = SCREEN_SIZE[slot.kind];
-      // Clip screens hang at eye level even on a double-height wall.
-      const y = Math.min(this.wallH, 4.5) - 0.3 - sh / 2;
+      // Clip screens (3:4) grow with the wall: tall LED panels on a double-height hall.
+      const base = SCREEN_SIZE[slot.kind];
+      const k =
+        slot.kind === "clip" ? Math.min(1.7, (this.wallH - 0.7) / base.h) : 1;
+      const [sw, sh] = [base.w * k, base.h * k];
+      // Below the ceiling, but not lower than eye level allows.
+      const y = Math.min(
+        this.wallH - 0.15 - sh / 2,
+        // On a double-height wall they clear the back-bar cabinets.
+        Math.max((this.wallH > 5 ? 2.4 : 1) + sh / 2, 4.2 - sh / 2),
+      );
       const [pos, rot] = {
         n: [new THREE.Vector3(slot.at, y, 0.04), 0],
         w: [new THREE.Vector3(0.04, y, slot.at), Math.PI / 2],
@@ -2157,14 +2167,33 @@ export class VenueScene {
     this.screenWall?.tick(now, pulse);
     this.videotron?.draw(now, pulse, this.tron);
 
-    // Pyro on the beat: count kicks while the DJ plays; peak hours and the anthem fire more often.
+    // Pyro follows the music while the DJ plays: the beat coming back after a break, every drop, and the loud,
+    // lifting parts (fire on the kick, mist less often). Quiet stretches stay dark. Peak hours and the anthem add more.
     if (this.fx) {
-      if (this.djOn && pulse > 0.85 && this.prevPulse < 0.5) {
+      const kick = this.djOn && pulse > 0.85 && this.prevPulse < 0.5;
+      if (kick) {
+        const gap = now - this.lastKick;
+        this.lastKick = now;
         this.kicks++;
-        const fireEvery = this.anthem ? 2 : this.peak ? 4 : 8;
-        const mistEvery = this.anthem || this.peak ? 8 : 16;
-        if (this.kicks % fireEvery === 0) this.fx.burstFire();
-        if (this.kicks % mistEvery === 0) this.fx.burstMist();
+        const live = audio.live;
+        const lift = live ? audio.intensity : 1;
+        const hot = this.anthem || lift > 1.12;
+        const warm = hot || lift > 0.97 || (!live && this.peak);
+        const fireEvery = hot ? 2 : warm ? (this.peak ? 4 : 8) : 0;
+        const mistEvery = hot ? 8 : warm && this.peak ? 16 : 0;
+        if (gap > 2500) {
+          // The beat drops back in (the opening, or after a breakdown): everything at once.
+          this.fx.burstFire();
+          this.fx.burstMist();
+        } else {
+          if (fireEvery && this.kicks % fireEvery === 0) this.fx.burstFire();
+          if (mistEvery && this.kicks % mistEvery === 0) this.fx.burstMist();
+        }
+      }
+      if (this.djOn && audio.live && audio.dropAt !== this.dropSeen) {
+        this.dropSeen = audio.dropAt;
+        this.fx.burstFire();
+        this.fx.burstMist();
       }
       this.prevPulse = pulse;
       this.fx.update(dt / 1000);

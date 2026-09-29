@@ -209,8 +209,12 @@ const superclub: Layout = {
     { wall: "n", at: 2, kind: "clip" },
     { wall: "n", at: 28, kind: "clip" },
     { wall: "w", at: 1.8, kind: "ad" },
+    { wall: "w", at: 6, kind: "clip" },
+    { wall: "w", at: 10, kind: "clip" },
     { wall: "e", at: 1.8, kind: "ad" },
-    { wall: "e", at: 13, kind: "clip" },
+    { wall: "e", at: 6, kind: "clip" },
+    { wall: "e", at: 10, kind: "clip" },
+    { wall: "e", at: 14, kind: "ad" },
   ],
   zones: [
     { id: "office", x: 0, y: 0, w: 4, h: 3, label: "CEO OFFICE" },
