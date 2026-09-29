@@ -16,15 +16,28 @@ const FADE = 0.6; // seconds
  * Which file a track id plays (default `<id>.mp3`) and the title shown in Now Playing.
  * Ids: "landing" (main menu), "house" (pre-set lounge playlist), or a DJ id.
  */
-export const TRACKS: Record<string, { file: string; title?: string }> = {
-  rhea: { file: "shakalaka-boom", title: "Shakalaka Boom" },
-  jax: { file: "papi-jarang-pulang", title: "Papi Jarang Pulang" },
+/**
+ * `cues` = the best moments to drop in (seconds): in a DJ set each turn on the track starts at the next cue.
+ * Tracks without cues carry on from where the last turn left off.
+ */
+export const TRACKS: Record<
+  string,
+  { file: string; title?: string; cues?: number[] }
+> = {
+  rhea: { file: "shakalaka-boom", title: "Shakalaka Boom", cues: [0, 170] },
+  jax: {
+    file: "papi-jarang-pulang",
+    title: "Papi Jarang Pulang",
+    cues: [10, 63],
+  },
   nova: { file: "dj-main-serong", title: "DJ Main Serong" },
   kalu: { file: "kalu", title: "Kalu" },
   sable: { file: "sable", title: "Sable" },
 };
 /** Every club track the DJs can mix from. */
 const CRATE = [...new Set(Object.values(TRACKS).map((t) => t.file))];
+const cuesOf = (file: string) =>
+  Object.values(TRACKS).find((t) => t.file === file)?.cues;
 const titleOf = (file: string) =>
   Object.values(TRACKS).find((t) => t.file === file)?.title ?? file;
 /** Seconds of overlap when the DJ mixes into the next track. */
@@ -253,6 +266,7 @@ class ClubAudio {
         failed: 0,
         id,
         positions: {},
+        turns: {},
       };
       this.startFile(this.set.files[0]!, false, id);
     } else this.startFile(TRACKS[id]?.file ?? id, true, id);
@@ -267,6 +281,8 @@ class ClubAudio {
     id: string;
     /** Where each track was when the DJ rotated away from it. */
     positions: Record<string, number>;
+    /** How many turns each track has had (picks its next cue). */
+    turns: Record<string, number>;
   } | null = null;
 
   private fadeOutCurrent(tau: number) {
@@ -299,7 +315,12 @@ class ClubAudio {
       this.nowPlaying = titleOf(file);
       this.listeners.forEach((f) => f());
       // Pick up where this track left off last time round, so each rotation plays a new part of it.
-      const resume = this.set.positions[file] ?? 0;
+      // Cued tracks drop in at their next best moment; others resume where they left off.
+      const cues = cuesOf(file);
+      const turn = (this.set.turns[file] = (this.set.turns[file] ?? -1) + 1);
+      const resume = cues?.length
+        ? cues[turn % cues.length]!
+        : (this.set.positions[file] ?? 0);
       let start = 0;
       el.addEventListener(
         "loadedmetadata",
