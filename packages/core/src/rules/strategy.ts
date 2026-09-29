@@ -131,8 +131,8 @@ export const coverFor = (
 // ---------- promoters (guest list) ----------
 
 /** What a promoter is paid for each guest-list guest who gets in. */
-export const commissionOf = (s: GameState, id: PromoterId) =>
-  Math.round(promoters[id].commission * priceScale(s.level));
+export const commissionOf = (_s: GameState, id: PromoterId) =>
+  promoters[id].commission;
 
 /** Book (or cancel) a promoter for tonight: their guest list arrives early and skips the cover; paid per head. */
 export function bookPromoter(s: GameState, id: PromoterId): ActionResult {

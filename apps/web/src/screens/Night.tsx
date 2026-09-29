@@ -2,6 +2,8 @@ import {
   ceoCall,
   djs,
   endNight,
+  escortGuest,
+  isAtFightRisk,
   isInside,
   levels,
   night as nightData,
@@ -50,6 +52,17 @@ function useNightLoop() {
     }, 1000 / speed);
     return () => clearInterval(id);
   }, [paused, running, speed, intro, view]);
+}
+
+/** Guests at fight risk, most drunk first. */
+const atRisk = (s: GameState) =>
+  s.night!.guests.filter(isAtFightRisk).sort((a, b) => b.drunk - a.drunk);
+
+/** Alert button / S key: security walks the most drunk guest out. */
+function sendSecurity() {
+  const { game, act } = useGame.getState();
+  const g = game?.night && atRisk(game)[0];
+  if (g) act((x) => escortGuest(x, g.id));
 }
 
 function skipToEnd() {
@@ -227,6 +240,7 @@ export function Night({ s }: { s: GameState }) {
         setPanel((p) => !p);
       } else if (e.key.toLowerCase() === "q") setCeoOpen((o) => !o);
       else if (e.key.toLowerCase() === "m") audio.toggleMute();
+      else if (e.key.toLowerCase() === "s") sendSecurity();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -239,6 +253,7 @@ export function Night({ s }: { s: GameState }) {
   const mood = inside.length
     ? inside.reduce((a, g) => a + g.satisfaction, 0) / inside.length
     : 0;
+  const drunk = atRisk(s);
   const dj = s.bookedTalent[0];
   const setStart = nightData.djSetStartMinute;
   const revenue =
@@ -372,10 +387,27 @@ export function Night({ s }: { s: GameState }) {
                 {en.night.paused}
               </div>
             )}
-            {inside.some((g) => g.drunk >= nightData.fightDrunkThreshold) && (
-              <div className="glass enter absolute top-2 right-2 rounded-md border-white/40 px-3 py-1.5 text-xs">
-                <span className="mr-1 font-bold">!</span> {en.night.drunkAlert}
-              </div>
+            {drunk.length > 0 && (
+              <button
+                className="glass enter pointer-events-auto absolute top-2 right-2 flex items-center gap-2 rounded-lg border-white/50 px-3 py-2 text-left text-xs hover:bg-white/10 disabled:cursor-not-allowed"
+                onClick={sendSecurity}
+                disabled={s.staff.security <= 0}
+                title={`${en.night.sendSecurity} [S]`}
+              >
+                <span className="flex size-6 items-center justify-center rounded-full bg-white font-black text-black">
+                  !
+                </span>
+                <span className="leading-tight">
+                  <span className="block font-medium">
+                    {en.night.drunkCount(drunk.length)}
+                  </span>
+                  <span className="block text-white/70">
+                    {s.staff.security > 0
+                      ? `${en.night.sendSecurity} [S]`
+                      : en.night.needSecurity}
+                  </span>
+                </span>
+              </button>
             )}
             {ceoOpen && (
               <div className="pointer-events-auto absolute inset-0 flex items-center justify-center">

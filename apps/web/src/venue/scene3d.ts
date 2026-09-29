@@ -77,6 +77,8 @@ interface Person {
   g: THREE.Group;
   sprite: THREE.Sprite;
   alert?: THREE.Sprite;
+  /** Red ring on the floor under a guest at fight risk. */
+  ring?: THREE.Mesh;
   h: number;
   tx: number;
   tz: number;
@@ -106,8 +108,8 @@ export class VenueScene {
   private shadowTex = shadowTexture();
   private alertTex = textTexture("!", {
     size: 96,
-    color: "#ffd23f",
-    weight: "800",
+    color: "#ff3b3b",
+    weight: "900",
     font: "Inter Tight, sans-serif",
     stroke: true,
   });
@@ -292,7 +294,7 @@ export class VenueScene {
       // Satisfaction as brightness: unhappy guests fade toward grey.
       const v = 0.6 + (g.satisfaction / 100) * 0.4;
       (p.sprite.material as THREE.SpriteMaterial).color.setRGB(v, v, v);
-      p.alert!.visible = isAtFightRisk(g);
+      p.alert!.visible = p.ring!.visible = isAtFightRisk(g);
 
       const prev = this.budgets.get(g.id);
       if (prev !== undefined && g.budget < prev)
@@ -1087,12 +1089,24 @@ export class VenueScene {
       new THREE.SpriteMaterial({ map: this.alertTex.tex, depthTest: false }),
     );
     alert.center.set(0.5, 0);
-    alert.scale.set(0.28 * this.alertTex.aspect, 0.28, 1);
+    alert.scale.set(0.42 * this.alertTex.aspect, 0.42, 1);
     alert.position.y = p.h + 0.08;
     alert.visible = false;
     alert.userData.guest = id;
-    p.g.add(alert);
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.22, 0.32, 28),
+      new THREE.MeshBasicMaterial({
+        color: 0xff2a2a,
+        transparent: true,
+        depthWrite: false,
+      }),
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.025;
+    ring.visible = false;
+    p.g.add(alert, ring);
     p.alert = alert;
+    p.ring = ring;
     this.guests.set(id, p);
     return p;
   }
@@ -1447,13 +1461,18 @@ export class VenueScene {
         const over =
           (ray.intersectObjects(this.cabinetHits, false)[0]?.object as
             THREE.Mesh | undefined) ?? null;
+        // Drunk guests (red ring + "!") are clickable too.
+        const risky = [...this.guests.values()]
+          .filter((p) => p.alert?.visible)
+          .flatMap((p) => [p.sprite, p.alert!]);
+        const onRisky = ray.intersectObjects(risky, false).length > 0;
+        canvas.style.cursor = over || onRisky ? "pointer" : "";
         if (over === this.hovered) return;
         const fade = (b: THREE.Mesh | null, o: number) =>
           b && ((b.material as THREE.MeshBasicMaterial).opacity = o);
         fade(this.hovered, 0);
         fade(over, 0.22);
         this.hovered = over;
-        canvas.style.cursor = over ? "pointer" : "";
         return;
       }
       aim(e);
@@ -1609,9 +1628,13 @@ export class VenueScene {
       p.g.position.x += (p.tx - p.g.position.x) * kk;
       p.g.position.z += (p.tz - p.g.position.z) * kk;
       animate(p);
-      if (p.alert?.visible)
-        (p.alert.material as THREE.SpriteMaterial).opacity =
-          0.5 + 0.5 * Math.sin(now / 120);
+      if (p.alert?.visible) {
+        const beat = 0.5 + 0.5 * Math.sin(now / 120);
+        (p.alert.material as THREE.SpriteMaterial).opacity = 0.5 + 0.5 * beat;
+        p.ring!.scale.setScalar(1 + beat * 0.35);
+        (p.ring!.material as THREE.MeshBasicMaterial).opacity =
+          0.4 + 0.5 * beat;
+      }
     }
     for (const p of this.staff) {
       if (p.task) this.stepSecurity(p, dt);

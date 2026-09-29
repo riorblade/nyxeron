@@ -316,7 +316,12 @@ export const en = {
     forceDoorDesc: "Violation! Lets guests in over capacity",
     skip: "Skip to 04:00",
     paused: "PAUSED",
-    drunkAlert: "Drunk guest! Click to send security",
+    drunkCount: (n: number) =>
+      n === 1
+        ? "1 drunk guest at fight risk"
+        : `${n} drunk guests at fight risk`,
+    sendSecurity: "Send security",
+    needSecurity: "Hire security first (Office → Staff)",
     objectives: "OBJECTIVES",
     panel: "Panels [Tab]",
     speed: (x: number) => `Speed ${x}×`,
@@ -392,7 +397,7 @@ export const en = {
     saved: (n: number) => `Saved to slot ${n}`,
     quit: "Quit to Menu",
     controls:
-      "Space pause · 1/2/3 speed · O office · L layout · Tab panel · Q CEO Call · M mute · drag rotate · right-drag / arrows pan · wheel zoom · Esc menu",
+      "Space pause · 1/2/3 speed · O office · L layout · Tab panel · Q CEO Call · S send security · M mute · drag rotate · right-drag / arrows pan · wheel zoom · Esc menu",
   },
 
   /** Real-world reference for each bar line: what gets poured under it. */

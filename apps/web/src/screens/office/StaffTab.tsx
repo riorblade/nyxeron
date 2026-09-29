@@ -4,7 +4,6 @@ import {
   ids,
   levels,
   staffRoles,
-  wageOf,
   type GameState,
 } from "@nyxeron/core";
 import { Lock, Minus, Plus, Users } from "lucide-react";
@@ -52,7 +51,7 @@ export function StaffTab({ s }: { s: GameState }) {
                 <div className="flex flex-col p-4">
                   <div className="text-lg font-semibold">{role.name}</div>
                   <div className="font-mono text-xs text-white/50">
-                    {en.staff.wage(wageOf(r, s.level))}
+                    {en.staff.wage(role.wagePerDay)}
                   </div>
                   <p className="mt-2 text-xs leading-relaxed text-white/65">
                     {locked ? en.office.lockedTab(role.minLevel) : hint[r]}

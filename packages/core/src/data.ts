@@ -53,11 +53,3 @@ export const defaultPrice = (drink: DrinkId, level: Level) =>
   Math.round(drinks[drink].defaultPrice * priceScale(level));
 export const requiredPermits = (level: Level) =>
   levels[level].requiredPermits as PermitId[];
-
-/** Some roles are paid like the venue earns: their wage grows with the level's price scale. */
-export const wageOf = (role: StaffRole, level: Level) => {
-  const r = staffRoles[role] as { wagePerDay: number; wageScales?: boolean };
-  return r.wageScales
-    ? Math.round(r.wagePerDay * priceScale(level))
-    : r.wagePerDay;
-};

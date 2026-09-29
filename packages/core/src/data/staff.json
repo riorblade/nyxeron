@@ -11,20 +11,17 @@
   },
   "host": {
     "name": "Host",
-    "wagePerDay": 250,
-    "minLevel": 3,
-    "wageScales": true
+    "wagePerDay": 600,
+    "minLevel": 3
   },
   "relations": {
     "name": "Guest Relations",
-    "wagePerDay": 350,
-    "minLevel": 3,
-    "wageScales": true
+    "wagePerDay": 700,
+    "minLevel": 3
   },
   "mc": {
     "name": "MC",
-    "wagePerDay": 400,
-    "minLevel": 4,
-    "wageScales": true
+    "wagePerDay": 1500,
+    "minLevel": 4
   }
 }

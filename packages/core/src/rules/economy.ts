@@ -1,10 +1,10 @@
-import { economy, ids, legal, levelData, staffRoles, wageOf } from "../data";
+import { economy, ids, legal, levelData, staffRoles } from "../data";
 import type { GameState } from "../state";
 import { deliverOrders } from "./inventory";
 
 export function dailyWages(s: GameState): number {
   return ids(staffRoles).reduce(
-    (sum, r) => sum + s.staff[r] * wageOf(r, s.level),
+    (sum, r) => sum + s.staff[r] * staffRoles[r].wagePerDay,
     0,
   );
 }
