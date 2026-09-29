@@ -25,6 +25,7 @@ import {
 import { useState } from "react";
 import { art } from "@/art";
 import { Img } from "@/components/Img";
+import { DrinkLink } from "@/hud/DrinkDetail";
 import { en, fmt } from "@/i18n/en";
 import { cn } from "@/lib/utils";
 import { useGame } from "@/store";
@@ -76,13 +77,19 @@ export function StockTab({ s, compact }: { s: GameState; compact?: boolean }) {
           .filter((d) => drinks[d].minLevel <= s.level)
           .map((d) => (
             <li key={d} className="flex items-center gap-2.5">
-              <Thumb id={d} size="size-8" />
-              <div className="min-w-0 flex-1 leading-tight">
-                <div className="truncate text-sm">{drinks[d].name}</div>
-                <div className="font-mono text-[11px] text-white/45">
-                  {s.stock[d]} · {fmt(orderCost(d, 1, supplier, s.level))} C
+              <DrinkLink
+                s={s}
+                id={d}
+                className="flex min-w-0 flex-1 items-center gap-2.5 text-left hover:[&_.nm]:underline"
+              >
+                <Thumb id={d} size="size-8" />
+                <div className="min-w-0 flex-1 leading-tight">
+                  <div className="nm truncate text-sm">{drinks[d].name}</div>
+                  <div className="font-mono text-[11px] text-white/45">
+                    {s.stock[d]} · {fmt(orderCost(d, 1, supplier, s.level))} C
+                  </div>
                 </div>
-              </div>
+              </DrinkLink>
               {[10, 50].map((q) => (
                 <button
                   key={q}
@@ -175,10 +182,10 @@ export function StockTab({ s, compact }: { s: GameState; compact?: boolean }) {
                 locked && "opacity-40",
               )}
             >
-              <span className="flex items-center gap-3">
+              <DrinkLink s={s} id={d}>
                 <Thumb id={d} />
                 <span className="font-medium">{dr.name}</span>
-              </span>
+              </DrinkLink>
               <span className="flex items-center gap-3">
                 <span className="w-9 font-mono text-sm tabular-nums">
                   {locked ? "—" : s.stock[d]}

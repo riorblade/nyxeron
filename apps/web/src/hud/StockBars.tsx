@@ -1,6 +1,7 @@
 import { drinks, ids, type GameState } from "@nyxeron/core";
 import { art } from "@/art";
 import { Img } from "@/components/Img";
+import { DrinkLink } from "./DrinkDetail";
 import { en } from "@/i18n/en";
 import { cn } from "@/lib/utils";
 
@@ -21,15 +22,21 @@ export function StockBars({ s }: { s: GameState }) {
           return (
             <li
               key={d}
-              className="grid grid-cols-[1.5rem_5rem_1fr_2.5rem] items-center gap-2 text-xs"
+              className="grid grid-cols-[6.5rem_1fr_2.5rem] items-center gap-2 text-xs"
             >
-              <Img
-                src={art.drink(d)}
-                alt=""
-                className="size-6 object-contain"
-                fallback={<span className="size-6" />}
-              />
-              <span>{drinks[d].name}</span>
+              <DrinkLink
+                s={s}
+                id={d}
+                className="flex items-center gap-2 text-left hover:underline"
+              >
+                <Img
+                  src={art.drink(d)}
+                  alt=""
+                  className="size-6 object-contain"
+                  fallback={<span className="size-6" />}
+                />
+                <span>{drinks[d].name}</span>
+              </DrinkLink>
               <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                 <div
                   className={cn(
