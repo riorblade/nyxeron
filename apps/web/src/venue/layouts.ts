@@ -57,6 +57,10 @@ export interface Layout {
   h: number;
   /** Indoor hall depth when the rest (south) is an open-air deck; walls stop there. */
   hall?: number;
+  /** Wall height (default 3.2); a superclub has a double-height hall. */
+  wallHeight?: number;
+  /** Span of the concert screen behind the DJ along the back wall (default: over the stage + DJ booth). */
+  mainScreen?: { from: number; to: number };
   zones: Zone[];
   screens: ScreenSlot[];
 }
@@ -199,6 +203,8 @@ const superclub: Layout = {
   w: 30,
   h: 26,
   hall: 16,
+  wallHeight: 8,
+  mainScreen: { from: 9, to: 21 },
   screens: [
     { wall: "n", at: 2, kind: "clip" },
     { wall: "n", at: 28, kind: "clip" },

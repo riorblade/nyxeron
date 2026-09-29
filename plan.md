@@ -298,4 +298,7 @@ P0–P5 done (MVP playable). P6 Web3 and P7 deploy not started.
 - Layouts (2026-09-30): the Nightclub (Level 4) is 20×15 with VIP booths either side of the DJ and a front VIP row facing it, high tables round the floor, plain tables on edges/corners, stools along the bar. The Premium Venue (Level 5) is its own superclub/beach club (30×26): VIP balconies on a second level either side of the DJ, bars on both walls, an open-air pool deck with cabanas facing the sea. Capacity 500, 24 tables.
 - VIP lounge is built in Office → Build (Level 4+): up to 4 (club) / 10 (superclub) VIP tables a night at 3× a table's minimum spend, booked by Guest Relations; until built the area is roped off and says where to build it.
 - Staff wages are flat and ordered bartender < security < host < guest relations < MC < DJ; promoter commission flat per head.
+- Venue capacity (+15%/tier) and stock room (+50%/tier; orders past it fail) are upgradable with Coin in Build; storage per level in `levels.json`.
+- Superclub hall walls are 8 m (per-layout `wallHeight`) with a 12 m concert screen behind the DJ (`mainScreen`).
+- Stage pyro (`venue/effects.ts`): flame jets beside the stage and ceiling CO₂/mist cannons, fired on the DJ's detected kick (fire every 8 kicks, 4 at peak hours, 2 during the anthem; mist every 16 / 8).
 - Not built yet: performers/bands.

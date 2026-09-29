@@ -45,6 +45,7 @@ import {
   type Item,
 } from "./furniture";
 import { en } from "@/i18n/en";
+import { StageFx } from "./effects";
 import { Videotron, VIDEOTRON_ASPECT, type VideotronData } from "./videotron";
 
 /** World units: 1 floor tile = 1 unit; people ~1.15 tall. */
@@ -149,6 +150,13 @@ export class VenueScene {
     ctx.fillRect(0, 0, 32, 32);
   });
   private rigLight = 0;
+  /** This venue's wall height. */
+  private wallH = WALL_H;
+  /** Flame jets + mist cannons, fired on the kick while the DJ plays. */
+  private fx: StageFx | null = null;
+  private kicks = 0;
+  private prevPulse = 0;
+  private anthem = false;
   /** Pool ripple texture, drifted every frame. */
   private pool: THREE.Texture | null = null;
   private walls: {
@@ -287,6 +295,8 @@ export class VenueScene {
     this.energy = s.night.energy ?? 50;
     this.syncScreen(s);
     this.peak = isPeakTime(s);
+    this.anthem =
+      !!s.night.tactics?.djAnthem && tacticActive(s.night, "djAnthem");
     this.applyScreens();
 
     const queue = s.night.guests.filter((g) => g.state === "queue");
@@ -354,6 +364,8 @@ export class VenueScene {
 
   private build(layout: Layout, s: GameState) {
     this.disposeTree(this.root);
+    this.fx?.dispose();
+    this.fx = null;
     this.screenWall?.dispose();
     const count = (k: ScreenKind) =>
       layout.screens.filter((x) => x.kind === k).length;
@@ -388,6 +400,7 @@ export class VenueScene {
     this.screen = null;
     this.logSeen = s.log.length;
     this.layout = layout;
+    this.wallH = layout.wallHeight ?? WALL_H;
     this.zones = new Map();
     this.zoneList = new Map();
     for (const z of layout.zones) {
@@ -493,6 +506,7 @@ export class VenueScene {
     this.buildWalls(layout);
     this.buildLights();
     this.buildSpeakers(s.upgrades?.sound ?? 0);
+    this.buildFx();
     this.rigLight = s.upgrades?.lighting ?? 0;
     this.frameCamera(layout);
   }
@@ -1010,13 +1024,13 @@ export class VenueScene {
     const T = 0.12;
     const wall = (x: number, z: number, w: number, d: number) => {
       const g = new THREE.Group();
-      const body = new THREE.Mesh(new THREE.BoxGeometry(w, WALL_H, d), mat);
-      body.position.set(x + w / 2, WALL_H / 2, z + d / 2);
+      const body = new THREE.Mesh(new THREE.BoxGeometry(w, this.wallH, d), mat);
+      body.position.set(x + w / 2, this.wallH / 2, z + d / 2);
       const led = new THREE.Mesh(
         new THREE.BoxGeometry(w, 0.05, d + 0.02),
         strip,
       );
-      led.position.set(x + w / 2, WALL_H, z + d / 2);
+      led.position.set(x + w / 2, this.wallH, z + d / 2);
       g.add(body, led);
       this.root.add(g);
       return g;
@@ -1075,7 +1089,8 @@ export class VenueScene {
     const wallIndex = { n: 0, w: 1, e: 2, s: 3 } as const;
     for (const slot of layout.screens) {
       const { w: sw, h: sh } = SCREEN_SIZE[slot.kind];
-      const y = WALL_H - 0.3 - sh / 2;
+      // Clip screens hang at eye level even on a double-height wall.
+      const y = Math.min(this.wallH, 4.5) - 0.3 - sh / 2;
       const [pos, rot] = {
         n: [new THREE.Vector3(slot.at, y, 0.04), 0],
         w: [new THREE.Vector3(0.04, y, slot.at), Math.PI / 2],
@@ -1113,14 +1128,18 @@ export class VenueScene {
     const stage = this.zones.get("stage"),
       dj = this.zones.get("dj");
     if (!stage && !dj) return;
-    const x0 = Math.min(stage?.x ?? Infinity, dj?.x ?? Infinity) + 0.2;
-    const x1 =
-      Math.max(
-        stage ? stage.x + stage.w : -Infinity,
-        dj ? dj.x + dj.w : -Infinity,
-      ) - 0.2;
+    const span = layout.mainScreen;
+    const x0 = span
+      ? span.from
+      : Math.min(stage?.x ?? Infinity, dj?.x ?? Infinity) + 0.2;
+    const x1 = span
+      ? span.to
+      : Math.max(
+          stage ? stage.x + stage.w : -Infinity,
+          dj ? dj.x + dj.w : -Infinity,
+        ) - 0.2;
     const sw = x1 - x0,
-      sh = Math.min(WALL_H - 1.1, sw * 0.5625);
+      sh = Math.min(this.wallH - 1.1, sw * 0.5625);
     const idle = textTexture("NYXERON", {
       size: 120,
       weight: "800",
@@ -1128,7 +1147,7 @@ export class VenueScene {
     }).tex;
     const mat2 = new THREE.MeshBasicMaterial({ map: idle, toneMapped: false });
     const scr = new THREE.Mesh(new THREE.PlaneGeometry(sw, sh), mat2);
-    scr.position.set((x0 + x1) / 2, WALL_H - 0.25 - sh / 2, 0.04); // in front of the bezel face (z 0.025)
+    scr.position.set((x0 + x1) / 2, this.wallH - 0.25 - sh / 2, 0.04); // in front of the bezel face (z 0.025)
     const bezel = new THREE.Mesh(
       new THREE.BoxGeometry(sw + 0.16, sh + 0.16, 0.05),
       new THREE.MeshStandardMaterial({ color: 0x050507 }),
@@ -1140,7 +1159,7 @@ export class VenueScene {
     // Videotron on top of the wall, right above the DJ: shoutouts and top spenders.
     this.videotron = new Videotron();
     const vh = sw / VIDEOTRON_ASPECT;
-    const vy = WALL_H + 0.12 + vh / 2;
+    const vy = this.wallH + 0.12 + vh / 2;
     const board = new THREE.Mesh(
       new THREE.PlaneGeometry(sw, vh),
       new THREE.MeshBasicMaterial({
@@ -1572,6 +1591,49 @@ export class VenueScene {
     const names = en.videotron.names;
     const first = names[Math.floor(hash(id + 77) * names.length)]!;
     return `${first} ${String.fromCharCode(65 + Math.floor(hash(id + 78) * 26))}.`;
+  }
+
+  /** Flame jets on the floor either side of the stage, mist cannons on the ceiling over the dance floor. */
+  private buildFx() {
+    const dj = this.zones.get("dj");
+    const dance = this.zones.get("dance");
+    if (!dj || !dance) return; // pyro needs a DJ booth (Nightclub and up)
+    const stage = this.zones.get("stage");
+    const blocks = stage ? [dj, stage] : [dj];
+    const x0 = Math.min(...blocks.map((b) => b.x)) - 0.45;
+    const x1 = Math.max(...blocks.map((b) => b.x + b.w)) + 0.45;
+    const zf = Math.max(...blocks.map((b) => b.y + b.h));
+    const fire = [
+      new THREE.Vector3(x0, 0, zf - 0.9),
+      new THREE.Vector3(x0, 0, zf + 0.1),
+      new THREE.Vector3(x1, 0, zf - 0.9),
+      new THREE.Vector3(x1, 0, zf + 0.1),
+    ];
+    const y = Math.min(this.wallH, 7) - 0.35;
+    const m = 1.2;
+    const mist = [
+      [dance.x + m, dance.y + m],
+      [dance.x + dance.w - m, dance.y + m],
+      [dance.x + m, dance.y + dance.h - m],
+      [dance.x + dance.w - m, dance.y + dance.h - m],
+      [dance.x + dance.w / 2, dance.y + dance.h * 0.3],
+      [dance.x + dance.w / 2, dance.y + dance.h * 0.7],
+    ].map(([x, z]) => new THREE.Vector3(x, y, z));
+    // The cannons themselves, hanging from the ceiling.
+    const can = new THREE.MeshStandardMaterial({
+      color: 0x1a1a20,
+      metalness: 0.8,
+    });
+    for (const at of mist) {
+      const c = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.1, 0.14, 0.4, 10),
+        can,
+      );
+      c.position.set(at.x, at.y + 0.1, at.z);
+      this.root.add(c);
+    }
+    this.fx = new StageFx(fire, mist);
+    this.root.add(this.fx.group);
   }
 
   /** Speaker stacks either side of the DJ booth, one cabinet per sound tier. */
@@ -2094,6 +2156,19 @@ export class VenueScene {
     this.controls.update();
     this.screenWall?.tick(now, pulse);
     this.videotron?.draw(now, pulse, this.tron);
+
+    // Pyro on the beat: count kicks while the DJ plays; peak hours and the anthem fire more often.
+    if (this.fx) {
+      if (this.djOn && pulse > 0.85 && this.prevPulse < 0.5) {
+        this.kicks++;
+        const fireEvery = this.anthem ? 2 : this.peak ? 4 : 8;
+        const mistEvery = this.anthem || this.peak ? 8 : 16;
+        if (this.kicks % fireEvery === 0) this.fx.burstFire();
+        if (this.kicks % mistEvery === 0) this.fx.burstMist();
+      }
+      this.prevPulse = pulse;
+      this.fx.update(dt / 1000);
+    }
     this.renderer.render(this.scene, this.camera);
   }
 
