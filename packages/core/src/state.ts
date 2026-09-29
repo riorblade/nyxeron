@@ -294,7 +294,7 @@ export function createGameState(
     staff: fill(ids(staffRoles), () => 0),
     policy: DEFAULT_POLICY,
     promoters: [],
-    upgrades: { sound: 0, lighting: 0, vip: 0 },
+    upgrades: { sound: 0, lighting: 0, vip: 0, capacity: 0, storage: 0 },
     forcedInspection: false,
     sealedNights: 0,
     supplierDelay: 0,
@@ -307,7 +307,7 @@ export function createGameState(
   };
 }
 
-const NO_UPGRADES = { sound: 0, lighting: 0, vip: 0 };
+const NO_UPGRADES = { sound: 0, lighting: 0, vip: 0, capacity: 0, storage: 0 };
 
 const NIGHT_DEFAULTS = {
   energy: 30,

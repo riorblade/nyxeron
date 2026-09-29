@@ -33,6 +33,7 @@ import { dominantGenre, r04_djMultiplier } from "./rules/talent";
 import {
   active,
   barMultiplier,
+  capacityOf,
   commissionOf,
   coverBudget,
   coverFor,
@@ -257,7 +258,7 @@ export function tickNight(s: GameState): GameState {
     if (g.state === "pending" && g.arriveMinute <= m) g.state = "queue";
 
   // Door (R8 ID check, R10 capacity, cover charge).
-  const { capacity } = levelData(s.level);
+  const capacity = capacityOf(s);
   let inside = n.guests.filter(isInside).length;
   let admittedNow = 0;
   for (const g of n.guests) {

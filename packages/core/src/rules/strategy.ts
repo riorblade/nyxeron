@@ -188,6 +188,23 @@ export function buyUpgrade(s: GameState, id: UpgradeId): ActionResult {
   };
 }
 
+/** Guests allowed inside: the venue's licence plus any expansion (each tier +15%). */
+export const capacityOf = (s: GameState) =>
+  Math.round(
+    levelData(s.level).capacity *
+      (1 + (s.upgrades.capacity ?? 0) * strategy.upgrades.capacity.perTier),
+  );
+
+/** Bottles the stock room holds (each tier +50%). Stock on hand and on order both count. */
+export const storageOf = (s: GameState) =>
+  Math.round(
+    levelData(s.level).storage *
+      (1 + (s.upgrades.storage ?? 0) * strategy.upgrades.storage.perTier),
+  );
+export const stockHeld = (s: GameState) =>
+  Object.values(s.stock).reduce((a, n) => a + n, 0) +
+  s.pendingOrders.reduce((a, o) => a + o.qty, 0);
+
 /** Energy the rig adds to the room. */
 export const rigEnergy = (s: GameState) =>
   s.upgrades.sound * strategy.upgrades.sound.energyPerTier +
@@ -250,7 +267,7 @@ export function energyTarget(
   dancing: number,
 ): number {
   const e = strategy.energy;
-  const cap = levelData(s.level).capacity;
+  const cap = capacityOf(s);
   const crowd = inside + s.staff.host * strategy.hosts.crowdEquivalent;
   const full = Math.min(1, crowd / (cap * e.fullAtCapacityShare));
   const dance = inside ? Math.min(1, dancing / inside / e.danceShareForMax) : 0;

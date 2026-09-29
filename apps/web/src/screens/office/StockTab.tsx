@@ -5,6 +5,8 @@ import {
   r01_orderStock,
   setPrice,
   stockForecast,
+  stockHeld,
+  storageOf,
   suppliers,
   type DrinkId,
   type GameState,
@@ -107,6 +109,7 @@ export function StockTab({ s, compact }: { s: GameState; compact?: boolean }) {
   return (
     // Container query: the table drops columns as the panel narrows (need, cost, then the stock bar).
     <div className="space-y-5 @container">
+      <StorageMeter s={s} />
       <div className="grid grid-cols-1 gap-2.5 @xl:grid-cols-[repeat(3,1fr)_auto]">
         {ids(suppliers).map((id) => {
           const sp = suppliers[id];
@@ -319,6 +322,32 @@ export function StockTab({ s, compact }: { s: GameState; compact?: boolean }) {
           </ul>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Stock room fill: on hand + on order against the room's size. */
+function StorageMeter({ s }: { s: GameState }) {
+  const used = stockHeld(s);
+  const max = storageOf(s);
+  const pct = Math.min(100, (used / max) * 100);
+  return (
+    <div className="flex items-center gap-3" title={en.storage.hint}>
+      <span className="text-[10px] tracking-[0.2em] whitespace-nowrap text-white/60 uppercase">
+        {en.storage.label}
+      </span>
+      <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
+        <span
+          className={cn(
+            "block h-full rounded-full bg-white",
+            pct > 90 && "animate-pulse",
+          )}
+          style={{ width: `${pct}%` }}
+        />
+      </span>
+      <span className="font-mono text-xs text-white/70 tabular-nums">
+        {en.storage.value(used, max)}
+      </span>
     </div>
   );
 }

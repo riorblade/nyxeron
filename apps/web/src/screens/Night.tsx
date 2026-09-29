@@ -5,12 +5,12 @@ import {
   escortGuest,
   isAtFightRisk,
   isInside,
-  levels,
   night as nightData,
   nightOver,
   r10_forceDoorOpen,
   tickNight,
   type GameState,
+  capacityOf,
 } from "@nyxeron/core";
 import {
   useEffect,
@@ -249,7 +249,7 @@ export function Night({ s }: { s: GameState }) {
   const n = s.night!;
   const inside = n.guests.filter(isInside);
   const queue = n.guests.filter((g) => g.state === "queue").length;
-  const cap = levels[s.level].capacity;
+  const cap = capacityOf(s);
   const mood = inside.length
     ? inside.reduce((a, g) => a + g.satisfaction, 0) / inside.length
     : 0;

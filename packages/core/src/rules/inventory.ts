@@ -9,6 +9,7 @@ import {
 } from "../data";
 import { fail, type ActionResult } from "../result";
 import type { GameState } from "../state";
+import { stockHeld, storageOf } from "./strategy";
 
 export function orderCost(
   drink: DrinkId,
@@ -37,6 +38,9 @@ export function r01_orderStock(
     s.level < suppliers[supplier].minLevel
   )
     return fail("levelLocked");
+  // The stock room only holds so much (stock on hand + already on the way).
+  const room = storageOf(s) - stockHeld(s);
+  if (qty > room) return fail("storageFull", Math.max(0, room));
   const cost = orderCost(drink, qty, supplier, s.level);
   if (s.coin < cost) return fail("notEnoughCoin", cost - s.coin);
 

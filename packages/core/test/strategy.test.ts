@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   createGameState,
   bookPromoter,
+  capacityOf,
+  r01_orderStock,
+  storageOf,
   createSandbox,
   bottlePrice,
   buyUpgrade,
@@ -350,7 +353,9 @@ describe("sound & lighting", () => {
     expect(up.ok && up.state.upgrades.sound).toBe(0);
   });
   it("lift the room's energy", () => {
-    const rig = club({ upgrades: { sound: 3, lighting: 3, vip: 0 } });
+    const rig = club({
+      upgrades: { sound: 3, lighting: 3, vip: 0, capacity: 0, storage: 0 },
+    });
     const n = startNight(club()).night!;
     expect(energyTarget(rig, n, 40, 10)).toBeGreaterThan(
       energyTarget(club(), n, 40, 10),
@@ -414,7 +419,7 @@ describe("VIP lounge", () => {
   const gro = (vip: number) =>
     club({
       coin: 50_000_000,
-      upgrades: { sound: 0, lighting: 0, vip },
+      upgrades: { sound: 0, lighting: 0, vip, capacity: 0, storage: 0 },
       staff: { bartender: 4, security: 6, host: 0, relations: 3, mc: 0 },
     });
   it("is built once in the Build tab from Level 4", () => {
@@ -432,5 +437,39 @@ describe("VIP lounge", () => {
     const paid = (s: GameState) =>
       tickNight(ticks(startNight(s), minute)).nightRevenue.table;
     expect(paid(gro(1)) - paid(gro(0))).toBe(vipFor(gro(1)) * vipSpend(gro(1)));
+  });
+});
+
+describe("venue capacity and storage", () => {
+  const rich = club({ coin: 50_000_000 });
+  it("capacity grows with each expansion tier and caps the door", () => {
+    const r = buyUpgrade(rich, "capacity");
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(capacityOf(r.state)).toBeGreaterThan(capacityOf(rich));
+    // Peak crowd inside over the busiest part of a packed night.
+    const inside = (s: GameState) => {
+      let st = startNight({ ...s, hype: 100, reputation: 100 });
+      let peak = 0;
+      for (let i = 0; i < 200; i++) {
+        st = tickNight(st);
+        peak = Math.max(peak, st.night!.guests.filter(isInside).length);
+      }
+      return peak;
+    };
+    expect(inside(rich)).toBeLessThanOrEqual(capacityOf(rich));
+  });
+  it("the stock room caps orders; storage upgrades make room", () => {
+    const full = { ...rich, stock: { ...rich.stock } };
+    for (const d of ids(drinks)) full.stock[d] = 0;
+    full.stock.beer = storageOf(full) - 5;
+    const tooMuch = r01_orderStock(full, "beer", 10, "corner");
+    expect(tooMuch.ok).toBe(false);
+    expect(!tooMuch.ok && tooMuch.reason).toBe("storageFull");
+    expect(r01_orderStock(full, "beer", 5, "corner").ok).toBe(true);
+    const up = buyUpgrade(full, "storage");
+    expect(up.ok && r01_orderStock(up.state, "beer", 10, "corner").ok).toBe(
+      true,
+    );
   });
 });

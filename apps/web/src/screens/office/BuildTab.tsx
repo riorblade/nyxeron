@@ -3,7 +3,6 @@ import {
   levels,
   strategy,
   upgradeTiers,
-  POLICY_MIN_LEVEL,
   upgradeCost,
   permitActive,
   permits,
@@ -11,8 +10,18 @@ import {
   requiredPermits,
   type GameState,
   type Level,
+  capacityOf,
+  storageOf,
 } from "@nyxeron/core";
-import { Building2, Crown, Lightbulb, Lock, Speaker } from "lucide-react";
+import {
+  Building2,
+  Crown,
+  Lightbulb,
+  Lock,
+  Speaker,
+  Users,
+  Warehouse,
+} from "lucide-react";
 import { art } from "@/art";
 import { Img } from "@/components/Img";
 import { en, fmt } from "@/i18n/en";
@@ -31,7 +40,7 @@ export function BuildTab({ s }: { s: GameState }) {
   };
   return (
     <div className="space-y-6">
-      {s.level >= POLICY_MIN_LEVEL && <Rig s={s} />}
+      <Rig s={s} />
       <ol className="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-4">
         {([1, 2, 3, 4, 5] as const).map((lv) => {
           const l = levels[lv];
@@ -114,6 +123,18 @@ function Rig({ s }: { s: GameState }) {
   const act = useGame((x) => x.act);
   const t = en.rig;
   const items = [
+    {
+      id: "capacity",
+      icon: Users,
+      name: t.capacity,
+      desc: t.capacityDesc(capacityOf(s)),
+    },
+    {
+      id: "storage",
+      icon: Warehouse,
+      name: t.storage,
+      desc: t.storageDesc(storageOf(s)),
+    },
     { id: "sound", icon: Speaker, name: t.sound, desc: t.soundDesc },
     { id: "lighting", icon: Lightbulb, name: t.lighting, desc: t.lightingDesc },
     {

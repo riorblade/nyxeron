@@ -12,7 +12,8 @@
     "stayMinutes": [20, 60],
     "priceScale": 1.5,
     "tables": 0,
-    "vipTables": 0
+    "vipTables": 0,
+    "storage": 1000
   },
   "2": {
     "name": "Drink Shop",
@@ -27,7 +28,8 @@
     "stayMinutes": [20, 60],
     "priceScale": 4,
     "tables": 0,
-    "vipTables": 0
+    "vipTables": 0,
+    "storage": 1500
   },
   "3": {
     "name": "Bar & Live Music",
@@ -42,7 +44,8 @@
     "stayMinutes": [45, 150],
     "priceScale": 12,
     "tables": 4,
-    "vipTables": 0
+    "vipTables": 0,
+    "storage": 2500
   },
   "4": {
     "name": "Nightclub",
@@ -57,7 +60,8 @@
     "stayMinutes": [60, 240],
     "priceScale": 48,
     "tables": 8,
-    "vipTables": 4
+    "vipTables": 4,
+    "storage": 3000
   },
   "5": {
     "name": "Premium Venue",
@@ -72,6 +76,7 @@
     "stayMinutes": [60, 240],
     "priceScale": 60,
     "tables": 24,
-    "vipTables": 10
+    "vipTables": 10,
+    "storage": 5000
   }
 }

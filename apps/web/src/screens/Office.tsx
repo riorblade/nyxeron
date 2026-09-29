@@ -9,6 +9,7 @@ import {
   permits,
   startNight,
   type GameState,
+  capacityOf,
 } from "@nyxeron/core";
 import { Building2, DoorOpen, Lock, Moon, Target } from "lucide-react";
 import { useState, type CSSProperties, type ReactNode } from "react";
@@ -217,7 +218,7 @@ export function Office({ s }: { s: GameState }) {
                   {levels[s.level].name}
                 </div>
                 <div className="text-[11px] text-white/60">
-                  {en.office.capacity(levels[s.level].capacity)}
+                  {en.office.capacity(capacityOf(s))}
                 </div>
               </div>
             </div>

@@ -35,6 +35,8 @@ export const segmentNames: Record<string, string> = {
 type FailReason = Extract<ActionResult, { ok: false }>["reason"];
 const reasons: Record<FailReason, (short?: number) => string> = {
   notEnoughCoin: (s) => `Not enough Coin: ${fmt(s ?? 0)} short`,
+  storageFull: (s) =>
+    `Stock room full: room for ${fmt(s ?? 0)} more (upgrade storage in Build)`,
   notEnoughEnergy: () => "Not enough CEO Energy",
   notEnoughRep: (s) => `Not enough Reputation: ${fmt(s ?? 0)} short`,
   levelLocked: () => "Locked at your current level",
@@ -197,6 +199,12 @@ export const en = {
     tonight: "Tonight",
     noDj: "No DJ",
     sealed: "Venue sealed tonight by the authorities",
+  },
+
+  storage: {
+    label: "Stock room",
+    value: (used: number, max: number) => `${fmt(used)} / ${fmt(max)}`,
+    hint: "Stock on hand plus orders on the way. Upgrade in Build.",
   },
 
   stock: {
@@ -706,8 +714,14 @@ export const en = {
   },
 
   rig: {
-    title: "Sound & lighting",
-    desc: "Better rig, hotter room: more energy, happier dancers. A new venue starts with its house rig again.",
+    title: "Venue upgrades",
+    desc: "Spend Coin on the building. Everything here belongs to this venue: a new venue starts from scratch.",
+    capacity: "Venue capacity",
+    capacityDesc: (n: number) =>
+      `Knock through walls and extend the licence: +15% guests per tier. Now ${fmt(n)}.`,
+    storage: "Stock room",
+    storageDesc: (n: number) =>
+      `More shelving and cold storage: +50% bottles per tier. Now ${fmt(n)}.`,
     sound: "Sound system",
     soundDesc: "Bigger speakers: more energy, dancing feels better",
     lighting: "Lighting rig",

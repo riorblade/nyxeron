@@ -146,6 +146,16 @@
       "minLevel": 4,
       "cost": [2500],
       "energyPerTier": 0
+    },
+    "capacity": {
+      "minLevel": 1,
+      "cost": [400, 1000, 2200],
+      "perTier": 0.15
+    },
+    "storage": {
+      "minLevel": 1,
+      "cost": [150, 400, 900],
+      "perTier": 0.5
     }
   },
   "guestList": {

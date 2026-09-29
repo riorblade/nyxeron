@@ -17,6 +17,7 @@ export type ActionResult =
         | "alreadyActive"
         | "noStaff"
         | "invalidTarget"
+        | "storageFull"
         | "wrongPhase";
       short?: number;
     };

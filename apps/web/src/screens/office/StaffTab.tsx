@@ -2,9 +2,9 @@ import {
   fireStaff,
   hireStaff,
   ids,
-  levels,
   staffRoles,
   type GameState,
+  capacityOf,
 } from "@nyxeron/core";
 import { Lock, Minus, Plus, Users } from "lucide-react";
 import { art } from "@/art";
@@ -17,7 +17,7 @@ import { useGame } from "@/store";
 export function StaffTab({ s }: { s: GameState }) {
   const act = useGame((x) => x.act);
   const hint = {
-    security: en.staff.securityHint(levels[s.level].capacity),
+    security: en.staff.securityHint(capacityOf(s)),
     bartender: en.staff.bartenderHint,
     host: en.staff.hostHint,
     relations: en.staff.relationsHint,
