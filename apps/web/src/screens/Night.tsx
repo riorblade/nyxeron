@@ -22,6 +22,8 @@ import {
 } from "react";
 import {
   Briefcase,
+  Eye,
+  EyeOff,
   PanelsTopLeft,
   Shield,
   Sofa,
@@ -293,6 +295,8 @@ export function Night({ s }: { s: GameState }) {
   } = useGame();
   // Side panels start closed on tablets/phones so the venue stays visible.
   const [panel, setPanel] = useState(() => window.innerWidth >= 1024);
+  // Clean view: hide every piece of HUD and just watch the club (H toggles).
+  const [hud, setHud] = useState(true);
   const [ceoOpen, setCeoOpen] = useState(false);
   // Skipping ends the night in one go, so it asks first (easy to hit by mistake).
   const [confirmSkip, setConfirmSkip] = useState(false);
@@ -321,6 +325,7 @@ export function Night({ s }: { s: GameState }) {
         setPanel((p) => !p);
       } else if (e.key.toLowerCase() === "q") setCeoOpen((o) => !o);
       else if (e.key.toLowerCase() === "m") audio.toggleMute();
+      else if (e.key.toLowerCase() === "h") setHud((v) => !v);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -360,7 +365,7 @@ export function Night({ s }: { s: GameState }) {
       <div
         className={cn(
           "pointer-events-none absolute inset-0 flex flex-col gap-3 p-3 [&>*]:pointer-events-auto",
-          view === "edit" && "hidden",
+          (view === "edit" || !hud) && "hidden",
         )}
       >
         <TopBar
@@ -400,6 +405,14 @@ export function Night({ s }: { s: GameState }) {
                 </button>
                 <MuteButton className={seg(false)} />
               </div>
+              <button
+                className="flex size-10 items-center justify-center rounded-lg border border-white/25 bg-black/30 hover:bg-white/10"
+                onClick={() => setHud(false)}
+                aria-label={en.night.hideHud}
+                title={`${en.night.hideHud} [H]`}
+              >
+                <EyeOff className="size-4" />
+              </button>
               <button
                 className={cn(
                   "flex size-10 items-center justify-center rounded-lg border border-white/25 hover:bg-white/10",
@@ -631,6 +644,17 @@ export function Night({ s }: { s: GameState }) {
           </section>
         </footer>
       </div>
+      {!hud && view === "venue" && (
+        <button
+          className="glass fixed right-3 bottom-3 z-20 flex h-10 items-center gap-2 rounded-lg px-3 text-xs opacity-60 transition-opacity hover:opacity-100"
+          onClick={() => setHud(true)}
+          aria-label={en.night.showHud}
+          title={`${en.night.showHud} [H]`}
+        >
+          <Eye className="size-4" />
+          <span className="hidden sm:inline">{en.night.showHud} · H</span>
+        </button>
+      )}
       {/* The office opens over the club; the venue scene stays alive underneath, so coming back is seamless. */}
       {view === "office" && (
         <div className="fixed inset-0 z-30">

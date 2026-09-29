@@ -30,7 +30,7 @@ const titleOf = (file: string) =>
 /** Seconds of overlap when the DJ mixes into the next track. */
 const XFADE = 4;
 /** How long the DJ stays on one track before rotating to the next (seconds). */
-const SEGMENT = 60;
+const SEGMENT = 45;
 
 /** A DJ's set: their own track first (if they have one), then the rest of the crate. */
 export const setFor = (dj: string) => {

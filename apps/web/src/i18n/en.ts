@@ -342,6 +342,8 @@ export const en = {
     panel: "Panels [Tab]",
     speed: (x: number) => `Speed ${x}×`,
     toOffice: "Office",
+    hideHud: "Hide UI",
+    showHud: "Show UI",
     editLayout: "Layout",
     mute: "Mute",
     unmute: "Unmute",
@@ -416,7 +418,7 @@ export const en = {
     saved: (n: number) => `Saved to slot ${n}`,
     quit: "Quit to Menu",
     controls:
-      "Space pause · 1/2/3 speed · O office · L layout · Tab panel · Q CEO Call · M mute · drag rotate · right-drag / arrows pan · wheel zoom · Esc menu",
+      "Space pause · 1/2/3 speed · O office · L layout · H hide UI · Tab panel · Q CEO Call · M mute · drag rotate · right-drag / arrows pan · wheel zoom · Esc menu",
   },
 
   /** Real-world reference for each bar line: what gets poured under it. */
