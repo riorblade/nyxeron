@@ -28,7 +28,9 @@ const CRATE = [...new Set(Object.values(TRACKS).map((t) => t.file))];
 const titleOf = (file: string) =>
   Object.values(TRACKS).find((t) => t.file === file)?.title ?? file;
 /** Seconds of overlap when the DJ mixes into the next track. */
-const XFADE = 8;
+const XFADE = 4;
+/** How long the DJ stays on one track before rotating to the next (seconds). */
+const SEGMENT = 60;
 
 /** A DJ's set: their own track first (if they have one), then the rest of the crate. */
 export const setFor = (dj: string) => {
@@ -243,7 +245,13 @@ class ClubAudio {
     this.nowPlaying = "";
     if (!id) return this.listeners.forEach((f) => f());
     if (id.startsWith("set:")) {
-      this.set = { files: setFor(id.slice(4)), i: 0, failed: 0, id };
+      this.set = {
+        files: setFor(id.slice(4)),
+        i: 0,
+        failed: 0,
+        id,
+        positions: {},
+      };
       this.startFile(this.set.files[0]!, false, id);
     } else this.startFile(TRACKS[id]?.file ?? id, true, id);
   }
@@ -255,6 +263,8 @@ class ClubAudio {
     i: number;
     failed: number;
     id: string;
+    /** Where each track was when the DJ rotated away from it. */
+    positions: Record<string, number>;
   } | null = null;
 
   private fadeOutCurrent(tau: number) {
@@ -286,14 +296,26 @@ class ClubAudio {
     if (this.set) {
       this.nowPlaying = titleOf(file);
       this.listeners.forEach((f) => f());
-      // Mix into the next track a few seconds before this one ends.
+      // Pick up where this track left off last time round, so each rotation plays a new part of it.
+      const resume = this.set.positions[file] ?? 0;
+      let start = 0;
+      el.addEventListener(
+        "loadedmetadata",
+        () => {
+          // Too close to the end for a full turn: start the track over.
+          if (resume < el.duration - SEGMENT / 2)
+            el.currentTime = start = resume;
+        },
+        { once: true },
+      );
+      // Rotate after about a minute (or a few seconds before the track ends), mixing into the next one.
       el.addEventListener("timeupdate", () => {
-        if (
-          this.el === el &&
-          el.duration &&
-          el.duration - el.currentTime < XFADE
-        )
+        if (this.el !== el || !el.duration) return;
+        const ending = el.duration - el.currentTime < XFADE;
+        if (el.currentTime - start >= SEGMENT - XFADE || ending) {
+          this.set!.positions[file] = ending ? 0 : el.currentTime + XFADE;
           this.nextInSet();
+        }
       });
     }
     el.addEventListener("playing", () => this.set && (this.set.failed = 0));
