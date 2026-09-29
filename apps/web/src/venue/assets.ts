@@ -1,3 +1,4 @@
+import { djs, ids } from "@nyxeron/core";
 import { Assets, Texture } from "pixi.js";
 
 /** Venue sprites/textures (Higgsfield GPT Image 2, trimmed to 256px tall WebP). */
@@ -15,8 +16,13 @@ export const SPRITE = {
   },
 };
 
+/** Each DJ's own character behind the decks (colour), and their concert-screen loop. */
+export const djDeck = (id: string) => `/sprites/deck-${id}.webp`;
+export const djVideo = (id: string) => `/video/dj-${id}.mp4`;
+
 export interface VenueAssets {
   guests: Texture[];
+  decks: Partial<Record<string, Texture>>;
   dj?: Texture;
   dancers: Texture[];
   mc?: Texture;
@@ -52,8 +58,11 @@ export async function loadVenueAssets(): Promise<VenueAssets> {
     one(SPRITE.tex.wood),
     one(SPRITE.tex.asphalt),
   ]);
+  const deckList = await Promise.all(ids(djs).map((id) => one(djDeck(id))));
+  const decks = Object.fromEntries(ids(djs).map((id, i) => [id, deckList[i]]));
   return {
     guests,
+    decks,
     dj,
     dancers,
     mc,
@@ -76,4 +85,32 @@ function glowTexture(): Texture {
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 256, 256);
   return Texture.from(c);
+}
+
+/**
+ * The booked DJ's screen loop as a video texture (muted, looping). Resolves to undefined if the file is missing,
+ * so the LED wall just shows its idle pattern.
+ */
+export function loadDjVideo(id: string): Promise<Texture | undefined> {
+  return new Promise((resolve) => {
+    const v = document.createElement("video");
+    Object.assign(v, {
+      src: djVideo(id),
+      muted: true,
+      loop: true,
+      playsInline: true,
+      crossOrigin: "anonymous",
+      preload: "auto",
+    });
+    v.addEventListener(
+      "canplay",
+      () => {
+        v.play().catch(() => {});
+        resolve(Texture.from(v));
+      },
+      { once: true },
+    );
+    v.addEventListener("error", () => resolve(undefined), { once: true });
+    v.load();
+  });
 }

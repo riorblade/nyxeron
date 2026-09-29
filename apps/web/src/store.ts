@@ -103,3 +103,7 @@ export const useGame = create<Store>((set, get) => ({
   setRunning: (running) => set({ running }),
   setSpeed: (speed) => set({ speed }),
 }));
+
+// Dev-only handle for automated browser checks (e.g. triggering an escort); stripped from production builds.
+if (import.meta.env.DEV)
+  (window as unknown as { __game: typeof useGame }).__game = useGame;
