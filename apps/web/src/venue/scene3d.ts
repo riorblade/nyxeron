@@ -1382,6 +1382,118 @@ export class VenueScene {
     }
   }
 
+  // ---------- cinematic camera ----------
+
+  private cine = { on: false, at: 0, angle: 0 };
+  /** Told when the player takes the camera back (click / drag / wheel). */
+  onCinematicEnd?: () => void;
+
+  /** Auto camera: a loop of ~10 s shots round the venue, gliding between them. */
+  setCinematic(on: boolean) {
+    if (!this.ready || this.cine.on === on) return;
+    const c = this.camera.position,
+      t = this.controls.target;
+    this.cine = {
+      on,
+      at: performance.now(),
+      angle: Math.atan2(c.x - t.x, c.z - t.z),
+    };
+    this.controls.enabled = !on;
+    if (!on) {
+      this.camera.fov = 40;
+      this.camera.updateProjectionMatrix();
+      this.controls.update();
+    }
+  }
+
+  /** The shot list for this venue: [camera position, look-at] for progress t (0–1) through the shot. */
+  private shots(): ((t: number) => [THREE.Vector3, THREE.Vector3])[] {
+    const l = this.layout!;
+    const H = l.hall ?? l.h;
+    const R = Math.max(l.w, H);
+    const C = new THREE.Vector3(l.w / 2, 0, H / 2);
+    const a0 = this.cine.angle;
+    const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+    const mid = (z: { x: number; y: number; w: number; h: number }, y = 0) =>
+      V(z.x + z.w / 2, y, z.y + z.h / 2);
+    const list: ((t: number) => [THREE.Vector3, THREE.Vector3])[] = [
+      // Wide orbit round the whole room.
+      (t) => {
+        const a = a0 + t * 0.9;
+        return [
+          V(
+            C.x + Math.sin(a) * R * 0.85,
+            R * 0.5,
+            C.z + Math.cos(a) * R * 0.85,
+          ),
+          C,
+        ];
+      },
+    ];
+    const dance = this.zones.get("dance");
+    if (dance) {
+      const d = mid(dance, 1);
+      // Tight enough to stay over the crowd (clear of balconies and walls).
+      const r = Math.min(dance.w, dance.h) * 0.6;
+      // Low sweep round the dance floor, in the crowd.
+      list.push((t) => {
+        const a = a0 + 1.5 + t * 1.4;
+        return [V(d.x + Math.sin(a) * r, 2.7, d.z + Math.cos(a) * r), d];
+      });
+    }
+    const dj = this.zones.get("dj");
+    if (dj) {
+      const front = dj.y + dj.h;
+      const look = V(dj.x + dj.w / 2, 1.6, dj.y + dj.h * 0.5);
+      // Push in on the DJ from the floor.
+      list.push((t) => [
+        V(look.x + Math.sin(t * 2) * 2, 2.4 + (1 - t) * 2.2, front + 8 - t * 5),
+        look,
+      ]);
+    }
+    // Straight down, slowly turning.
+    list.push((t) => {
+      const a = a0 + t * 0.6;
+      return [
+        V(C.x + Math.sin(a) * 2, R * 1.05, C.z + Math.cos(a) * 2 + 0.01),
+        C,
+      ];
+    });
+    const pool = this.zones.get("pool");
+    const counter = this.zones.get("counter");
+    if (pool) {
+      const p = mid(pool, 0.3);
+      list.push((t) => {
+        const a = a0 + t * 1.1;
+        return [V(p.x + Math.sin(a) * 9, 3.6, p.z + Math.cos(a) * 9), p];
+      });
+    } else if (counter) {
+      const b = mid(counter, 1.1);
+      // Along the bar, drinks going out.
+      list.push((t) => [
+        V(b.x + 3.5, 2, b.z - counter.h * 0.4 + t * counter.h * 0.8),
+        b,
+      ]);
+    }
+    return list;
+  }
+
+  private cineFrame(now: number, dt: number, pulse: number) {
+    const SHOT_MS = 10000;
+    const list = this.shots();
+    const elapsed = now - this.cine.at;
+    const shot = list[Math.floor(elapsed / SHOT_MS) % list.length]!;
+    const [pos, look] = shot((elapsed % SHOT_MS) / SHOT_MS);
+    // Glide (a cut between shots becomes a smooth move of a second or two).
+    const k = 1 - Math.exp(-dt / 450);
+    this.camera.position.lerp(pos, k);
+    this.controls.target.lerp(look, k);
+    this.camera.lookAt(this.controls.target);
+    // A small zoom kick on the beat while the DJ plays.
+    this.camera.fov = 40 - (this.djOn ? pulse * 1.6 : 0);
+    this.camera.updateProjectionMatrix();
+  }
+
   private frameCamera(layout: Layout) {
     const target = new THREE.Vector3(layout.w / 2, 0, layout.h / 2 + 0.5);
     const d = Math.max(layout.w, layout.h) * 1.05 + 3;
@@ -2146,6 +2258,11 @@ export class VenueScene {
     };
     const pdown = (e: PointerEvent) => {
       down = { x: e.clientX, y: e.clientY };
+      // Any touch of the camera hands it back to the player.
+      if (this.cine.on) {
+        this.setCinematic(false);
+        this.onCinematicEnd?.();
+      }
       if (!this.editing || e.button !== 0) return;
       aim(e);
       const hit = ray.intersectObjects(this.pieces, true)[0];
@@ -2216,10 +2333,17 @@ export class VenueScene {
       const shelf = ray.intersectObjects(this.cabinetHits, false)[0];
       if (shelf) this.onDrinkClick?.(shelf.object.userData.drink as DrinkId);
     };
+    const wheel = () => {
+      if (!this.cine.on) return;
+      this.setCinematic(false);
+      this.onCinematicEnd?.();
+    };
     canvas.addEventListener("pointerdown", pdown);
     canvas.addEventListener("pointerup", pup);
     canvas.addEventListener("pointermove", pmove);
+    canvas.addEventListener("wheel", wheel, { passive: true });
     this.off.push(() => {
+      canvas.removeEventListener("wheel", wheel);
       canvas.removeEventListener("pointermove", pmove);
       canvas.removeEventListener("pointerdown", pdown);
       canvas.removeEventListener("pointerup", pup);
@@ -2454,7 +2578,8 @@ export class VenueScene {
     const cam = this.camera.position;
     for (const w of this.walls) w.mesh.visible = w.visible(cam);
 
-    this.controls.update();
+    if (this.cine.on) this.cineFrame(now, dt, pulse);
+    else this.controls.update();
     this.screenWall?.tick(now, pulse);
     this.videotron?.draw(now, pulse, this.tron);
 

@@ -14,6 +14,7 @@ import {
   capacityOf,
 } from "@nyxeron/core";
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -22,6 +23,7 @@ import {
 } from "react";
 import {
   Briefcase,
+  Clapperboard,
   Eye,
   EyeOff,
   PanelsTopLeft,
@@ -297,6 +299,9 @@ export function Night({ s }: { s: GameState }) {
   const [panel, setPanel] = useState(() => window.innerWidth >= 1024);
   // Clean view: hide every piece of HUD and just watch the club (H toggles).
   const [hud, setHud] = useState(true);
+  // Cinematic: the camera flies itself round the club and the HUD steps aside (C toggles).
+  const [cinematic, setCinematic] = useState(false);
+  const endCinematic = useCallback(() => setCinematic(false), []);
   const [ceoOpen, setCeoOpen] = useState(false);
   // Skipping ends the night in one go, so it asks first (easy to hit by mistake).
   const [confirmSkip, setConfirmSkip] = useState(false);
@@ -326,6 +331,7 @@ export function Night({ s }: { s: GameState }) {
       } else if (e.key.toLowerCase() === "q") setCeoOpen((o) => !o);
       else if (e.key.toLowerCase() === "m") audio.toggleMute();
       else if (e.key.toLowerCase() === "h") setHud((v) => !v);
+      else if (e.key.toLowerCase() === "c") setCinematic((v) => !v);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -360,13 +366,15 @@ export function Night({ s }: { s: GameState }) {
         s={s}
         editing={view === "edit"}
         active={view !== "office"}
+        cinematic={cinematic && view === "venue"}
+        onCinematicEnd={endCinematic}
         onDone={() => setView("venue")}
       />
       {/* HUD floats over the full-bleed venue; the layer ignores clicks except on panels. */}
       <div
         className={cn(
           "pointer-events-none absolute inset-0 flex flex-col gap-3 p-3 [&>*]:pointer-events-auto",
-          (view === "edit" || !hud) && "hidden",
+          (view === "edit" || !hud || cinematic) && "hidden",
         )}
       >
         <TopBar
@@ -406,6 +414,14 @@ export function Night({ s }: { s: GameState }) {
                 </button>
                 <MuteButton className={seg(false)} />
               </div>
+              <button
+                className="flex size-10 items-center justify-center rounded-lg border border-white/25 bg-black/30 hover:bg-white/10"
+                onClick={() => setCinematic(true)}
+                aria-label={en.night.cinematic}
+                title={`${en.night.cinematic} [C]`}
+              >
+                <Clapperboard className="size-4" />
+              </button>
               <button
                 className="flex size-10 items-center justify-center rounded-lg border border-white/25 bg-black/30 hover:bg-white/10"
                 onClick={() => setHud(false)}
@@ -645,7 +661,18 @@ export function Night({ s }: { s: GameState }) {
           </section>
         </footer>
       </div>
-      {!hud && view === "venue" && (
+      {cinematic && view === "venue" && (
+        <button
+          className="glass fixed right-3 bottom-3 z-20 flex h-10 items-center gap-2 rounded-lg px-3 text-xs opacity-60 transition-opacity hover:opacity-100"
+          onClick={() => setCinematic(false)}
+          aria-label={en.night.cinematicExit}
+          title={`${en.night.cinematicExit} [C]`}
+        >
+          <Clapperboard className="size-4" />
+          <span className="hidden sm:inline">{en.night.cinematicExit} · C</span>
+        </button>
+      )}
+      {!hud && !cinematic && view === "venue" && (
         <button
           className="glass fixed right-3 bottom-3 z-20 flex h-10 items-center gap-2 rounded-lg px-3 text-xs opacity-60 transition-opacity hover:opacity-100"
           onClick={() => setHud(true)}

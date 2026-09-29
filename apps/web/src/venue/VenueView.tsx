@@ -13,12 +13,17 @@ export function VenueView({
   s,
   editing = false,
   active = true,
+  cinematic = false,
+  onCinematicEnd,
   onDone,
 }: {
   s: GameState;
   editing?: boolean;
   /** false while another screen covers the venue: rendering pauses. */
   active?: boolean;
+  /** Auto camera (Night's C key); ends itself when the player grabs the camera. */
+  cinematic?: boolean;
+  onCinematicEnd?: () => void;
   onDone?: () => void;
 }) {
   const el = useRef<HTMLDivElement>(null);
@@ -56,6 +61,13 @@ export function VenueView({
   useEffect(() => {
     r.current?.setActive(active);
   }, [active]);
+
+  useEffect(() => {
+    const v = r.current;
+    if (!v) return;
+    v.onCinematicEnd = onCinematicEnd;
+    v.setCinematic(cinematic);
+  }, [cinematic, onCinematicEnd]);
 
   useEffect(() => {
     r.current?.setScreenPrefs({ clips, ads });
