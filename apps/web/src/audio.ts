@@ -31,8 +31,6 @@ export const TRACKS: Record<
     cues: [10, 63],
   },
   nova: { file: "dj-main-serong", title: "DJ Main Serong" },
-  kalu: { file: "kalu", title: "Kalu" },
-  sable: { file: "sable", title: "Sable" },
 };
 /** Every club track the DJs can mix from. */
 const CRATE = [...new Set(Object.values(TRACKS).map((t) => t.file))];
