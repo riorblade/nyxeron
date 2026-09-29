@@ -49,6 +49,8 @@ import {
   roundChance,
   tablesFor,
   tableSpend,
+  vipFor,
+  vipSpend,
 } from "./rules/strategy";
 import {
   clamp,
@@ -225,6 +227,7 @@ export function startNight(s: GameState): GameState {
       thinningLogged: false,
       tactics: {},
       tablesBooked: sealed ? 0 : tablesFor(s),
+      vipBooked: sealed ? 0 : vipFor(s),
       rounds: 0,
       rejectedDress: 0,
       guestListIn: 0,
@@ -328,8 +331,10 @@ export function tickNight(s: GameState): GameState {
   }
 
   // Reserved tables arrive and pay their minimum spend (bottle service).
-  if (m === strategy.relations.tablesArriveMinute && n.tablesBooked > 0) {
-    const revenue = n.tablesBooked * tableSpend(st);
+  const seated = n.tablesBooked + n.vipBooked;
+  if (m === strategy.relations.tablesArriveMinute && seated > 0) {
+    const revenue =
+      n.tablesBooked * tableSpend(st) + n.vipBooked * vipSpend(st);
     st = {
       ...st,
       coin: st.coin + revenue,
@@ -338,7 +343,7 @@ export function tickNight(s: GameState): GameState {
         table: st.nightRevenue.table + revenue,
       },
     };
-    ev({ ...at, kind: "tablesSeated", tables: n.tablesBooked, revenue });
+    ev({ ...at, kind: "tablesSeated", tables: seated, revenue });
   }
 
   // Crowd energy follows how full the room looks and how many are dancing (plus any crowd move in play).
@@ -579,6 +584,7 @@ export function endNight(s: GameState): GameState {
     peakEnergy: Math.round(n.peakEnergy),
     rounds: n.rounds,
     tables: n.tablesBooked,
+    vipTables: n.vipBooked,
     rejectedDress: n.rejectedDress,
     tacticsUsed: Object.keys(n.tactics) as NightReport["tacticsUsed"],
     guestListIn: n.guestListIn,

@@ -15,6 +15,8 @@ import {
   r18_upgradeLevel,
   runNight,
   upgradeCost,
+  vipFor,
+  vipSpend,
   defaultPrice,
   drinks,
   endNight,
@@ -348,7 +350,7 @@ describe("sound & lighting", () => {
     expect(up.ok && up.state.upgrades.sound).toBe(0);
   });
   it("lift the room's energy", () => {
-    const rig = club({ upgrades: { sound: 3, lighting: 3 } });
+    const rig = club({ upgrades: { sound: 3, lighting: 3, vip: 0 } });
     const n = startNight(club()).night!;
     expect(energyTarget(rig, n, 40, 10)).toBeGreaterThan(
       energyTarget(club(), n, 40, 10),
@@ -405,5 +407,30 @@ describe("sandbox", () => {
       ticks(startNight({ ...s, coin: -1e9, negativeCashDays: 5 }), 9999),
     );
     expect(broke.outcome).toBe(null);
+  });
+});
+
+describe("VIP lounge", () => {
+  const gro = (vip: number) =>
+    club({
+      coin: 50_000_000,
+      upgrades: { sound: 0, lighting: 0, vip },
+      staff: { bartender: 4, security: 6, host: 0, relations: 3, mc: 0 },
+    });
+  it("is built once in the Build tab from Level 4", () => {
+    expect(buyUpgrade(club({ level: 3 }), "vip").ok).toBe(false);
+    const r = buyUpgrade(gro(0), "vip");
+    expect(r.ok && r.state.upgrades.vip).toBe(1);
+    if (r.ok) expect(buyUpgrade(r.state, "vip").ok).toBe(false);
+  });
+  it("adds VIP tables (booked by guest relations) worth more than regular ones", () => {
+    expect(vipFor(gro(0))).toBe(0);
+    expect(vipFor(gro(1))).toBeGreaterThan(0);
+    expect(vipFor(gro(1))).toBeLessThanOrEqual(levels[4].vipTables);
+    expect(vipSpend(gro(1))).toBeGreaterThan(tableSpend(gro(1)));
+    const minute = strategy.relations.tablesArriveMinute;
+    const paid = (s: GameState) =>
+      tickNight(ticks(startNight(s), minute)).nightRevenue.table;
+    expect(paid(gro(1)) - paid(gro(0))).toBe(vipFor(gro(1)) * vipSpend(gro(1)));
   });
 });

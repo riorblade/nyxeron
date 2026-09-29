@@ -1,7 +1,8 @@
 import {
   buyUpgrade,
   levels,
-  MAX_UPGRADE,
+  strategy,
+  upgradeTiers,
   POLICY_MIN_LEVEL,
   upgradeCost,
   permitActive,
@@ -115,6 +116,12 @@ function Rig({ s }: { s: GameState }) {
   const items = [
     { id: "sound", icon: Speaker, name: t.sound, desc: t.soundDesc },
     { id: "lighting", icon: Lightbulb, name: t.lighting, desc: t.lightingDesc },
+    {
+      id: "vip",
+      icon: Crown,
+      name: t.vip,
+      desc: t.vipDesc(levels[s.level].vipTables),
+    },
   ] as const;
   return (
     <section className="space-y-3">
@@ -122,10 +129,12 @@ function Rig({ s }: { s: GameState }) {
         <h3 className="font-medium">{t.title}</h3>
         <p className="mt-1 text-sm text-white/65">{t.desc}</p>
       </div>
-      <ul className="grid gap-3 sm:grid-cols-2">
+      <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {items.map(({ id, icon: Icon, name, desc }) => {
-          const tier = s.upgrades[id];
+          const tier = s.upgrades[id] ?? 0;
           const cost = upgradeCost(s, id);
+          const tiers = upgradeTiers(id);
+          const locked = s.level < strategy.upgrades[id].minLevel;
           return (
             <li
               key={id}
@@ -144,7 +153,7 @@ function Rig({ s }: { s: GameState }) {
                 className="flex items-center gap-1.5"
                 aria-label={t.tier(tier)}
               >
-                {Array.from({ length: MAX_UPGRADE }, (_, i) => (
+                {Array.from({ length: tiers }, (_, i) => (
                   <span
                     key={i}
                     className={cn(
@@ -154,15 +163,23 @@ function Rig({ s }: { s: GameState }) {
                   />
                 ))}
                 <span className="ml-2 font-mono text-xs text-white/70">
-                  {t.tier(tier)}
+                  {tiers > 1 ? t.tier(tier) : tier ? t.built : t.notBuilt}
                 </span>
               </div>
               <button
-                disabled={cost === null || s.phase !== "day"}
+                disabled={cost === null || locked || s.phase !== "day"}
                 onClick={() => act((g) => buyUpgrade(g, id))}
                 className="h-9 rounded-lg border border-white/25 text-xs font-semibold tracking-[0.12em] uppercase enabled:hover:bg-white enabled:hover:text-black disabled:opacity-40"
               >
-                {cost === null ? t.maxed : t.buy(fmt(cost))}
+                {locked
+                  ? en.office.lockedTab(strategy.upgrades[id].minLevel)
+                  : cost === null
+                    ? tiers > 1
+                      ? t.maxed
+                      : t.built
+                    : tiers > 1
+                      ? t.buy(fmt(cost))
+                      : t.build(fmt(cost))}
               </button>
             </li>
           );

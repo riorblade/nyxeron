@@ -27,7 +27,7 @@ export function r18_upgradeLevel(s: GameState): ActionResult {
       level,
       coin: s.coin - cost,
       // A new venue comes with its own house rig.
-      upgrades: { sound: 0, lighting: 0 },
+      upgrades: { sound: 0, lighting: 0, vip: 0 },
       // Keep the player's markup: prices move with the venue's price scale.
       prices: Object.fromEntries(
         Object.entries(s.prices).map(([d, p]) => [

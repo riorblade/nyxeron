@@ -3,6 +3,7 @@ import {
   drinks,
   isAtFightRisk,
   isPeakTime,
+  strategy,
   active as tacticActive,
   isInside,
   night as nightData,
@@ -48,6 +49,7 @@ import { Videotron, VIDEOTRON_ASPECT, type VideotronData } from "./videotron";
 
 /** World units: 1 floor tile = 1 unit; people ~1.15 tall. */
 const PERSON_H = 1.15;
+const MAX_GUEST_SPRITES = 300;
 const BLOCK_H = 0.45;
 const WALL_H = 3.2;
 /** Club light palette: magenta, electric blue, violet, amber. */
@@ -122,16 +124,18 @@ export class VenueScene {
   private stage: Person[] = [];
   /** Hosts on shift: mingling at the tables and bar, or out on the floor during "Hosts to the floor". */
   private hosts: Person[] = [];
+  private vipGuests: Person[] = [];
   private energy = 50;
   private staffKey = "";
   private stageKey = "";
   private floats: THREE.Sprite[] = [];
   private budgets = new Map<number, number>();
-  private led: {
+  /** Every LED dance floor (a superclub has the main floor and a poolside strip). */
+  private leds: {
     mesh: THREE.InstancedMesh;
     cells: [number, number][];
     light: THREE.PointLight;
-  } | null = null;
+  }[] = [];
   private spots: { light: THREE.SpotLight; phase: number }[] = [];
   private beams: THREE.Mesh[] = [];
   /** Sparkler flames over the lounge tables during a parade. */
@@ -145,6 +149,8 @@ export class VenueScene {
     ctx.fillRect(0, 0, 32, 32);
   });
   private rigLight = 0;
+  /** Pool ripple texture, drifted every frame. */
+  private pool: THREE.Texture | null = null;
   private walls: {
     mesh: THREE.Object3D;
     visible: (c: THREE.Vector3) => boolean;
@@ -172,7 +178,10 @@ export class VenueScene {
   private videos = new Map<string, Promise<THREE.VideoTexture | undefined>>();
   private logSeen = 0;
   private layout: Layout | null = null;
+  /** First zone of each kind (most code wants "the" bar, "the" DJ booth). */
   private zones = new Map<ZoneId, Zone>();
+  /** Every zone of each kind (a club has VIP wings on both sides, two bars, several seating areas). */
+  private zoneList = new Map<ZoneId, Zone[]>();
   private djOn = false;
   private ready = false;
   private dead = false;
@@ -274,6 +283,7 @@ export class VenueScene {
     this.syncStaff(s);
     this.syncStage(s);
     this.syncHosts(s);
+    this.syncVip(s);
     this.energy = s.night.energy ?? 50;
     this.syncScreen(s);
     this.peak = isPeakTime(s);
@@ -284,6 +294,8 @@ export class VenueScene {
     for (const g of s.night.guests) {
       let p = this.guests.get(g.id);
       if (g.state === "pending" || (g.state === "left" && !p)) continue;
+      // ponytail: past this many sprites the extra guests aren't drawn (the sim still counts them). Raise with GPU headroom.
+      if (!p && this.guests.size >= MAX_GUEST_SPRITES) continue;
       const [tx, tz] = this.spot(zoneFor[g.state], g.id, queueIndex.get(g.id));
       // Guests already inside when the scene (re)opens appear in place instead of all walking in again.
       if (!p)
@@ -362,6 +374,7 @@ export class VenueScene {
     this.staff = [];
     this.stage = [];
     this.hosts = [];
+    this.vipGuests = [];
     this.staffKey = this.stageKey = this.screenDj = "";
     this.floats = [];
     this.budgets.clear();
@@ -371,11 +384,16 @@ export class VenueScene {
     this.spots = [];
     this.beams = [];
     this.walls = [];
-    this.led = null;
+    this.leds = [];
     this.screen = null;
     this.logSeen = s.log.length;
     this.layout = layout;
-    this.zones = new Map(layout.zones.map((z) => [z.id, z]));
+    this.zones = new Map();
+    this.zoneList = new Map();
+    for (const z of layout.zones) {
+      if (!this.zones.has(z.id)) this.zones.set(z.id, z);
+      this.zoneList.set(z.id, [...(this.zoneList.get(z.id) ?? []), z]);
+    }
     const tex = this.assets!.tex;
 
     const floorMat = (
@@ -414,17 +432,30 @@ export class VenueScene {
       return m;
     };
 
+    const hall = layout.hall ?? layout.h;
     plane(
       0,
       0,
       layout.w,
-      layout.h,
-      floorMat(tex.concrete, layout.w, layout.h, 0x8a8494),
+      hall,
+      floorMat(tex.concrete, layout.w, hall, 0x8a8494),
     );
     for (const z of layout.zones) {
-      const locked = z.lockedBelow !== undefined && s.level < z.lockedBelow;
+      // The VIP lounge is built from the office (Build tab); until then it is roped off.
+      const locked = z.id === "vip" && !s.upgrades?.vip;
       if (z.solid) this.buildBlock(z);
       else if (z.id === "dance") this.buildDanceFloor(z);
+      else if (z.id === "pool") this.buildPool(z);
+      else if (z.elevation) this.buildMezzanine(z, locked, tex.wood);
+      else if (z.id === "deck")
+        plane(
+          z.x,
+          z.y,
+          z.w,
+          z.h,
+          floorMat(tex.wood, z.w, z.h, 0xb08a66, 3),
+          0.002,
+        );
       else {
         const woodish =
           z.id === "seating" ||
@@ -451,8 +482,9 @@ export class VenueScene {
       }
       if (z.label) this.label(z, locked);
     }
-    const lane = this.zones.get("backbar");
-    if (lane) this.buildCabinet(lane);
+    for (const lane of this.zoneList.get("backbar") ?? [])
+      this.buildCabinet(lane, lane.x > layout.w / 2);
+    if (layout.hall) this.buildBeach(layout);
     this.furnitureRoot = new THREE.Group();
     this.root.add(this.furnitureRoot);
     this.items = loadFurniture(layout);
@@ -466,9 +498,13 @@ export class VenueScene {
   }
 
   private label(z: Zone, locked: boolean) {
+    // A roped-off VIP says how to open it, in brighter text.
     const { tex, aspect } = textTexture(
-      locked ? `${z.label} · LOCKED` : z.label!,
-      { size: 48, color: "rgba(255,255,255,.55)" },
+      locked ? `${z.label} · ${en.venue.vipLocked}` : z.label!,
+      {
+        size: 48,
+        color: locked ? "rgba(255,210,120,.9)" : "rgba(255,255,255,.55)",
+      },
     );
     const h = 0.32;
     const m = new THREE.Mesh(
@@ -482,10 +518,269 @@ export class VenueScene {
     m.rotation.x = -Math.PI / 2;
     m.position.set(
       z.x + z.w / 2,
-      (z.solid ? BLOCK_H : 0) + 0.012,
+      (z.solid ? BLOCK_H : (z.elevation ?? 0)) + 0.012,
       z.y + z.h / 2 + (z.solid ? 0 : z.h * 0.3),
     );
     this.root.add(m);
+  }
+
+  /** Height of the floor at a point (a balcony is raised; everything else is at 0). */
+  private elevationAt(x: number, z: number): number {
+    for (const q of this.layout?.zones ?? [])
+      if (
+        q.elevation &&
+        x >= q.x &&
+        x <= q.x + q.w &&
+        z >= q.y &&
+        z <= q.y + q.h
+      )
+        return q.elevation;
+    return 0;
+  }
+
+  /** Balcony: a slab on pillars, wood floor, glass railing with an LED strip, stairs down to the main floor. */
+  private buildMezzanine(z: Zone, locked: boolean, wood?: THREE.Texture) {
+    const h = z.elevation!;
+    const slab = new THREE.Mesh(
+      new THREE.BoxGeometry(z.w, 0.22, z.h),
+      new THREE.MeshStandardMaterial({
+        color: 0x1c1826,
+        roughness: 0.6,
+        metalness: 0.3,
+      }),
+    );
+    slab.position.set(z.x + z.w / 2, h - 0.11, z.y + z.h / 2);
+    const top = new THREE.Mesh(
+      new THREE.PlaneGeometry(z.w, z.h),
+      new THREE.MeshStandardMaterial({
+        color: locked ? 0x3a3340 : 0xc9a27e,
+        map: wood ?? null,
+        roughness: 0.8,
+      }),
+    );
+    top.rotation.x = -Math.PI / 2;
+    top.position.set(z.x + z.w / 2, h + 0.003, z.y + z.h / 2);
+    this.root.add(slab, top);
+    const pillarMat = new THREE.MeshStandardMaterial({
+      color: 0x2a2433,
+      metalness: 0.5,
+      roughness: 0.4,
+    });
+    for (const [px, pz] of [
+      [z.x + 0.2, z.y + z.h - 0.2],
+      [z.x + z.w - 0.2, z.y + z.h - 0.2],
+      [z.x + z.w / 2, z.y + z.h - 0.2],
+    ] as const) {
+      const pillar = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.1, 0.1, h, 12),
+        pillarMat,
+      );
+      pillar.position.set(px, h / 2, pz);
+      this.root.add(pillar);
+    }
+    // Glass railing on the open (south) edge and the side facing the room's middle, LED strip on top.
+    const glass = new THREE.MeshStandardMaterial({
+      color: 0x9fd8ff,
+      transparent: true,
+      opacity: 0.18,
+      roughness: 0.1,
+      metalness: 0.6,
+      depthWrite: false,
+    });
+    const led = new THREE.MeshBasicMaterial({ color: PALETTE[1] });
+    const inner = z.x + z.w / 2 < (this.layout?.w ?? 0) / 2 ? z.x + z.w : z.x;
+    const rails: [number, number, number, number][] = [
+      [z.x + z.w / 2, z.y + z.h, z.w, 0.04], // south edge
+      [inner, z.y + z.h / 2, 0.04, z.h], // edge facing the DJ / floor
+    ];
+    for (const [rx, rz, rw, rd] of rails) {
+      const pane = new THREE.Mesh(new THREE.BoxGeometry(rw, 0.9, rd), glass);
+      pane.position.set(rx, h + 0.45, rz);
+      const strip = new THREE.Mesh(
+        new THREE.BoxGeometry(Math.max(rw, 0.05), 0.04, Math.max(rd, 0.05)),
+        led,
+      );
+      strip.position.set(rx, h + 0.92, rz);
+      this.root.add(pane, strip);
+    }
+    // Stairs down from the balcony's outer south corner.
+    const outer = inner === z.x ? z.x + z.w - 0.6 : z.x + 0.6;
+    const steps = 8;
+    const stepMat = new THREE.MeshStandardMaterial({
+      color: 0x241f2e,
+      roughness: 0.7,
+    });
+    for (let i = 0; i < steps; i++) {
+      const st = new THREE.Mesh(
+        new THREE.BoxGeometry(1, (h / steps) * (i + 1), 0.32),
+        stepMat,
+      );
+      st.position.set(
+        outer,
+        ((h / steps) * (i + 1)) / 2,
+        z.y + z.h + 0.16 + (steps - 1 - i) * 0.32,
+      );
+      this.root.add(st);
+    }
+  }
+
+  /** Pool: stone rim, glowing water whose ripple texture drifts in frame(), underwater light. */
+  private buildPool(z: Zone) {
+    const rim = new THREE.Mesh(
+      new THREE.BoxGeometry(z.w + 0.5, 0.12, z.h + 0.5),
+      new THREE.MeshStandardMaterial({ color: 0xe8e2d6, roughness: 0.9 }),
+    );
+    rim.position.set(z.x + z.w / 2, 0.06, z.y + z.h / 2);
+    const ripple = canvasTexture(128, 128, (ctx) => {
+      ctx.fillStyle = "#0a6f8f";
+      ctx.fillRect(0, 0, 128, 128);
+      for (let i = 0; i < 70; i++) {
+        ctx.strokeStyle = `rgba(160,240,255,${0.15 + Math.random() * 0.25})`;
+        ctx.lineWidth = 1 + Math.random() * 2;
+        ctx.beginPath();
+        const x = Math.random() * 128,
+          y = Math.random() * 128;
+        ctx.ellipse(
+          x,
+          y,
+          6 + Math.random() * 14,
+          2 + Math.random() * 4,
+          0,
+          0,
+          Math.PI * 2,
+        );
+        ctx.stroke();
+      }
+    });
+    ripple.wrapS = ripple.wrapT = THREE.RepeatWrapping;
+    ripple.repeat.set(z.w / 3, z.h / 3);
+    const water = new THREE.Mesh(
+      new THREE.PlaneGeometry(z.w, z.h),
+      new THREE.MeshStandardMaterial({
+        map: ripple,
+        color: 0x5fd6ff,
+        emissive: 0x0b7fa8,
+        emissiveIntensity: 0.9,
+        roughness: 0.15,
+        metalness: 0.2,
+      }),
+    );
+    water.rotation.x = -Math.PI / 2;
+    water.position.set(z.x + z.w / 2, 0.125, z.y + z.h / 2);
+    const light = new THREE.PointLight(0x33d6ff, 6, 10, 1.4);
+    light.position.set(z.x + z.w / 2, 0.6, z.y + z.h / 2);
+    this.root.add(rim, water, light);
+    this.pool = ripple;
+  }
+
+  /** Open-air side: the sea to the horizon, a moon, palms on the deck corners, a low glass rail round the deck. */
+  private buildBeach(layout: Layout) {
+    const hall = layout.hall!;
+    const sea = new THREE.Mesh(
+      new THREE.PlaneGeometry(layout.w + 120, 80),
+      new THREE.MeshStandardMaterial({
+        color: 0x16406e,
+        emissive: 0x0a2447,
+        emissiveIntensity: 0.8,
+        roughness: 0.2,
+        metalness: 0.4,
+      }),
+    );
+    sea.rotation.x = -Math.PI / 2;
+    sea.position.set(layout.w / 2, -0.3, layout.h + 40);
+    const sand = new THREE.Mesh(
+      new THREE.PlaneGeometry(layout.w + 20, 3),
+      new THREE.MeshStandardMaterial({ color: 0x8a7a60, roughness: 1 }),
+    );
+    sand.rotation.x = -Math.PI / 2;
+    sand.position.set(layout.w / 2, -0.15, layout.h + 1.5);
+    const moon = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: canvasTexture(64, 64, (ctx) => {
+          const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+          g.addColorStop(0, "rgba(255,250,230,1)");
+          g.addColorStop(0.45, "rgba(255,245,210,.9)");
+          g.addColorStop(1, "rgba(255,240,200,0)");
+          ctx.fillStyle = g;
+          ctx.fillRect(0, 0, 64, 64);
+        }),
+        transparent: true,
+        fog: false,
+      }),
+    );
+    moon.scale.set(9, 9, 1);
+    moon.position.set(layout.w * 0.7, 14, layout.h + 60);
+    // Moonlight on the water.
+    const glint = new THREE.Mesh(
+      new THREE.PlaneGeometry(3, 60),
+      new THREE.MeshBasicMaterial({
+        color: 0xfff1c9,
+        transparent: true,
+        opacity: 0.12,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
+    glint.rotation.x = -Math.PI / 2;
+    glint.position.set(layout.w * 0.7, -0.28, layout.h + 32);
+    this.root.add(sea, sand, moon, glint);
+
+    const rail = new THREE.MeshStandardMaterial({
+      color: 0xbfe6ff,
+      transparent: true,
+      opacity: 0.16,
+      depthWrite: false,
+    });
+    for (const [x, z, w, d] of [
+      [layout.w / 2, layout.h, layout.w, 0.05],
+      [0, (hall + layout.h) / 2, 0.05, layout.h - hall],
+      [layout.w, (hall + layout.h) / 2, 0.05, layout.h - hall],
+    ] as const) {
+      const pane = new THREE.Mesh(new THREE.BoxGeometry(w, 0.9, d), rail);
+      pane.position.set(x, 0.45, z);
+      this.root.add(pane);
+    }
+
+    const trunk = new THREE.MeshStandardMaterial({
+      color: 0x5a4030,
+      roughness: 1,
+    });
+    const leaf = new THREE.MeshStandardMaterial({
+      color: 0x1f6b3a,
+      roughness: 0.8,
+      side: THREE.DoubleSide,
+    });
+    for (const [px, pz] of [
+      [0.8, hall + 0.8],
+      [layout.w - 0.8, hall + 0.8],
+      [0.8, layout.h - 0.8],
+      [layout.w - 0.8, layout.h - 0.8],
+    ] as const) {
+      const palm = new THREE.Group();
+      for (let i = 0; i < 6; i++) {
+        const seg = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.1, 0.13, 0.6, 8),
+          trunk,
+        );
+        seg.position.set(Math.sin(i * 0.35) * 0.12 * i, 0.3 + i * 0.58, 0);
+        palm.add(seg);
+      }
+      for (let i = 0; i < 7; i++) {
+        const frond = new THREE.Mesh(
+          new THREE.ConeGeometry(0.28, 1.9, 4, 1, true),
+          leaf,
+        );
+        const pivot = new THREE.Group();
+        pivot.position.set(Math.sin(5 * 0.35) * 0.6, 0, 0);
+        pivot.rotation.y = (i / 7) * Math.PI * 2;
+        frond.position.set(0.85, 3.45, 0);
+        frond.rotation.set(0, 0, -1.2);
+        pivot.add(frond);
+        palm.add(pivot);
+      }
+      palm.position.set(px, 0, pz);
+      this.root.add(palm);
+    }
   }
 
   /** Furniture as a solid box with coloured LED trim along its top edges. */
@@ -550,11 +845,11 @@ export class VenueScene {
     const light = new THREE.PointLight(0xffffff, 0, 9, 1.2);
     light.position.set(z.x + z.w / 2, 0.8, z.y + z.h / 2);
     this.root.add(light);
-    this.led = { mesh, cells, light };
+    this.leds.push({ mesh, cells, light });
   }
 
   /** Back-bar liquor cabinet: shelves of bottles in front of a warm backlight, plus a glass-door fridge. */
-  private buildCabinet(lane: Zone) {
+  private buildCabinet(lane: Zone, eastWall = false) {
     const alongX = lane.w >= lane.h;
     const len = alongX ? lane.w : lane.h;
     const depth = 0.34,
@@ -693,7 +988,11 @@ export class VenueScene {
     g.add(door);
 
     if (alongX) g.position.set(lane.x, 0, lane.y);
-    else {
+    else if (eastWall) {
+      // Against the east wall, facing west into the room: local x → world +z, local depth → world −x.
+      g.rotation.y = -Math.PI / 2;
+      g.position.set(lane.x + lane.w, 0, lane.y);
+    } else {
       // Lane runs along z (cabinet against the x = lane.x wall): local x → world −z, local depth → world +x.
       g.rotation.y = Math.PI / 2;
       g.position.set(lane.x, 0, lane.y + len);
@@ -722,20 +1021,55 @@ export class VenueScene {
       this.root.add(g);
       return g;
     };
-    const { w, h } = layout;
-    this.walls.push({ mesh: wall(0, -T, w, T), visible: (c) => c.z > 0 });
-    this.walls.push({ mesh: wall(-T, 0, T, h), visible: (c) => c.x > 0 });
-    this.walls.push({ mesh: wall(w, 0, T, h), visible: (c) => c.x < w });
+    const { w } = layout;
+    // Walls stop at the hall when the rest is an open-air deck.
+    const h = layout.hall ?? layout.h;
     const door = this.zones.get("entrance");
-    const south = new THREE.Group();
-    if (door && door.y + door.h >= h) {
-      south.add(
-        wall(0, h, door.x, T),
-        wall(door.x + door.w, h, w - door.x - door.w, T),
-      );
-    } else south.add(wall(0, h, w, T));
-    this.root.add(south);
-    this.walls.push({ mesh: south, visible: (c) => c.z < h });
+    /** One side of the room, with a gap where the entrance meets it. */
+    const side = (
+      horizontal: boolean,
+      fixed: number,
+      len: number,
+      doorOn: boolean,
+    ) => {
+      const g = new THREE.Group();
+      const seg = (from: number, to: number) => {
+        if (to - from <= 0.01) return;
+        g.add(
+          horizontal
+            ? wall(from, fixed, to - from, T)
+            : wall(fixed, from, T, to - from),
+        );
+      };
+      if (door && doorOn) {
+        const [a, b] = horizontal
+          ? [door.x, door.x + door.w]
+          : [door.y, door.y + door.h];
+        seg(0, a);
+        seg(b, len);
+      } else seg(0, len);
+      this.root.add(g);
+      return g;
+    };
+    this.walls.push({
+      mesh: side(true, -T, w, !!door && door.y <= 0),
+      visible: (c) => c.z > 0,
+    });
+    this.walls.push({
+      mesh: side(false, -T, h, !!door && door.x <= 0),
+      visible: (c) => c.x > 0,
+    });
+    this.walls.push({
+      mesh: side(false, w, h, !!door && door.x + door.w >= w),
+      visible: (c) => c.x < w,
+    });
+    // No south wall on a beach club: the hall opens straight onto the deck.
+    this.walls.push({
+      mesh: layout.hall
+        ? new THREE.Group()
+        : side(true, h, w, !!door && door.y + door.h >= h),
+      visible: (c) => c.z < h,
+    });
 
     // Clip / ad screens on the walls, facing into the room (each hides with its wall).
     const wallIndex = { n: 0, w: 1, e: 2, s: 3 } as const;
@@ -918,7 +1252,7 @@ export class VenueScene {
     this.furnitureRoot.clear();
     this.pieces = this.items.map((it, i) => {
       const g = buildFurniture(it.kind, PALETTE[i % PALETTE.length]!);
-      g.position.set(it.x, 0, it.z);
+      g.position.set(it.x, this.elevationAt(it.x, it.z), it.z);
       g.rotation.y = (it.rot * Math.PI) / 2;
       this.furnitureRoot.add(g);
       return g;
@@ -1123,21 +1457,27 @@ export class VenueScene {
   /** Bartenders and security follow the hired counts. Two bodyguards hold the door, the rest patrol. */
   private syncStaff(s: GameState) {
     const a = this.assets!;
-    const bartenders = Math.min(3, Math.max(1, s.staff.bartender)); // the owner pours at the booth
+    const bartenders = Math.min(6, Math.max(1, s.staff.bartender)); // the owner pours at the booth
     const bouncers = Math.min(5, s.staff.security);
     const key = `${bartenders}|${bouncers}`;
     if (key === this.staffKey) return;
     this.staffKey = key;
     this.staff.forEach((p) => this.remove(p));
     this.staff = [];
-    const lane = this.zones.get("backbar");
-    for (let i = 0; i < bartenders && lane; i++) {
-      const along = (i + 0.5) / bartenders;
-      // In the lane between the counter and the cabinet.
+    const lanes = this.zoneList.get("backbar") ?? [];
+    for (let i = 0; i < bartenders && lanes.length; i++) {
+      // Spread over every bar; in the lane between the counter and the cabinet.
+      const lane = lanes[i % lanes.length]!;
+      const perLane = Math.ceil(bartenders / lanes.length);
+      const along = (Math.floor(i / lanes.length) + 0.5) / perLane;
+      const east = lane.x > (this.layout?.w ?? 0) / 2;
       const [x, z] =
         lane.w >= lane.h
           ? [lane.x + along * lane.w, lane.y + 0.62]
-          : [lane.x + 0.62, lane.y + along * lane.h];
+          : [
+              east ? lane.x + lane.w - 0.62 : lane.x + 0.62,
+              lane.y + along * lane.h,
+            ];
       this.staff.push(
         this.addPerson(
           a.bartenders[i % Math.max(1, a.bartenders.length)],
@@ -1288,6 +1628,33 @@ export class VenueScene {
       }
   }
 
+  /** VIP tables are "seated" guests with no sim bodies: once they arrive, fill the VIP sofas with people. */
+  private syncVip(s: GameState) {
+    const n = s.night!;
+    const seats = this.seats.get("vip") ?? [];
+    const want =
+      s.upgrades?.vip && n.minute >= strategy.relations.tablesArriveMinute
+        ? Math.min(seats.length, (n.vipBooked ?? 0) * 3)
+        : 0;
+    if (want === this.vipGuests.length) return;
+    this.vipGuests.forEach((p) => this.remove(p));
+    this.vipGuests = [];
+    const all = this.assets!.guests;
+    for (let i = 0; i < want; i++) {
+      const [x, z] = seats[i]!;
+      const p = this.addPerson(
+        all[Math.floor(hash(i + 3000) * all.length)],
+        PERSON_H * 0.95,
+        x,
+        z,
+        "idle",
+        3000 + i,
+      );
+      p.lift = this.elevationAt(x, z);
+      this.vipGuests.push(p);
+    }
+  }
+
   private syncHosts(s: GameState) {
     const n = s.night!;
     const count = Math.min(6, s.staff.host ?? 0);
@@ -1354,7 +1721,14 @@ export class VenueScene {
     id: number,
     queueIndex?: number,
   ): [number, number] {
-    const z = this.zones.get(zone) ?? this.zones.get("dance")!;
+    // Several areas of the same kind: pick one per guest, weighted by size (balconies are for VIP tables only).
+    const list = (this.zoneList.get(zone) ?? []).filter((q) => !q.elevation);
+    let z = this.zones.get(zone) ?? this.zones.get("dance")!;
+    if (list.length > 1 && queueIndex === undefined) {
+      const total = list.reduce((a, q) => a + q.w * q.h, 0);
+      let r = hash(id + 911) * total;
+      z = list.find((q) => (r -= q.w * q.h) < 0) ?? list[0]!;
+    }
     if (queueIndex !== undefined) {
       const perRow = Math.max(1, Math.floor(z.w * 2));
       return [
@@ -1479,7 +1853,11 @@ export class VenueScene {
       if (!ray.ray.intersectPlane(floor, hitPoint)) return;
       const it = this.items[drag.i]!;
       Object.assign(it, this.snap(hitPoint.x + drag.dx, hitPoint.z + drag.dz));
-      this.pieces[drag.i]!.position.set(it.x, 0, it.z);
+      this.pieces[drag.i]!.position.set(
+        it.x,
+        this.elevationAt(it.x, it.z),
+        it.z,
+      );
       this.selBox?.update();
     };
     const pup = (e: PointerEvent) => {
@@ -1641,6 +2019,8 @@ export class VenueScene {
       animate(p);
     }
     this.stage.forEach(animate);
+    this.vipGuests.forEach(animate);
+    if (this.pool) this.pool.offset.set((tSec * 0.03) % 1, (tSec * 0.05) % 1);
     for (const p of this.hosts) {
       p.g.position.x += (p.tx - p.g.position.x) * k * 0.6;
       p.g.position.z += (p.tz - p.g.position.z) * k * 0.6;
@@ -1656,9 +2036,9 @@ export class VenueScene {
     }
 
     // LED floor colour sweep; the floor light takes the average hue.
-    if (this.led) {
+    for (const led of this.leds) {
       const c = new THREE.Color();
-      this.led.cells.forEach(([x, y], i) => {
+      led.cells.forEach(([x, y], i) => {
         const wave = 0.5 + 0.5 * Math.sin(tSec * 2.2 - (x + y) * 0.9);
         const level = this.djOn
           ? (0.12 + wave * 0.45 + pulse * 0.3) * vibe
@@ -1668,11 +2048,11 @@ export class VenueScene {
           0.9,
           0.5,
         ).multiplyScalar(level);
-        this.led!.mesh.setColorAt(i, c);
+        led.mesh.setColorAt(i, c);
       });
-      this.led.mesh.instanceColor!.needsUpdate = true;
-      this.led.light.color.setHSL(((tSec * 40) % 360) / 360, 0.9, 0.55);
-      this.led.light.intensity = this.djOn ? 3 + pulse * 4 : 0.6;
+      led.mesh.instanceColor!.needsUpdate = true;
+      led.light.color.setHSL(((tSec * 40) % 360) / 360, 0.9, 0.55);
+      led.light.intensity = this.djOn ? 3 + pulse * 4 : 0.6;
     }
     const dz = this.zones.get("dance");
     if (dz)

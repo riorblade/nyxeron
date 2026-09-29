@@ -44,7 +44,9 @@
     "upsell": 0.15,
     "tablesPerStaff": 3,
     "tableMinSpend": 250,
-    "tablesArriveMinute": 90
+    "tablesArriveMinute": 90,
+    "vipPerStaff": 1.5,
+    "vipSpendMultiplier": 3
   },
   "energy": {
     "start": 30,
@@ -131,12 +133,19 @@
     "sound": {
       "cost": [300, 900, 2000],
       "energyPerTier": 5,
-      "danceSatisfactionPerTier": 0.1
+      "danceSatisfactionPerTier": 0.1,
+      "minLevel": 3
     },
     "lighting": {
       "cost": [250, 800, 1800],
       "energyPerTier": 5,
-      "satisfactionPerTier": 0.01
+      "satisfactionPerTier": 0.01,
+      "minLevel": 3
+    },
+    "vip": {
+      "minLevel": 4,
+      "cost": [2500],
+      "energyPerTier": 0
     }
   },
   "guestList": {

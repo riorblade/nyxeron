@@ -172,6 +172,8 @@ export interface NightState {
   tactics: Partial<Record<TacticId, TacticState>>;
   /** Table reservations made by Guest Relations; seated (and paid) at tablesArriveMinute. */
   tablesBooked: number;
+  /** VIP lounge tables booked tonight (needs the VIP lounge built). */
+  vipBooked: number;
   /** Drinks guests bought for someone else. */
   rounds: number;
   rejectedDress: number;
@@ -202,6 +204,7 @@ export interface NightReport {
   peakEnergy: number;
   rounds: number;
   tables: number;
+  vipTables: number;
   rejectedDress: number;
   tacticsUsed: TacticId[];
   guestListIn: number;
@@ -291,7 +294,7 @@ export function createGameState(
     staff: fill(ids(staffRoles), () => 0),
     policy: DEFAULT_POLICY,
     promoters: [],
-    upgrades: { sound: 0, lighting: 0 },
+    upgrades: { sound: 0, lighting: 0, vip: 0 },
     forcedInspection: false,
     sealedNights: 0,
     supplierDelay: 0,
@@ -304,7 +307,7 @@ export function createGameState(
   };
 }
 
-const NO_UPGRADES = { sound: 0, lighting: 0 };
+const NO_UPGRADES = { sound: 0, lighting: 0, vip: 0 };
 
 const NIGHT_DEFAULTS = {
   energy: 30,
@@ -313,6 +316,7 @@ const NIGHT_DEFAULTS = {
   thinningLogged: false,
   tactics: {},
   tablesBooked: 0,
+  vipBooked: 0,
   rounds: 0,
   rejectedDress: 0,
   guestListIn: 0,

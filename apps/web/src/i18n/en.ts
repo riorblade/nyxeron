@@ -715,6 +715,14 @@ export const en = {
     tier: (t: number) => `Tier ${t} / 3`,
     buy: (c: string) => `Upgrade · ${c} C`,
     maxed: "Maxed out",
+    vip: "VIP lounge",
+    vipDesc: (n: number) =>
+      n
+        ? `Opens the roped-off VIP area: up to ${n} VIP tables a night (3× a table's minimum spend), booked by Guest Relations.`
+        : "Needs a Nightclub (Level 4) or bigger.",
+    build: (c: string) => `Build · ${c} C`,
+    built: "Built",
+    notBuilt: "Not built",
   },
 
   moves: {
@@ -778,6 +786,10 @@ export const en = {
     unlock: (lv: number) => `Unlocks at Lv ${lv}`,
     close: "Close",
     open: "Show drink details",
+  },
+
+  venue: {
+    vipLocked: "BUILD IT: OFFICE → BUILD",
   },
 
   videotron: {

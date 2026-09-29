@@ -42,6 +42,56 @@ export function seatsOf(it: Item): [number, number][] {
 
 // ---------- defaults ----------
 
+/** Quarter turn that points an item's front (+z at rot 0) from (x, z) toward (tx, tz). */
+function facing(x: number, z: number, tx: number, tz: number): number {
+  const dx = tx - x,
+    dz = tz - z;
+  if (Math.abs(dx) > Math.abs(dz)) return dx > 0 ? 1 : 3;
+  return dz > 0 ? 0 : 2;
+}
+/** Unit vector of a quarter turn's front, and of its right-hand side. */
+const fwd = (rot: number): [number, number] =>
+  [
+    [0, 1],
+    [1, 0],
+    [0, -1],
+    [-1, 0],
+  ][rot]! as [number, number];
+
+/**
+ * Fill a zone with repeating "cells" laid out along the direction everything faces (depth) and across it (width);
+ * `cell` puts the items for one cell centred at (cx, cz).
+ */
+function grid(
+  z: Zone,
+  rot: number,
+  depth: number,
+  width: number,
+  cell: (cx: number, cz: number, out: Item[]) => void,
+  out: Item[],
+) {
+  const alongX = rot === 1 || rot === 3; // facing ±x: rows run along z
+  const [dw, dd] = alongX ? [z.h, z.w] : [z.w, z.h];
+  const nw = Math.max(1, Math.floor(dw / width));
+  const nd = Math.max(1, Math.floor(dd / depth));
+  for (let a = 0; a < nw; a++)
+    for (let b = 0; b < nd; b++) {
+      const u = (a + 0.5) * (dw / nw); // across
+      const v = (b + 0.5) * (dd / nd); // depth
+      const [cx, cz] = alongX ? [z.x + v, z.y + u] : [z.x + u, z.y + v];
+      cell(cx, cz, out);
+    }
+}
+
+/** Sofa booth facing `rot`: sofa behind, low table in front. */
+const booth = (rot: number) => (cx: number, cz: number, out: Item[]) => {
+  const [fx, fz] = fwd(rot);
+  out.push(
+    { kind: "sofa", x: cx - fx * 0.45, z: cz - fz * 0.45, rot },
+    { kind: "table", x: cx + fx * 0.5, z: cz + fz * 0.5, rot },
+  );
+};
+
 /** A lounge set: sofa behind a low table, two chairs across it. Takes ~2 × 2.2 tiles. */
 function loungeSets(z: Zone, out: Item[]) {
   for (let cz = z.y + 1; cz + 1 <= z.y + z.h; cz += 2.4)
@@ -57,28 +107,78 @@ function loungeSets(z: Zone, out: Item[]) {
 
 export function defaultFurniture(layout: Layout): Item[] {
   const out: Item[] = [];
-  const zone = (id: Zone["id"]) => layout.zones.find((z) => z.id === id);
-  const seating = zone("seating");
-  if (seating) {
-    if (layout.name === "booth")
-      for (let x = seating.x + 0.8; x < seating.x + seating.w; x += 1.5)
-        for (let z = seating.y + 0.9; z < seating.y + seating.h; z += 1.6)
-          out.push({ kind: "highTable", x, z, rot: 0 });
-    else loungeSets(seating, out);
+  const first = (id: Zone["id"]) => layout.zones.find((z) => z.id === id);
+  const center = (z: Zone | undefined): [number, number] | null =>
+    z ? [z.x + z.w / 2, z.y + z.h / 2] : null;
+  const dj = center(first("dj") ?? first("stage"));
+  const pool = center(first("pool"));
+  const floor = center(first("dance"));
+
+  for (const z of layout.zones) {
+    const [cx, cz] = [z.x + z.w / 2, z.y + z.h / 2];
+    const style =
+      z.furniture ??
+      (z.id === "vip"
+        ? "vip"
+        : z.id === "seating"
+          ? layout.name === "booth"
+            ? "high"
+            : "lounge"
+          : null);
+    if (!style) continue;
+    if (style === "vip") {
+      // Booths look straight at the DJ (from the side wings or across the floor).
+      const [tx, tz] = dj ?? floor ?? [cx, 0];
+      const rot = facing(cx, cz, tx, tz);
+      grid(z, rot, 2, 1.8, booth(rot), out);
+    } else if (style === "cabana") {
+      const [tx, tz] = pool ?? [cx, cz + 1];
+      const rot = facing(cx, cz, tx, tz);
+      grid(z, rot, 2.4, 2, booth(rot), out);
+    } else if (style === "high")
+      grid(
+        z,
+        0,
+        1.6,
+        1.5,
+        (x, y, o) => o.push({ kind: "highTable", x, z: y, rot: 0 }),
+        out,
+      );
+    else if (style === "tables")
+      grid(
+        z,
+        0,
+        2,
+        1.8,
+        (x, y, o) =>
+          o.push(
+            { kind: "table", x, z: y, rot: 0 },
+            { kind: "chair", x, z: y - 0.62, rot: 0 },
+            { kind: "chair", x, z: y + 0.62, rot: 2 },
+          ),
+        out,
+      );
+    else loungeSets(z, out);
   }
-  const vip = zone("vip");
-  if (vip) loungeSets(vip, out);
-  // Stools along the customer side of the counter.
-  const counter = zone("counter");
-  if (counter) {
+
+  // Stools along the customer side of every bar counter.
+  for (const counter of layout.zones.filter((z) => z.id === "counter")) {
+    const front = layout.zones.find(
+      (z) =>
+        z.id === "barFront" &&
+        (Math.abs(z.x - (counter.x + counter.w)) < 0.01 ||
+          Math.abs(z.x + z.w - counter.x) < 0.01 ||
+          Math.abs(z.y - (counter.y + counter.h)) < 0.01),
+    );
     const vertical = counter.h > counter.w;
     const len = vertical ? counter.h : counter.w;
+    const west = front ? front.x < counter.x : false;
     for (let t = 0.5; t < len; t += 0.85)
       out.push(
         vertical
           ? {
               kind: "stool",
-              x: counter.x + counter.w + 0.3,
+              x: west ? counter.x - 0.3 : counter.x + counter.w + 0.3,
               z: counter.y + t,
               rot: 0,
             }
@@ -95,7 +195,8 @@ export function defaultFurniture(layout: Layout): Item[] {
 
 // ---------- persistence ----------
 
-const key = (layout: Layout) => `nyxeron.furniture.${layout.name}`;
+// v2: the club was redesigned (bigger, VIP wings), so older arrangements no longer fit.
+const key = (layout: Layout) => `nyxeron.furniture.${layout.name}.v2`;
 
 export function loadFurniture(layout: Layout): Item[] {
   try {

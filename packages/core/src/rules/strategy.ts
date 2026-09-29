@@ -156,8 +156,11 @@ export function bookPromoter(s: GameState, id: PromoterId): ActionResult {
 // ---------- sound & lighting ----------
 
 export const MAX_UPGRADE = 3;
+/** Tiers an upgrade has (sound/lighting 3, the VIP lounge 1). */
+export const upgradeTiers = (id: UpgradeId) =>
+  strategy.upgrades[id].cost.length;
 export const upgradeCost = (s: GameState, id: UpgradeId) =>
-  s.upgrades[id] >= MAX_UPGRADE
+  s.upgrades[id] >= upgradeTiers(id)
     ? null
     : Math.round(
         strategy.upgrades[id].cost[s.upgrades[id]]! * priceScale(s.level),
@@ -166,7 +169,7 @@ export const upgradeCost = (s: GameState, id: UpgradeId) =>
 /** Next tier of the sound system or lighting rig (by day). A new venue starts with the house rig again. */
 export function buyUpgrade(s: GameState, id: UpgradeId): ActionResult {
   if (s.phase !== "day") return fail("wrongPhase");
-  if (s.level < POLICY_MIN_LEVEL) return fail("levelLocked");
+  if (s.level < strategy.upgrades[id].minLevel) return fail("levelLocked");
   const cost = upgradeCost(s, id);
   if (cost === null) return fail("maxLevel");
   if (s.coin < cost) return fail("notEnoughCoin", cost - s.coin);
@@ -211,6 +214,18 @@ export function tablesFor(s: GameState): number {
     ),
   );
 }
+
+/** VIP lounge tables Guest Relations booked tonight: only once the lounge is built. */
+export function vipFor(s: GameState): number {
+  if (!s.upgrades.vip) return 0;
+  const r = strategy.relations;
+  return Math.min(
+    levelData(s.level).vipTables,
+    Math.round(s.staff.relations * r.vipPerStaff * (0.5 + s.reputation / 100)),
+  );
+}
+export const vipSpend = (s: GameState) =>
+  tableSpend(s) * strategy.relations.vipSpendMultiplier;
 
 /** Minimum spend of one reserved table. */
 export const tableSpend = (s: GameState) =>
@@ -291,7 +306,8 @@ export function tacticBlock(s: GameState, id: TacticId): TacticBlock {
     return "noDj";
   if (
     id === "sparkler" &&
-    (n.tablesBooked <= 0 || n.minute < strategy.relations.tablesArriveMinute)
+    (n.tablesBooked + (n.vipBooked ?? 0) <= 0 ||
+      n.minute < strategy.relations.tablesArriveMinute)
   )
     return "noTables";
   if ((n.tactics[id]?.readyAt ?? 0) > n.minute) return "cooldown";
