@@ -45,7 +45,7 @@ import {
   type Item,
 } from "./furniture";
 import { en } from "@/i18n/en";
-import { StageFx } from "./effects";
+import { StageFx, type FlameSpot } from "./effects";
 import { Videotron, VIDEOTRON_ASPECT, type VideotronData } from "./videotron";
 
 /** World units: 1 floor tile = 1 unit; people ~1.15 tall. */
@@ -1699,7 +1699,13 @@ export class VenueScene {
   }
 
   /** Flame jets on the floor either side of the stage, mist cannons on the ceiling over the dance floor. */
+  /**
+   * Pyro everywhere once there's a DJ booth: a flame line along the stage front, flames on the bar tops, round the
+   * pool and in the room's corners; CO₂ cannons across the whole ceiling; low-fog machines round the dance floors,
+   * the stage front and the pool.
+   */
   private buildFx() {
+    const layout = this.layout!;
     const dj = this.zones.get("dj");
     const dance = this.zones.get("dance");
     if (!dj || !dance) return; // pyro needs a DJ booth (Nightclub and up)
@@ -1708,28 +1714,50 @@ export class VenueScene {
     const x0 = Math.min(...blocks.map((b) => b.x)) - 0.45;
     const x1 = Math.max(...blocks.map((b) => b.x + b.w)) + 0.45;
     const zf = Math.max(...blocks.map((b) => b.y + b.h));
-    const fire = [
-      // A pyro line along the stage front, two each side (clear of balconies and the booth).
-      new THREE.Vector3(x0 + 0.85, 0, zf + 0.35),
-      new THREE.Vector3(x0 + 1.85, 0, zf + 0.35),
-      new THREE.Vector3(x1 - 1.85, 0, zf + 0.35),
-      new THREE.Vector3(x1 - 0.85, 0, zf + 0.35),
+    const hall = layout.hall ?? layout.h;
+    const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+
+    const flames: FlameSpot[] = [
+      // Stage front: the lit pyro line.
+      ...[x0 + 0.85, x0 + 1.85, x1 - 1.85, x1 - 0.85].map((x) => ({
+        at: V(x, 0, zf + 0.35),
+        lit: true,
+      })),
     ];
+    // On top of every bar counter.
+    for (const c of this.zoneList.get("counter") ?? []) {
+      const alongZ = c.h > c.w;
+      for (const t of [0.2, 0.5, 0.8])
+        flames.push({
+          at: alongZ
+            ? V(c.x + c.w / 2, BLOCK_H, c.y + c.h * t)
+            : V(c.x + c.w * t, BLOCK_H, c.y + c.h / 2),
+        });
+    }
+    // Round the pool.
+    for (const p of this.zoneList.get("pool") ?? [])
+      for (const [px, pz] of [
+        [p.x - 0.5, p.y - 0.4],
+        [p.x + p.w + 0.5, p.y - 0.4],
+        [p.x - 0.5, p.y + p.h + 0.4],
+        [p.x + p.w + 0.5, p.y + p.h + 0.4],
+        [p.x + p.w / 2, p.y + p.h + 0.4],
+      ] as const)
+        flames.push({ at: V(px, 0, pz) });
+    // The room's corners.
+    for (const [cx, cz] of [
+      [0.7, 0.7],
+      [layout.w - 0.7, 0.7],
+      [0.7, hall - 0.7],
+      [layout.w - 0.7, hall - 0.7],
+    ] as const)
+      flames.push({ at: V(cx, 0, cz) });
+
+    // CO₂ cannons on a grid across the whole hall ceiling.
     const y = Math.min(this.wallH, 7) - 0.35;
-    const m = 1.2;
-    const mist = [
-      [dance.x + m, dance.y + m],
-      [dance.x + dance.w - m, dance.y + m],
-      [dance.x + m, dance.y + dance.h - m],
-      [dance.x + dance.w - m, dance.y + dance.h - m],
-    ].map(([x, z]) => new THREE.Vector3(x, y, z));
-    // Low-fog machines: at the stage front and along the dance floor's front edge.
-    const floor = [
-      [(x0 + x1) / 2, zf + 0.4],
-      [dance.x + dance.w * 0.25, dance.y + dance.h],
-      [dance.x + dance.w * 0.75, dance.y + dance.h],
-    ].map(([x, z]) => new THREE.Vector3(x, 0.02, z));
-    // The cannons themselves, hanging from the ceiling.
+    const mist: THREE.Vector3[] = [];
+    for (let x = 2.5; x < layout.w; x += 5)
+      for (let z = 2.5; z < hall; z += 5) mist.push(V(x, y, z));
     const can = new THREE.MeshStandardMaterial({
       color: 0x1a1a20,
       metalness: 0.8,
@@ -1742,7 +1770,20 @@ export class VenueScene {
       c.position.set(at.x, at.y + 0.1, at.z);
       this.root.add(c);
     }
-    this.fx = new StageFx(fire, mist, floor, (x0 + x1) / 2, this.wallH);
+
+    // Low-fog machines: stage front, round every dance floor, and the pool.
+    const floor: THREE.Vector3[] = [V((x0 + x1) / 2, 0.02, zf + 0.5)];
+    for (const d of this.zoneList.get("dance") ?? []) {
+      for (let x = d.x + 1.5; x < d.x + d.w; x += 4)
+        floor.push(V(x, 0.02, d.y + d.h), V(x, 0.02, d.y));
+      for (let z = d.y + 1.5; z < d.y + d.h; z += 4)
+        floor.push(V(d.x, 0.02, z), V(d.x + d.w, 0.02, z));
+    }
+    for (const p of this.zoneList.get("pool") ?? [])
+      for (let x = p.x + 2; x < p.x + p.w; x += 4)
+        floor.push(V(x, 0.02, p.y - 0.8), V(x, 0.02, p.y + p.h + 0.8));
+
+    this.fx = new StageFx(flames, mist, floor, layout.w / 2, this.wallH);
     this.root.add(this.fx.group);
   }
 
@@ -2389,6 +2430,14 @@ export class VenueScene {
       }
       this.prevPulse = pulse;
       this.fx.update();
+      // Haze: the whole room fogs over after a CO₂ burst (lit purple by the rig), then clears.
+      // Distances are relative to the camera, so the room is about half hidden at the peak wherever you look from.
+      const f = this.scene.fog as THREE.Fog;
+      const h = this.fx.haze;
+      const d = this.camera.position.distanceTo(this.controls.target);
+      f.near = 28 + (d * 0.25 - 28) * h;
+      f.far = 70 + (d * 1.6 - 70) * h;
+      f.color.setRGB(0.027 + h * 0.13, 0.02 + h * 0.1, 0.047 + h * 0.18);
     }
     this.renderer.render(this.scene, this.camera);
   }

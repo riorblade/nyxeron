@@ -97,31 +97,40 @@ class ClipFx {
   }
 }
 
+/** A flame unit: where it stands (its base height too, e.g. on a bar top) and whether it throws light. */
+export interface FlameSpot {
+  at: THREE.Vector3;
+  lit?: boolean;
+}
+
 export class StageFx {
   readonly group = new THREE.Group();
   private fire = new ClipFx("fire", [0.3, 3.8], 250, THREE.AdditiveBlending);
   private fogDown = new ClipFx(
     "fog-down",
     [0, 0.4],
-    1200,
+    2500,
     THREE.NormalBlending,
   );
   private fogFloor = new ClipFx(
     "fog-floor",
     [0, 1],
-    1500,
+    3000,
     THREE.NormalBlending,
   );
   private lights: THREE.PointLight[] = [];
   private flashUntil = 0;
+  private hazeUntil = 0;
+  /** 0–1: how thick the room's haze is right now (the scene thickens its fog with it). */
+  haze = 0;
 
   /**
-   * @param fireAt flame units on the floor; those right of `midX` are mirrored so both sides lean inward.
+   * @param flames flame units; those right of `midX` are mirrored so every jet leans toward the middle of the room.
    * @param ceilingAt CO₂ cannons (the burst falls from here).
-   * @param floorAt low-fog machines along the dance floor.
+   * @param floorAt low-fog machines.
    */
   constructor(
-    fireAt: THREE.Vector3[],
+    flames: FlameSpot[],
     ceilingAt: THREE.Vector3[],
     floorAt: THREE.Vector3[],
     midX: number,
@@ -132,30 +141,42 @@ export class StageFx {
       metalness: 0.7,
       roughness: 0.4,
     });
-    const flameH = Math.min(3.6, ceiling - 0.2);
-    for (const at of fireAt) {
+    for (const { at, lit } of flames) {
       // The flame unit: a steel box; the clip's nozzle sits 20% in from its edge, on top of the box.
       const box = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.3, 0.35), base);
-      box.position.set(at.x, 0.15, at.z);
+      box.position.set(at.x, at.y + 0.15, at.z);
       this.group.add(box);
+      const h = Math.max(1.6, Math.min(4.5, ceiling - at.y - 0.3));
       this.fire.add(
         this.group,
-        new THREE.Vector3(at.x, 0.3, at.z),
-        flameH * (180 / 270),
-        flameH,
+        new THREE.Vector3(at.x, at.y + 0.3, at.z),
+        h * (180 / 270),
+        h,
         [0.2, 0],
         at.x > midX,
       );
-      const light = new THREE.PointLight(0xff7a1a, 0, 8, 1.6);
-      light.position.set(at.x, 1.5, at.z);
-      this.group.add(light);
-      this.lights.push(light);
+      // Only a few units cast light (each light costs every pixel).
+      if (lit) {
+        const light = new THREE.PointLight(0xff7a1a, 0, 9, 1.6);
+        light.position.set(at.x, at.y + 1.5, at.z);
+        this.group.add(light);
+        this.lights.push(light);
+      }
     }
-    const fogW = Math.min(6, ceiling * 1.6);
+    // Big, overlapping clouds: two offset sprites per cannon so the bursts merge into a wall of fog.
+    const fogW = Math.min(12, Math.max(7, ceiling * 2.4));
     for (const at of ceilingAt)
-      this.fogDown.add(this.group, at, fogW, fogW * (270 / 480), [0.5, 1]);
+      for (const dx of [-0.8, 0.8])
+        this.fogDown.add(
+          this.group,
+          new THREE.Vector3(at.x + dx, at.y, at.z + dx * 0.5),
+          fogW,
+          fogW * (270 / 480),
+          [0.5, 1],
+          dx > 0,
+        );
     for (const at of floorAt)
-      this.fogFloor.add(this.group, at, 5, 5 * (270 / 480), [0.5, 0.03]);
+      this.fogFloor.add(this.group, at, 8, 8 * (270 / 480), [0.5, 0.03]);
   }
 
   /** Flame jets (~1.2 s) with an orange flash. */
@@ -165,11 +186,12 @@ export class StageFx {
     this.flashUntil = now + 900;
   }
 
-  /** CO₂ down from the ceiling and fog rolling over the floor. */
+  /** CO₂ down from the ceiling, fog rolling over the floor, and the whole room hazes over for a while. */
   burstMist() {
     const now = performance.now();
-    this.fogDown.burst(now, 3500);
-    this.fogFloor.burst(now, 6000);
+    this.fogDown.burst(now, 6000);
+    this.fogFloor.burst(now, 9000);
+    this.hazeUntil = now + 9000;
   }
 
   update() {
@@ -179,6 +201,9 @@ export class StageFx {
     this.fogFloor.update(now);
     const flash = now < this.flashUntil ? 40 + Math.random() * 40 : 0;
     for (const l of this.lights) l.intensity = flash;
+    // Haze rolls in fast and clears slowly.
+    const target = now < this.hazeUntil ? 1 : 0;
+    this.haze += (target - this.haze) * (target > this.haze ? 0.06 : 0.008);
   }
 
   dispose() {
