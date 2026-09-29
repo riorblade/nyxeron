@@ -1,4 +1,5 @@
 import {
+  defaultPrice,
   drinks,
   ids,
   orderCost,
@@ -16,9 +17,7 @@ import {
   ArrowDown,
   Check,
   Lock,
-  Minus,
   Package,
-  Plus,
   RefreshCw,
   Ship,
   Store,
@@ -33,8 +32,6 @@ import { cn } from "@/lib/utils";
 import { useGame } from "@/store";
 
 const supplierIcon = { corner: Store, wholesale: Truck, import: Ship } as const;
-/** Stock bar scale: the forecast, or 150 when there is none. */
-const barMax = (need: number) => Math.max(need, 1) * 1.5;
 
 function Thumb({ id, size = "size-11" }: { id: DrinkId; size?: string }) {
   return (
@@ -193,29 +190,14 @@ export function StockTab({ s, compact }: { s: GameState; compact?: boolean }) {
                 <span className="min-w-0">
                   <span className="block truncate font-medium">{dr.name}</span>
                   {!locked && (
-                    <span className="block font-mono text-xs text-white/55 @xl:hidden">
-                      {s.stock[d]}
+                    <span className="block font-mono text-xs @xl:hidden">
+                      <StockCount have={s.stock[d]} need={n} />
                     </span>
                   )}
                 </span>
               </DrinkLink>
-              <span className="hidden items-center gap-3 @xl:flex">
-                <span className="w-9 font-mono text-sm tabular-nums">
-                  {locked ? "—" : s.stock[d]}
-                </span>
-                {!locked && (
-                  <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
-                    <span
-                      className={cn(
-                        "block h-full rounded-full",
-                        short ? "bg-white/45" : "bg-white",
-                      )}
-                      style={{
-                        width: `${Math.min(100, (s.stock[d] / barMax(n)) * 100)}%`,
-                      }}
-                    />
-                  </span>
-                )}
+              <span className="hidden font-mono text-sm tabular-nums @xl:block">
+                {locked ? "—" : <StockCount have={s.stock[d]} need={n} />}
               </span>
               <span
                 className={cn(
@@ -240,45 +222,7 @@ export function StockTab({ s, compact }: { s: GameState; compact?: boolean }) {
               </span>
               {/* Phones: the price stepper gets its own row under the drink. */}
               <span className="order-last col-span-2 flex items-center gap-1 @xl:order-none @xl:col-span-1">
-                {!locked && (
-                  <>
-                    <button
-                      className="flex size-7 items-center justify-center rounded-md hover:bg-white/10"
-                      aria-label="Lower price"
-                      onClick={() =>
-                        act((g) =>
-                          setPrice(
-                            g,
-                            d,
-                            g.prices[d] -
-                              Math.max(1, Math.round(g.prices[d] * 0.05)),
-                          ),
-                        )
-                      }
-                    >
-                      <Minus className="size-3.5" />
-                    </button>
-                    <span className="w-14 text-center font-mono text-sm tabular-nums">
-                      {fmt(s.prices[d])}
-                    </span>
-                    <button
-                      className="flex size-7 items-center justify-center rounded-md hover:bg-white/10"
-                      aria-label="Raise price"
-                      onClick={() =>
-                        act((g) =>
-                          setPrice(
-                            g,
-                            d,
-                            g.prices[d] +
-                              Math.max(1, Math.round(g.prices[d] * 0.05)),
-                          ),
-                        )
-                      }
-                    >
-                      <Plus className="size-3.5" />
-                    </button>
-                  </>
-                )}
+                {!locked && <PriceSlider s={s} d={d} />}
               </span>
               <span className="flex justify-end gap-1.5">
                 {locked ? (
@@ -349,5 +293,48 @@ function StorageMeter({ s }: { s: GameState }) {
         {en.storage.value(used, max)}
       </span>
     </div>
+  );
+}
+
+/** "20 / 50": in stock against tonight's forecast (dim when short). */
+function StockCount({ have, need }: { have: number; need: number }) {
+  return (
+    <>
+      <span
+        className={cn(need && have < need ? "text-white/60" : "text-white")}
+      >
+        {fmt(have)}
+      </span>
+      {need > 0 && <span className="text-white/45"> / {fmt(need)}</span>}
+    </>
+  );
+}
+
+/** Drag to set a drink's price: 50%–300% of this venue's standard price. */
+function PriceSlider({ s, d }: { s: GameState; d: DrinkId }) {
+  const act = useGame((x) => x.act);
+  const std = defaultPrice(d, s.level);
+  const min = Math.max(1, Math.round(std * 0.5));
+  const max = Math.round(std * 3);
+  const price = s.prices[d];
+  return (
+    <span className="flex w-full flex-col gap-1">
+      <span className="flex items-baseline justify-between font-mono text-xs tabular-nums">
+        <span>{fmt(price)}</span>
+        <span className="text-white/50">
+          {Math.round((price / std) * 100)}%
+        </span>
+      </span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={Math.max(1, Math.round(std * 0.01))}
+        value={Math.min(max, Math.max(min, price))}
+        onChange={(e) => act((g) => setPrice(g, d, Number(e.target.value)))}
+        aria-label={`${drinks[d].name} price`}
+        className="w-full accent-white"
+      />
+    </span>
   );
 }

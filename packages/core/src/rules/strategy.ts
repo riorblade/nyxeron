@@ -6,6 +6,7 @@ import {
   strategy,
   type DressCode,
   type PromoterId,
+  type SeatType,
   type StaffRole,
   type TacticId,
   type UpgradeId,
@@ -221,32 +222,86 @@ export const relationsCoverage = (s: GameState, inside: number) =>
         (s.staff.relations * strategy.relations.guestsPerStaff) / inside,
       );
 
-/** Tables Guest Relations booked for tonight (bottle service); more reputation, more bookings. */
-export function tablesFor(s: GameState): number {
-  const r = strategy.relations;
-  return Math.min(
-    levelData(s.level).tables,
-    Math.round(
-      s.staff.relations * r.tablesPerStaff * (0.5 + s.reputation / 100),
-    ),
-  );
+// ---------- reservations & minimum spend ----------
+
+export const SEAT_TYPES: SeatType[] = ["vip", "sofa", "table", "bar"];
+
+/** Minimum spend for a seat type: the player's price, or the venue's standard. */
+export const standardSpend = (s: GameState, t: SeatType) =>
+  Math.round(strategy.seats[t].defaultSpend * priceScale(s.level));
+export const seatSpend = (s: GameState, t: SeatType) =>
+  s.minSpend?.[t] ?? standardSpend(s, t);
+
+/** Seats of each type this venue has (VIP only once the lounge is built). */
+export function seatCount(s: GameState): Record<SeatType, number> {
+  const l = levelData(s.level);
+  return {
+    vip: s.upgrades.vip ? l.vipTables : 0,
+    sofa: l.sofas,
+    table: l.tables,
+    bar: l.barSeats,
+  };
 }
 
-/** VIP lounge tables Guest Relations booked tonight: only once the lounge is built. */
-export function vipFor(s: GameState): number {
-  if (!s.upgrades.vip) return 0;
-  const r = strategy.relations;
-  return Math.min(
-    levelData(s.level).vipTables,
-    Math.round(s.staff.relations * r.vipPerStaff * (0.5 + s.reputation / 100)),
-  );
+/**
+ * Tonight's bookings per seat type. VIP, sofas and tables are booked by Guest Relations (more reputation, more
+ * bookings); bar seats fill with walk-ins. A minimum spend above standard books fewer, below standard more.
+ */
+export function bookingsFor(s: GameState): Record<SeatType, number> {
+  const seats = seatCount(s);
+  const rep = 0.5 + s.reputation / 100;
+  const out = {} as Record<SeatType, number>;
+  for (const t of SEAT_TYPES) {
+    const cfg = strategy.seats[t] as {
+      elasticity: number;
+      perStaff?: number;
+      walkIn?: number;
+    };
+    const price = clamp(
+      1 - cfg.elasticity * (seatSpend(s, t) / standardSpend(s, t) - 1),
+      0,
+      1.5,
+    );
+    const demand =
+      cfg.walkIn !== undefined
+        ? seats[t] * (cfg.walkIn + s.reputation / 200)
+        : s.staff.relations * cfg.perStaff! * rep;
+    out[t] = Math.min(seats[t], Math.round(demand * price));
+  }
+  return out;
 }
-export const vipSpend = (s: GameState) =>
-  tableSpend(s) * strategy.relations.vipSpendMultiplier;
 
-/** Minimum spend of one reserved table. */
-export const tableSpend = (s: GameState) =>
-  Math.round(strategy.relations.tableMinSpend * priceScale(s.level));
+/** Turn night-time auto-refill on or off (any time). */
+export const setAutoRefill = (s: GameState, on: boolean): ActionResult => ({
+  ok: true,
+  state: { ...s, autoRefill: on },
+});
+
+/** Set a seat type's minimum spend (null = back to standard). By day. */
+export function setMinSpend(
+  s: GameState,
+  t: SeatType,
+  price: number | null,
+): ActionResult {
+  if (s.phase !== "day") return fail("wrongPhase");
+  if (s.level < POLICY_MIN_LEVEL) return fail("levelLocked");
+  if (price !== null && (!Number.isInteger(price) || price < 0))
+    return fail("invalidPrice");
+  const minSpend = { ...s.minSpend };
+  if (price === null) delete minSpend[t];
+  else minSpend[t] = price;
+  return { ok: true, state: { ...s, minSpend } };
+}
+
+/** Sofas + tables booked tonight. */
+export const tablesFor = (s: GameState) => {
+  const b = bookingsFor(s);
+  return b.sofa + b.table;
+};
+export const vipFor = (s: GameState) => bookingsFor(s).vip;
+export const vipSpend = (s: GameState) => seatSpend(s, "vip");
+/** A regular table's minimum spend (what a sparkler-parade bottle is priced from). */
+export const tableSpend = (s: GameState) => seatSpend(s, "table");
 
 /** Chance a man who just bought a drink buys another for someone (a woman in the crowd, or a host). */
 export function roundChance(s: GameState, femaleShareInside: number): number {
@@ -323,7 +378,7 @@ export function tacticBlock(s: GameState, id: TacticId): TacticBlock {
     return "noDj";
   if (
     id === "sparkler" &&
-    (n.tablesBooked + (n.vipBooked ?? 0) <= 0 ||
+    (n.bookings.vip + n.bookings.sofa + n.bookings.table <= 0 ||
       n.minute < strategy.relations.tablesArriveMinute)
   )
     return "noTables";

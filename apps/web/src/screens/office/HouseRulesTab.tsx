@@ -1,5 +1,11 @@
 import {
+  bookingsFor,
   coverPrice,
+  SEAT_TYPES,
+  seatCount,
+  seatSpend,
+  setMinSpend,
+  standardSpend,
   expectedGuests,
   femaleShare,
   priceScale,
@@ -175,6 +181,8 @@ export function HouseRulesTab({ s }: { s: GameState }) {
         </div>
       </section>
 
+      <MinSpend s={s} />
+
       <section className="rounded-xl border border-dashed border-white/15 p-4">
         <h3 className="mb-2 text-[10px] tracking-[0.2em] text-white/60 uppercase">
           {t.forecast}
@@ -201,5 +209,61 @@ function Stat({
       <dt className="text-xs text-white/60">{label}</dt>
       <dd className="font-mono text-xl tabular-nums">{children}</dd>
     </div>
+  );
+}
+
+/** Minimum spend per seat type (drag), with tonight's expected bookings. */
+function MinSpend({ s }: { s: GameState }) {
+  const act = useGame((x) => x.act);
+  const m = en.minSpend;
+  const booked = bookingsFor(s);
+  const seats = seatCount(s);
+  return (
+    <section className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+      <h3 className="font-medium">{m.title}</h3>
+      <p className="mt-1 text-sm leading-relaxed text-white/65">{m.desc}</p>
+      <ul className="mt-3 grid gap-3 sm:grid-cols-2">
+        {SEAT_TYPES.map((t) => {
+          const std = standardSpend(s, t);
+          const price = seatSpend(s, t);
+          const vipLocked = t === "vip" && !s.upgrades.vip;
+          return (
+            <li
+              key={t}
+              className={cn(
+                "rounded-lg border border-white/10 p-3",
+                vipLocked && "opacity-50",
+              )}
+            >
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-sm font-medium">{m.types[t]}</span>
+                <span className="font-mono text-sm tabular-nums">
+                  {fmt(price)} C
+                </span>
+              </div>
+              <input
+                type="range"
+                min={Math.round(std * 0.5)}
+                max={std * 3}
+                step={Math.max(1, Math.round(std * 0.05))}
+                value={price}
+                disabled={vipLocked || s.phase !== "day"}
+                onChange={(e) =>
+                  act((g) => setMinSpend(g, t, Number(e.target.value)))
+                }
+                aria-label={m.types[t]}
+                className="mt-2 w-full accent-white"
+              />
+              <div className="mt-1 flex justify-between text-[11px] text-white/60">
+                <span>
+                  {vipLocked ? m.vipLocked : m.booked(booked[t], seats[t])}
+                </span>
+                <span>{m.standard(fmt(std))}</span>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }

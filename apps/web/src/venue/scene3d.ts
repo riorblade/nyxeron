@@ -150,6 +150,10 @@ export class VenueScene {
     ctx.fillRect(0, 0, 32, 32);
   });
   private rigLight = 0;
+  private heads: THREE.MeshBasicMaterial[] = [];
+  private lasers: THREE.Mesh[] = [];
+  private ringMats: THREE.MeshBasicMaterial[] = [];
+  private strobe: THREE.PointLight | null = null;
   /** This venue's wall height. */
   private wallH = WALL_H;
   /** Flame jets + mist cannons, fired on the kick while the DJ plays. */
@@ -506,10 +510,11 @@ export class VenueScene {
     this.rebuildFurniture();
     this.setEditing(this.editing);
     this.buildWalls(layout);
+    this.rigLight = s.upgrades?.lighting ?? 0;
     this.buildLights();
+    this.buildRig(this.rigLight);
     this.buildSpeakers(s.upgrades?.sound ?? 0);
     this.buildFx();
-    this.rigLight = s.upgrades?.lighting ?? 0;
     this.frameCamera(layout);
   }
 
@@ -1202,7 +1207,7 @@ export class VenueScene {
     point("seating", 0xa855f7, 2.5);
     const dance = this.zones.get("dance");
     if (dance)
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < 3 + this.rigLight; i++) {
         const l = new THREE.SpotLight(PALETTE[i], 40, 18, 0.32, 0.6, 1.2);
         l.position.set(dance.x + dance.w / 2, 6, dance.y + dance.h / 2);
         this.root.add(l, l.target);
@@ -1213,11 +1218,12 @@ export class VenueScene {
     if (src) {
       const geo = new THREE.ConeGeometry(0.9, 7, 24, 1, true);
       geo.translate(0, -3.5, 0); // apex at the origin
-      for (let i = 0; i < 4; i++) {
+      // The lighting rig tier adds beams: 4 → 8 → 12.
+      for (let i = 0; i < [4, 8, 12, 12][this.rigLight]!; i++) {
         const beam = new THREE.Mesh(
           geo,
           new THREE.MeshBasicMaterial({
-            color: PALETTE[i],
+            color: PALETTE[i % PALETTE.length],
             transparent: true,
             opacity: 0.07,
             blending: THREE.AdditiveBlending,
@@ -1229,6 +1235,95 @@ export class VenueScene {
         this.root.add(beam);
         this.beams.push(beam);
       }
+    }
+  }
+
+  /**
+   * The lighting rig by tier: 1 = a truss of moving heads over the DJ, 2 = + lasers sweeping the room,
+   * 3 = + an LED ring over the dance floor and a strobe on the kick.
+   */
+  private buildRig(tier: number) {
+    this.heads = [];
+    this.lasers = [];
+    this.ringMats = [];
+    this.strobe = null;
+    const dj = this.zones.get("dj");
+    const dance = this.zones.get("dance");
+    if (!dj || !dance || tier <= 0) return;
+    const stage = this.zones.get("stage");
+    const x0 = Math.min(dj.x, stage?.x ?? dj.x) - 0.3;
+    const x1 = Math.max(dj.x + dj.w, stage ? stage.x + stage.w : 0) + 0.3;
+    const zt = dj.y + dj.h + 0.3;
+    const yt = Math.min(this.wallH - 0.3, 5);
+    const metal = new THREE.MeshStandardMaterial({
+      color: 0x2b2b33,
+      metalness: 0.8,
+      roughness: 0.3,
+    });
+    const truss = new THREE.Mesh(
+      new THREE.BoxGeometry(x1 - x0, 0.16, 0.16),
+      metal,
+    );
+    truss.position.set((x0 + x1) / 2, yt, zt);
+    this.root.add(truss);
+    const heads = 6 + (tier - 1) * 2;
+    for (let i = 0; i < heads; i++) {
+      const x = x0 + ((i + 0.5) / heads) * (x1 - x0);
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(0.22, 0.26, 0.22),
+        metal,
+      );
+      body.position.set(x, yt - 0.22, zt);
+      const lensMat = new THREE.MeshBasicMaterial({
+        color: PALETTE[i % PALETTE.length],
+      });
+      const lens = new THREE.Mesh(new THREE.CircleGeometry(0.08, 16), lensMat);
+      lens.rotation.x = Math.PI / 2;
+      lens.position.set(x, yt - 0.36, zt);
+      this.root.add(body, lens);
+      this.heads.push(lensMat);
+    }
+    if (tier >= 2) {
+      const geo = new THREE.BoxGeometry(0.02, 0.02, 16);
+      geo.translate(0, 0, 8); // from the source outwards
+      for (let i = 0; i < 8; i++) {
+        const laser = new THREE.Mesh(
+          geo,
+          new THREE.MeshBasicMaterial({
+            color: i % 2 ? 0xff2244 : 0x39ff14,
+            transparent: true,
+            opacity: 0.75,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+          }),
+        );
+        laser.position.set(
+          dj.x + dj.w / 2,
+          Math.min(this.wallH - 0.5, 2.7),
+          dj.y + dj.h,
+        );
+        this.root.add(laser);
+        this.lasers.push(laser);
+      }
+    }
+    if (tier >= 3) {
+      const y = Math.min(this.wallH - 0.25, 4.2);
+      const { x, y: z, w, h } = dance;
+      for (const [cx, cz, sw, sd] of [
+        [x + w / 2, z, w, 0.1],
+        [x + w / 2, z + h, w, 0.1],
+        [x, z + h / 2, 0.1, h],
+        [x + w, z + h / 2, 0.1, h],
+      ] as const) {
+        const m = new THREE.MeshBasicMaterial({ color: PALETTE[0] });
+        const strip = new THREE.Mesh(new THREE.BoxGeometry(sw, 0.08, sd), m);
+        strip.position.set(cx, y, cz);
+        this.root.add(strip);
+        this.ringMats.push(m);
+      }
+      this.strobe = new THREE.PointLight(0xffffff, 0, 30, 1.2);
+      this.strobe.position.set(x + w / 2, y - 0.2, z + h / 2);
+      this.root.add(this.strobe);
     }
   }
 
@@ -1646,10 +1741,17 @@ export class VenueScene {
     this.root.add(this.fx.group);
   }
 
-  /** Speaker stacks either side of the DJ booth, one cabinet per sound tier. */
+  /**
+   * The sound system by tier: 1 = sub + top stacks either side of the stage, 2 = + curved line arrays flown above them,
+   * 3 = + a row of subs along the stage front and delay towers at the dance floor corners.
+   */
   private buildSpeakers(tier: number) {
     const dj = this.zones.get("dj") ?? this.zones.get("stage");
     if (!dj || tier <= 0) return;
+    const stage = this.zones.get("stage");
+    const x0 = Math.min(dj.x, stage?.x ?? dj.x);
+    const x1 = Math.max(dj.x + dj.w, stage ? stage.x + stage.w : 0);
+    const front = Math.max(dj.y + dj.h, stage ? stage.y + stage.h : 0);
     const mat = new THREE.MeshStandardMaterial({
       color: 0x111114,
       roughness: 0.6,
@@ -1660,15 +1762,80 @@ export class VenueScene {
       roughness: 0.3,
       metalness: 0.6,
     });
-    for (const x of [dj.x - 0.35, dj.x + dj.w + 0.35])
-      for (let i = 0; i < tier; i++) {
-        const box = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.62, 0.5), mat);
-        box.position.set(x, 0.31 + i * 0.64, dj.y + 0.45);
-        const woofer = new THREE.Mesh(new THREE.CircleGeometry(0.19, 20), cone);
-        woofer.position.set(0, -0.04, 0.251);
-        box.add(woofer);
-        this.root.add(box);
+    const cab = (
+      w: number,
+      h: number,
+      d: number,
+      x: number,
+      y: number,
+      z: number,
+      ry = 0,
+      woofer = 0.19,
+    ) => {
+      const box = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      box.position.set(x, y, z);
+      box.rotation.y = ry;
+      const c = new THREE.Mesh(
+        new THREE.CircleGeometry(Math.min(woofer, h * 0.4), 20),
+        cone,
+      );
+      c.position.set(0, 0, d / 2 + 0.002);
+      box.add(c);
+      this.root.add(box);
+      return box;
+    };
+    for (const [x, side] of [
+      [x0 - 0.45, -1],
+      [x1 + 0.45, 1],
+    ] as const) {
+      // Ground stack: a sub with a top on it.
+      cab(0.7, 0.6, 0.6, x, 0.3, front - 0.4, 0, 0.24);
+      cab(0.6, 0.55, 0.5, x, 0.88, front - 0.4, 0, 0.17);
+      if (tier >= 2) {
+        // Flown line array: a curved hang of slim boxes, angled down at the floor.
+        const top = Math.min(this.wallH - 0.4, 4.4);
+        for (let i = 0; i < 6; i++) {
+          const b = cab(
+            0.9,
+            0.24,
+            0.5,
+            x + side * 0.2,
+            top - i * 0.26,
+            front - 0.2,
+            -side * 0.25,
+            0.09,
+          );
+          b.rotation.x = 0.06 * i;
+        }
       }
+    }
+    if (tier >= 3) {
+      // Sub row along the front of the stage.
+      const n = Math.max(3, Math.floor((x1 - x0) / 0.8));
+      for (let i = 0; i < n; i++)
+        cab(
+          0.7,
+          0.55,
+          0.55,
+          x0 + ((i + 0.5) / n) * (x1 - x0),
+          0.275,
+          front + 0.35,
+          0,
+          0.22,
+        );
+      // Delay towers at the dance floor's far corners.
+      const d = this.zones.get("dance");
+      if (d)
+        for (const x of [d.x + 0.2, d.x + d.w - 0.2]) {
+          const pole = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.05, 0.05, 2.6, 8),
+            mat,
+          );
+          pole.position.set(x, 1.3, d.y + d.h - 0.2);
+          this.root.add(pole);
+          cab(0.45, 0.6, 0.4, x, 2.7, d.y + d.h - 0.2, Math.PI, 0.15);
+        }
+    }
   }
 
   private syncSparks(on: boolean) {
@@ -1706,7 +1873,7 @@ export class VenueScene {
     const seats = this.seats.get("vip") ?? [];
     const want =
       s.upgrades?.vip && n.minute >= strategy.relations.tablesArriveMinute
-        ? Math.min(seats.length, (n.vipBooked ?? 0) * 3)
+        ? Math.min(seats.length, (n.bookings?.vip ?? 0) * 3)
         : 0;
     if (want === this.vipGuests.length) return;
     this.vipGuests.forEach((p) => this.remove(p));
@@ -2146,6 +2313,26 @@ export class VenueScene {
       (b.material as THREE.MeshBasicMaterial).opacity =
         (0.05 + pulse * 0.05) * (1 + this.rigLight * 0.35);
     });
+    // Rig animation: heads chase colours on the beat, lasers sweep, the LED ring cycles, the strobe hits the kick.
+    this.heads.forEach((m, i) =>
+      m.color
+        .setHSL(((tSec * 60 + i * 45) % 360) / 360, 1, 0.55)
+        .multiplyScalar(this.djOn ? 0.4 + pulse : 0.15),
+    );
+    this.lasers.forEach((l, i) => {
+      l.visible = this.djOn;
+      l.rotation.set(
+        -0.12 - Math.abs(Math.sin(tSec * 0.9 + i)) * 0.25,
+        Math.sin(tSec * 0.7 + i * 0.8) * 1.1,
+        0,
+      );
+    });
+    this.ringMats.forEach((m, i) =>
+      m.color
+        .setHSL(((tSec * 50 + i * 90) % 360) / 360, 1, 0.55)
+        .multiplyScalar(this.djOn ? 0.6 + pulse * 0.6 : 0.2),
+    );
+    if (this.strobe) this.strobe.intensity = this.djOn && pulse > 0.92 ? 90 : 0;
 
     for (let i = this.floats.length - 1; i >= 0; i--) {
       const f = this.floats[i]!;

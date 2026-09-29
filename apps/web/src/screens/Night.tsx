@@ -3,6 +3,8 @@ import {
   djs,
   endNight,
   escortGuest,
+  setAutoRefill,
+  strategy,
   isAtFightRisk,
   isInside,
   night as nightData,
@@ -30,7 +32,7 @@ import { CrowdMoves, EnergyMeter } from "@/hud/CrowdMoves";
 import { StockBars } from "@/hud/StockBars";
 import { TopBar } from "@/hud/TopBar";
 import { clock, duration, en, fmt, genres } from "@/i18n/en";
-import { cn } from "@/lib/utils";
+import { cn, trapFocus } from "@/lib/utils";
 import { useGame } from "@/store";
 import { VenueView } from "@/venue/VenueView";
 import { art } from "@/art";
@@ -63,6 +65,49 @@ function sendSecurity() {
   const { game, act } = useGame.getState();
   const g = game?.night && atRisk(game)[0];
   if (g) act((x) => escortGuest(x, g.id));
+}
+
+/** "Skip to 04:00?" — the rest of the night plays out at once, so confirm first. Esc cancels. */
+function SkipConfirm({
+  onCancel,
+  onSkip,
+}: {
+  onCancel: () => void;
+  onSkip: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopImmediatePropagation();
+      onCancel();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [onCancel]);
+  return (
+    <div className="pointer-events-auto absolute inset-0 flex items-center justify-center">
+      <div
+        role="alertdialog"
+        aria-modal
+        aria-labelledby="skip-title"
+        onKeyDown={trapFocus}
+        className="glass glow enter w-96 max-w-full rounded-2xl p-5"
+      >
+        <h2 id="skip-title" className="text-lg font-medium">
+          {en.night.skipTitle}
+        </h2>
+        <p className="mt-2 text-sm leading-relaxed text-white/70">
+          {en.night.skipWarn}
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="ghost" autoFocus onClick={onCancel}>
+            {en.night.skipCancel}
+          </Button>
+          <Button onClick={onSkip}>{en.night.skip}</Button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function skipToEnd() {
@@ -215,6 +260,8 @@ export function Night({ s }: { s: GameState }) {
   // Side panels start closed on tablets/phones so the venue stays visible.
   const [panel, setPanel] = useState(() => window.innerWidth >= 1024);
   const [ceoOpen, setCeoOpen] = useState(false);
+  // Skipping ends the night in one go, so it asks first (easy to hit by mistake).
+  const [confirmSkip, setConfirmSkip] = useState(false);
   useNightLoop();
   useNightAudio(s, intro, paused);
 
@@ -310,7 +357,7 @@ export function Night({ s }: { s: GameState }) {
                 ))}
                 <button
                   className={cn(seg(false), "tracking-wide whitespace-nowrap")}
-                  onClick={skipToEnd}
+                  onClick={() => setConfirmSkip(true)}
                   aria-label={en.night.skip}
                   title={en.night.skip}
                 >
@@ -369,6 +416,39 @@ export function Night({ s }: { s: GameState }) {
                 <h3 className="mb-2 text-[10px] tracking-[0.2em] text-white/60 uppercase">
                   {en.stock.emergency}
                 </h3>
+                <button
+                  role="switch"
+                  aria-checked={s.autoRefill}
+                  onClick={() => act((g) => setAutoRefill(g, !g.autoRefill))}
+                  className="mb-3 flex w-full items-center gap-3 rounded-lg border border-white/12 px-3 py-2 text-left hover:bg-white/[0.05]"
+                >
+                  <span
+                    className={cn(
+                      "relative h-5 w-9 shrink-0 rounded-full border transition-colors",
+                      s.autoRefill
+                        ? "border-white bg-white"
+                        : "border-white/25 bg-white/5",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "absolute top-0.5 size-3.5 rounded-full transition-all",
+                        s.autoRefill
+                          ? "left-[1.1rem] bg-black"
+                          : "left-0.5 bg-white/70",
+                      )}
+                    />
+                  </span>
+                  <span className="leading-tight">
+                    <span className="block text-sm">{en.stock.autoRefill}</span>
+                    <span className="block text-[11px] text-white/60">
+                      {en.stock.autoRefillHint(
+                        strategy.autoRefill.batch,
+                        strategy.autoRefill.threshold,
+                      )}
+                    </span>
+                  </span>
+                </button>
                 <StockTab s={s} compact />
               </section>
               {queue > 0 && inside.length >= cap && !n.doorForced && (
@@ -413,6 +493,15 @@ export function Night({ s }: { s: GameState }) {
                   </span>
                 </span>
               </button>
+            )}
+            {confirmSkip && (
+              <SkipConfirm
+                onCancel={() => setConfirmSkip(false)}
+                onSkip={() => {
+                  setConfirmSkip(false);
+                  skipToEnd();
+                }}
+              />
             )}
             {ceoOpen && (
               <div className="pointer-events-auto absolute inset-0 flex items-center justify-center">

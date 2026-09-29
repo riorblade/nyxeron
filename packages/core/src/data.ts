@@ -38,6 +38,7 @@ export type StaffRole = keyof typeof staffRoles;
 export type SegmentId = keyof typeof segments;
 export type DressCode = keyof typeof strategy.dressCode;
 export type TacticId = keyof typeof strategy.tactics;
+export type SeatType = keyof typeof strategy.seats;
 export type PromoterId = keyof typeof promoters;
 export type UpgradeId = keyof typeof strategy.upgrades;
 export type HappyHourSlot = "off" | keyof typeof strategy.happyHour;

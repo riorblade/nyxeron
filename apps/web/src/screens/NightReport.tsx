@@ -154,6 +154,12 @@ export function NightReport({ s }: { s: GameState }) {
                 </Row>
                 <Row label={en.report.rounds}>{r.rounds}</Row>
                 {r.tables > 0 && <Row label={en.report.tables}>{r.tables}</Row>}
+                {(r.vipTables ?? 0) > 0 && (
+                  <Row label={en.report.vipTables}>{r.vipTables}</Row>
+                )}
+                {(r.barSeats ?? 0) > 0 && (
+                  <Row label={en.report.barSeats}>{r.barSeats}</Row>
+                )}
                 {r.rejectedDress > 0 && (
                   <Row label={en.report.rejectedDress}>{r.rejectedDress}</Row>
                 )}

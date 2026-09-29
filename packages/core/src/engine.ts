@@ -14,6 +14,7 @@ import {
   type DrinkId,
   type ChannelId,
   type SegmentId,
+  type SupplierId,
 } from "./data";
 import { createRng } from "./rng";
 import type { ActionResult } from "./result";
@@ -24,7 +25,7 @@ import {
   r12_newDay,
   r15_entertainmentTax,
 } from "./rules/economy";
-import { r02_serveDrink } from "./rules/inventory";
+import { r01_orderStock, r02_serveDrink } from "./rules/inventory";
 import { inspect, permitActive, r06_inspectionChance } from "./rules/legal";
 import { r14_checkVictory } from "./rules/progression";
 import { r11_reputationDelta } from "./rules/reputation";
@@ -48,10 +49,9 @@ import {
   policyDemand,
   relationsCoverage,
   roundChance,
-  tablesFor,
-  tableSpend,
-  vipFor,
-  vipSpend,
+  bookingsFor,
+  SEAT_TYPES,
+  seatSpend,
 } from "./rules/strategy";
 import {
   clamp,
@@ -227,8 +227,7 @@ export function startNight(s: GameState): GameState {
       peakEnergy: 0,
       thinningLogged: false,
       tactics: {},
-      tablesBooked: sealed ? 0 : tablesFor(s),
-      vipBooked: sealed ? 0 : vipFor(s),
+      bookings: sealed ? { vip: 0, sofa: 0, table: 0, bar: 0 } : bookingsFor(s),
       rounds: 0,
       rejectedDress: 0,
       guestListIn: 0,
@@ -332,10 +331,12 @@ export function tickNight(s: GameState): GameState {
   }
 
   // Reserved tables arrive and pay their minimum spend (bottle service).
-  const seated = n.tablesBooked + n.vipBooked;
+  const seated = SEAT_TYPES.reduce((a, t) => a + n.bookings[t], 0);
   if (m === strategy.relations.tablesArriveMinute && seated > 0) {
-    const revenue =
-      n.tablesBooked * tableSpend(st) + n.vipBooked * vipSpend(st);
+    const revenue = SEAT_TYPES.reduce(
+      (a, t) => a + n.bookings[t] * seatSpend(st, t),
+      0,
+    );
     st = {
       ...st,
       coin: st.coin + revenue,
@@ -504,6 +505,16 @@ export function tickNight(s: GameState): GameState {
     g.satisfaction = clamp(g.satisfaction);
   }
 
+  // Auto-refill: anything running low is topped up from the instant supplier (if Coin and the stock room allow).
+  if (st.autoRefill) {
+    const ar = strategy.autoRefill;
+    for (const d of menu)
+      if (st.stock[d] <= ar.threshold) {
+        const r = r01_orderStock(st, d, ar.batch, ar.supplier as SupplierId);
+        if (r.ok) st = r.state;
+      }
+  }
+
   // Inspection (R6, R8, R16).
   if (m === n.inspectionMinute) {
     const res = inspect(st, n.underageAdmitted);
@@ -584,8 +595,9 @@ export function endNight(s: GameState): GameState {
     avgEnergy: Math.round(n.energySum / Math.max(1, n.minute)),
     peakEnergy: Math.round(n.peakEnergy),
     rounds: n.rounds,
-    tables: n.tablesBooked,
-    vipTables: n.vipBooked,
+    tables: n.bookings.sofa + n.bookings.table,
+    vipTables: n.bookings.vip,
+    barSeats: n.bookings.bar,
     rejectedDress: n.rejectedDress,
     tacticsUsed: Object.keys(n.tactics) as NightReport["tacticsUsed"],
     guestListIn: n.guestListIn,

@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   createGameState,
   bookPromoter,
+  bookingsFor,
+  SEAT_TYPES,
+  seatSpend,
+  setAutoRefill,
+  setMinSpend,
+  standardSpend,
   capacityOf,
   r01_orderStock,
   storageOf,
@@ -146,14 +152,18 @@ describe("staff strategies", () => {
         ...gro,
         staff: { ...gro.staff, relations: 99 },
       }),
-    ).toBe(levels[4].tables);
+    ).toBe(levels[4].sofas + levels[4].tables);
     const before = ticks(
       startNight(gro),
       strategy.relations.tablesArriveMinute,
     );
     expect(before.nightRevenue.table).toBe(0);
     const after = tickNight(before);
-    expect(after.nightRevenue.table).toBe(tablesFor(gro) * tableSpend(gro));
+    // Every booking (sofas, tables, walk-in bar seats) pays its minimum spend.
+    const b = bookingsFor(gro);
+    expect(after.nightRevenue.table).toBe(
+      SEAT_TYPES.reduce((a, t) => a + b[t] * seatSpend(gro, t), 0),
+    );
   });
 
   it("men buy rounds for women and hosts", () => {
@@ -471,5 +481,58 @@ describe("venue capacity and storage", () => {
     expect(up.ok && r01_orderStock(up.state, "beer", 10, "corner").ok).toBe(
       true,
     );
+  });
+});
+
+describe("minimum spend", () => {
+  const gro = club({
+    staff: { bartender: 4, security: 6, host: 0, relations: 3, mc: 0 },
+    reputation: 40,
+  });
+  it("defaults to the venue standard and is set per seat type by day", () => {
+    expect(seatSpend(gro, "sofa")).toBe(standardSpend(gro, "sofa"));
+    const r = setMinSpend(gro, "sofa", 20_000);
+    expect(r.ok && seatSpend(r.state, "sofa")).toBe(20_000);
+    if (r.ok) {
+      const back = setMinSpend(r.state, "sofa", null);
+      expect(back.ok && seatSpend(back.state, "sofa")).toBe(
+        standardSpend(gro, "sofa"),
+      );
+    }
+    expect(setMinSpend(startNight(gro), "sofa", 1).ok).toBe(false);
+    expect(setMinSpend(gro, "sofa", -1).ok).toBe(false);
+  });
+  it("a pricier minimum books fewer seats, a cheaper one more", () => {
+    const at = (t: "sofa" | "bar", k: number) =>
+      bookingsFor({
+        ...gro,
+        minSpend: { [t]: Math.round(standardSpend(gro, t) * k) },
+      })[t];
+    expect(at("sofa", 2)).toBeLessThan(at("sofa", 1));
+    expect(at("bar", 2)).toBeLessThan(at("bar", 1));
+    expect(at("bar", 0.5)).toBeGreaterThanOrEqual(at("bar", 1));
+  });
+  it("bar seats fill with walk-ins even without guest relations", () => {
+    expect(bookingsFor(club()).bar).toBeGreaterThan(0);
+    expect(bookingsFor(club()).sofa).toBe(0);
+  });
+});
+
+describe("auto-refill", () => {
+  const low = (on: boolean) => {
+    const s = club({ autoRefill: on });
+    // Realistic stock (the helper's 9999 of everything would fill the stock room).
+    const stock = { ...s.stock };
+    for (const d of ids(drinks)) stock[d] = 100;
+    return { ...s, stock: { ...stock, beer: 3 } };
+  };
+  it("tops up a drink that runs low at night, only when switched on", () => {
+    expect(tickNight(startNight(low(true))).stock.beer).toBeGreaterThan(3);
+    expect(tickNight(startNight(low(false))).stock.beer).toBeLessThanOrEqual(3);
+    expect(setAutoRefill(club(), true).ok).toBe(true);
+  });
+  it("stops when there is no Coin", () => {
+    const broke = { ...low(true), coin: 0 };
+    expect(tickNight(startNight(broke)).stock.beer).toBeLessThanOrEqual(3);
   });
 });

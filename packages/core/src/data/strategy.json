@@ -165,5 +165,32 @@
     "energy": 75,
     "chance": 0.5,
     "minutes": 25
+  },
+  "seats": {
+    "vip": {
+      "defaultSpend": 750,
+      "elasticity": 0.5,
+      "perStaff": 1.5
+    },
+    "sofa": {
+      "defaultSpend": 300,
+      "elasticity": 0.5,
+      "perStaff": 1.5
+    },
+    "table": {
+      "defaultSpend": 200,
+      "elasticity": 0.5,
+      "perStaff": 1.5
+    },
+    "bar": {
+      "defaultSpend": 60,
+      "elasticity": 0.7,
+      "walkIn": 0.3
+    }
+  },
+  "autoRefill": {
+    "threshold": 15,
+    "batch": 50,
+    "supplier": "corner"
   }
 }

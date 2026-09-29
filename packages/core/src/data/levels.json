@@ -13,7 +13,9 @@
     "priceScale": 1.5,
     "tables": 0,
     "vipTables": 0,
-    "storage": 1000
+    "storage": 1000,
+    "sofas": 0,
+    "barSeats": 0
   },
   "2": {
     "name": "Drink Shop",
@@ -29,7 +31,9 @@
     "priceScale": 4,
     "tables": 0,
     "vipTables": 0,
-    "storage": 1500
+    "storage": 1500,
+    "sofas": 0,
+    "barSeats": 0
   },
   "3": {
     "name": "Bar & Live Music",
@@ -43,9 +47,11 @@
     "requiredPermits": ["business", "liquorOnPremise"],
     "stayMinutes": [45, 150],
     "priceScale": 12,
-    "tables": 4,
+    "tables": 2,
     "vipTables": 0,
-    "storage": 2500
+    "storage": 2500,
+    "sofas": 2,
+    "barSeats": 8
   },
   "4": {
     "name": "Nightclub",
@@ -59,9 +65,11 @@
     "requiredPermits": ["business", "liquorOnPremise"],
     "stayMinutes": [60, 240],
     "priceScale": 48,
-    "tables": 8,
+    "tables": 4,
     "vipTables": 4,
-    "storage": 3000
+    "storage": 3000,
+    "sofas": 4,
+    "barSeats": 12
   },
   "5": {
     "name": "Premium Venue",
@@ -75,8 +83,10 @@
     "requiredPermits": ["business", "liquorOnPremise"],
     "stayMinutes": [60, 240],
     "priceScale": 60,
-    "tables": 24,
+    "tables": 12,
     "vipTables": 10,
-    "storage": 5000
+    "storage": 5000,
+    "sofas": 12,
+    "barSeats": 24
   }
 }

@@ -209,6 +209,9 @@ export const en = {
 
   stock: {
     supplier: "Supplier",
+    autoRefill: "Auto-refill",
+    autoRefillHint: (batch: number, at: number) =>
+      `Orders ${batch} more from the corner store when a drink drops to ${at}`,
     lead: (d: number) => (d === 0 ? "instant" : `${d} day${d > 1 ? "s" : ""}`),
     drink: "Drink",
     inStock: "In stock",
@@ -323,6 +326,10 @@ export const en = {
     forceDoor: "Force door open",
     forceDoorDesc: "Violation! Lets guests in over capacity",
     skip: "Skip to 04:00",
+    skipTitle: "Skip to 04:00?",
+    skipWarn:
+      "The rest of the night plays out instantly: no more crowd moves, restocks or dealing with trouble. The report opens straight away.",
+    skipCancel: "Keep playing",
     paused: "PAUSED",
     drunkCount: (n: number) =>
       n === 1
@@ -374,6 +381,8 @@ export const en = {
     energyValue: (avg: number, peak: number) => `avg ${avg} · peak ${peak}`,
     rounds: "Rounds bought for others",
     tables: "Tables reserved",
+    vipTables: "VIP tables",
+    barSeats: "Bar seats (minimum charge)",
     rejectedDress: "Turned away (dress code)",
     guestList: "Guest list guests",
     commission: "Promoter commission",
@@ -703,6 +712,15 @@ export const en = {
     dayOnly: "Change the rules by day.",
   },
 
+  minSpend: {
+    title: "Minimum spend",
+    desc: "What each reserved seat must spend tonight. Charge more and fewer book; charge less and more do. VIP, sofas and tables are booked by Guest Relations; bar seats fill with walk-ins.",
+    types: { vip: "VIP table", sofa: "Sofa", table: "Table", bar: "Bar seat" },
+    booked: (n: number, of: number) => `~${n} of ${of} booked tonight`,
+    standard: (c: string) => `standard ${c}`,
+    vipLocked: "Build the VIP lounge first (Build tab)",
+  },
+
   promoters: {
     title: "Promoters · guest list",
     desc: "A promoter fills tonight's guest list with their crowd. List guests arrive early and skip the cover; you pay per head who gets in.",
@@ -971,7 +989,7 @@ export const en = {
           djAnthem: "The DJ drops the anthem: nobody is going home",
         }[e.tactic];
       case "tablesSeated":
-        return `${e.tables} reserved table${e.tables > 1 ? "s" : ""} seated: +${fmt(e.revenue)} C bottle service`;
+        return `${e.tables} reservation${e.tables > 1 ? "s" : ""} seated (tables, VIP, bar seats): +${fmt(e.revenue)} C minimum spend`;
       case "crowdThinning":
         return `The room is going flat (energy ${e.energy}): guests are starting to leave`;
       case "promoterBooked":

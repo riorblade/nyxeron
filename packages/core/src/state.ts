@@ -12,6 +12,7 @@ import {
   type Level,
   type PermitId,
   type PromoterId,
+  type SeatType,
   type SegmentId,
   type StaffRole,
   type SupplierId,
@@ -170,10 +171,8 @@ export interface NightState {
   peakEnergy: number;
   thinningLogged: boolean;
   tactics: Partial<Record<TacticId, TacticState>>;
-  /** Table reservations made by Guest Relations; seated (and paid) at tablesArriveMinute. */
-  tablesBooked: number;
-  /** VIP lounge tables booked tonight (needs the VIP lounge built). */
-  vipBooked: number;
+  /** Reservations tonight per seat type; seated (and paid their minimum spend) at tablesArriveMinute. */
+  bookings: Record<SeatType, number>;
   /** Drinks guests bought for someone else. */
   rounds: number;
   rejectedDress: number;
@@ -205,6 +204,7 @@ export interface NightReport {
   rounds: number;
   tables: number;
   vipTables: number;
+  barSeats: number;
   rejectedDress: number;
   tacticsUsed: TacticId[];
   guestListIn: number;
@@ -235,6 +235,10 @@ export interface GameState {
   activePromos: ChannelId[];
   staff: Record<StaffRole, number>;
   policy: HousePolicy;
+  /** Minimum spend per seat type; a missing entry = the standard price for this venue. */
+  minSpend: Partial<Record<SeatType, number>>;
+  /** Restock a drink automatically at night when it runs low (instant supplier). */
+  autoRefill: boolean;
   /** Promoters booked for tonight (cleared each day). */
   promoters: PromoterId[];
   /** Sound system / lighting rig tier (0–3); a new venue starts from scratch. */
@@ -293,6 +297,8 @@ export function createGameState(
     activePromos: [],
     staff: fill(ids(staffRoles), () => 0),
     policy: DEFAULT_POLICY,
+    minSpend: {},
+    autoRefill: false,
     promoters: [],
     upgrades: { sound: 0, lighting: 0, vip: 0, capacity: 0, storage: 0 },
     forcedInspection: false,
@@ -315,8 +321,7 @@ const NIGHT_DEFAULTS = {
   peakEnergy: 0,
   thinningLogged: false,
   tactics: {},
-  tablesBooked: 0,
-  vipBooked: 0,
+  bookings: { vip: 0, sofa: 0, table: 0, bar: 0 },
   rounds: 0,
   rejectedDress: 0,
   guestListIn: 0,
@@ -335,6 +340,8 @@ export function migrateState(s: GameState): GameState {
     staff,
     policy: { ...DEFAULT_POLICY, ...s.policy },
     promoters: s.promoters ?? [],
+    minSpend: s.minSpend ?? {},
+    autoRefill: s.autoRefill ?? false,
     upgrades: { ...NO_UPGRADES, ...s.upgrades },
     night: n && {
       ...NIGHT_DEFAULTS,
