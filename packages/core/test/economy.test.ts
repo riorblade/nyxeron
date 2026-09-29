@@ -16,7 +16,7 @@ describe("R12 newDay", () => {
       ceoEnergy: 0,
       ceoCallUsed: true,
       hype: 25,
-      staff: { bartender: 2, security: 4 },
+      staff: { bartender: 2, security: 4, host: 0, relations: 0, mc: 0 },
       bookedTalent: ["rhea" as const],
     };
     const s = r12_newDay(s0);

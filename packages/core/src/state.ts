@@ -5,6 +5,7 @@ import {
   permits,
   staffRoles,
   type ChannelId,
+  type DressCode,
   type DrinkId,
   type Genre,
   type Level,
@@ -12,6 +13,7 @@ import {
   type SegmentId,
   type StaffRole,
   type SupplierId,
+  type TacticId,
   type TalentId,
 } from "./data";
 
@@ -20,6 +22,26 @@ export type Outcome = "victory" | "defeat" | "survived";
 export type Mode = "career" | "basement";
 export type Difficulty = "easy" | "normal" | "hard";
 export type CeoCall = "happyHour" | "closeDoor";
+
+/** House rules set by day; they stay until changed. */
+export interface HousePolicy {
+  /** Ladies' night: women get in free (more women come, and more men follow). */
+  ladiesNight: boolean;
+  dressCode: DressCode;
+}
+export const DEFAULT_POLICY: HousePolicy = {
+  ladiesNight: false,
+  dressCode: "none",
+};
+
+/** A crowd move's state tonight: active until `until`, usable again from `readyAt`. */
+export interface TacticState {
+  uses: number;
+  until: number;
+  readyAt: number;
+  /** Effect strength this use (after fatigue / DJ match). */
+  power: number;
+}
 
 export interface Order {
   drink: DrinkId;
@@ -66,6 +88,10 @@ export type GameEvent =
   | Ev<"guestEscorted", { guest: number }>
   | Ev<"rivalPromo", { hype: number }>
   | Ev<"supplierDelay", { days: number }>
+  | Ev<"tactic", { tactic: TacticId; power: number }>
+  | Ev<"tablesSeated", { tables: number; revenue: number }>
+  | Ev<"crowdThinning", { energy: number }>
+  | Ev<"policyChanged", { policy: HousePolicy }>
   | Ev<"gameOver", { outcome: Outcome }>;
 
 export interface NightRevenue {
@@ -92,6 +118,7 @@ export interface Guest {
   admitted: boolean;
   /** Hit an out-of-stock drink once (R2); afterwards only orders what is in stock. */
   disappointed: boolean;
+  female: boolean;
 }
 
 export interface NightState {
@@ -120,6 +147,17 @@ export interface NightState {
   violationsTonight: number;
   finesTonight: number;
   outOfStockLogged: DrinkId[];
+  /** Crowd energy 0–100: how full and how moving the room is. */
+  energy: number;
+  energySum: number;
+  peakEnergy: number;
+  thinningLogged: boolean;
+  tactics: Partial<Record<TacticId, TacticState>>;
+  /** Table reservations made by Guest Relations; seated (and paid) at tablesArriveMinute. */
+  tablesBooked: number;
+  /** Drinks guests bought for someone else. */
+  rounds: number;
+  rejectedDress: number;
 }
 
 export interface NightReport {
@@ -140,6 +178,12 @@ export interface NightReport {
   violations: number;
   shutDown: boolean;
   sealed: boolean;
+  avgEnergy: number;
+  peakEnergy: number;
+  rounds: number;
+  tables: number;
+  rejectedDress: number;
+  tacticsUsed: TacticId[];
 }
 
 export interface GameState {
@@ -164,6 +208,7 @@ export interface GameState {
   bookedTalent: TalentId[];
   activePromos: ChannelId[];
   staff: Record<StaffRole, number>;
+  policy: HousePolicy;
   forcedInspection: boolean;
   sealedNights: number;
   /** Extra lead-time days on supplier orders today (scenario event). */
@@ -217,6 +262,7 @@ export function createGameState(
     bookedTalent: [],
     activePromos: [],
     staff: fill(ids(staffRoles), () => 0),
+    policy: DEFAULT_POLICY,
     forcedInspection: false,
     sealedNights: 0,
     supplierDelay: 0,
@@ -226,5 +272,34 @@ export function createGameState(
     outcome: null,
     log: [],
     seed,
+  };
+}
+
+const NIGHT_DEFAULTS = {
+  energy: 30,
+  energySum: 0,
+  peakEnergy: 0,
+  thinningLogged: false,
+  tactics: {},
+  tablesBooked: 0,
+  rounds: 0,
+  rejectedDress: 0,
+};
+
+/**
+ * Fills in fields added after a save was written (house rules, new staff roles, crowd energy), so older saves load.
+ */
+export function migrateState(s: GameState): GameState {
+  const staff = { ...fill(ids(staffRoles), () => 0), ...s.staff };
+  const n = s.night;
+  return {
+    ...s,
+    staff,
+    policy: { ...DEFAULT_POLICY, ...s.policy },
+    night: n && {
+      ...NIGHT_DEFAULTS,
+      ...n,
+      guests: n.guests.map((g) => ({ ...g, female: g.female ?? false })),
+    },
   };
 }

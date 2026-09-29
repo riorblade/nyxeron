@@ -1,0 +1,97 @@
+{
+  "femaleShare": 0.42,
+  "ladiesNight": {
+    "femaleShareBonus": 0.14,
+    "demandBonus": 0.12
+  },
+  "dressCode": {
+    "none": {
+      "rejectMale": 0,
+      "rejectFemale": 0,
+      "budgetMultiplier": 1,
+      "premiumWeight": 0,
+      "demand": 1
+    },
+    "smart": {
+      "rejectMale": 0.1,
+      "rejectFemale": 0.03,
+      "budgetMultiplier": 1.2,
+      "premiumWeight": 1,
+      "demand": 0.95
+    },
+    "strict": {
+      "rejectMale": 0.25,
+      "rejectFemale": 0.08,
+      "budgetMultiplier": 1.4,
+      "premiumWeight": 2,
+      "demand": 0.85
+    }
+  },
+  "rounds": {
+    "base": 0.08,
+    "perFemaleShare": 0.4,
+    "perHost": 0.02,
+    "max": 0.55,
+    "satisfaction": 2
+  },
+  "hosts": {
+    "crowdEquivalent": 6,
+    "maleSatisfactionPerMinute": 0.01
+  },
+  "relations": {
+    "guestsPerStaff": 60,
+    "satisfactionPerMinute": 0.05,
+    "upsell": 0.15,
+    "tablesPerStaff": 3,
+    "tableMinSpend": 250,
+    "tablesArriveMinute": 90
+  },
+  "energy": {
+    "start": 30,
+    "follow": 0.1,
+    "danceWeight": 0.55,
+    "fullWeight": 0.45,
+    "fullAtCapacityShare": 0.95,
+    "danceShareForMax": 0.85,
+    "danceMultiplier": [0.6, 1.4],
+    "barMultiplier": [0.8, 1.25],
+    "satisfactionPerMinute": 0.05,
+    "leaveBelowEnergy": 35,
+    "leaveBelowSatisfaction": 45,
+    "leaveChancePerMinute": 0.02
+  },
+  "tactics": {
+    "mcHype": {
+      "staff": "mc",
+      "duration": 20,
+      "cooldown": 60,
+      "energy": 25,
+      "satisfactionPerMinute": 0.15,
+      "fatigue": 0.3
+    },
+    "hostsFloor": {
+      "staff": "host",
+      "duration": 30,
+      "cooldown": 90,
+      "energyPerHost": 6,
+      "maxEnergy": 40,
+      "fatigue": 0.2
+    },
+    "djAnthem": {
+      "staff": "",
+      "duration": 20,
+      "cooldown": 360,
+      "energy": 35,
+      "satisfaction": 10,
+      "stayExtension": 45,
+      "matchFactor": 1.2,
+      "mismatchFactor": 0.7,
+      "fatigue": 1
+    }
+  },
+  "impress": {
+    "perFemaleShare": 0.5,
+    "perHost": 0.05,
+    "maxHost": 0.3
+  }
+}

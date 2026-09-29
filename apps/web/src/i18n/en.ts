@@ -144,6 +144,7 @@ export const en = {
       talent: "Talent",
       promo: "Promo",
       staff: "Staff",
+      rules: "House Rules",
       permits: "Permits",
       build: "Build",
     },
@@ -171,7 +172,11 @@ export const en = {
       },
       staff: {
         title: "Staff Room",
-        desc: "Bartenders keep the bar moving. Security keeps the night safe.",
+        desc: "Bar, security, hosts, guest relations and the MC: the people who make the night.",
+      },
+      rules: {
+        title: "House Rules",
+        desc: "Who gets in, and on what terms. Set by day; they hold until you change them.",
       },
       permits: {
         title: "Permit Office",
@@ -248,6 +253,12 @@ export const en = {
       `Keep at least 1 security per 40 guests (${Math.ceil(cap / 40)} for full capacity). Security also checks IDs at the door.`,
     bartenderHint:
       "Each bartender adds bar capacity. A slow bar means lost sales and unhappy guests.",
+    hostHint:
+      "Social hosts keep the room lively: the club looks fuller, men spend more (and buy them drinks). Unlocks the 'Hosts to the floor' move.",
+    relationsHint:
+      "Guest relations meet every guest, keep them happy, talk up bigger orders and book tables (bottle service). One covers ~60 guests.",
+    mcHint:
+      "Hype man on the stage. Unlocks 'MC hype': sing-alongs and hands in the air that lift the room's energy.",
   },
 
   permits: {
@@ -345,6 +356,16 @@ export const en = {
     factorNoDj: "No DJ tonight: the dance floor was half as fun",
     factorFights: (n: number) => `${n} fight${n > 1 ? "s" : ""}: Rep −5 each`,
     factorClean: "Smooth night: nothing went wrong behind the bar",
+    energy: "Crowd energy",
+    energyValue: (avg: number, peak: number) => `avg ${avg} · peak ${peak}`,
+    rounds: "Rounds bought for others",
+    tables: "Tables reserved",
+    rejectedDress: "Turned away (dress code)",
+    factorEnergyHigh: (avg: number) =>
+      `The room was buzzing (energy ${avg}): more dancing, more spending`,
+    factorEnergyLow: (avg: number) =>
+      `The room felt flat (energy ${avg}): try hosts, the MC or the DJ's anthem at the right moment`,
+    factorMoves: (n: number) => `${n} crowd move${n > 1 ? "s" : ""} used`,
     subtitle: (d: number) => `Day ${d}`,
   },
 
@@ -631,6 +652,47 @@ export const en = {
       ],
     },
   },
+  rules: {
+    ladies: "Ladies' night",
+    ladiesDesc:
+      "Women get in free. More women come, more men follow, and men spend more buying rounds. You lose their cover charge.",
+    dress: "Dress code",
+    dressDesc:
+      "A stricter door turns some guests away and puts a few off coming, but the crowd that gets in spends far more.",
+    dressCodes: { none: "None", smart: "Smart", strict: "Strict" },
+    dressDetail: {
+      none: "Anyone gets in.",
+      smart: "~10% of men and ~3% of women turned away · budgets +20%",
+      strict: "~25% of men and ~8% of women turned away · budgets +40%",
+    },
+    forecast: "Tonight with these rules",
+    expected: "Expected guests",
+    women: "Women in the crowd",
+    tables: "Tables booked (Guest Relations)",
+    locked: "House rules unlock at Level 3.",
+    dayOnly: "Change the rules by day.",
+  },
+
+  moves: {
+    title: "Crowd moves",
+    energy: "Energy",
+    energyHint:
+      "How full and how moving the room is. Low energy + unhappy guests = people go home.",
+    mcHype: "MC hype",
+    mcHypeDesc: "Sing-along, hands up",
+    hostsFloor: "Hosts to the floor",
+    hostsFloorDesc: "Fill an empty dance floor",
+    djAnthem: "DJ anthem",
+    djAnthemDesc: "Signature set: everyone stays",
+    active: (m: number) => `Live · ${m} min`,
+    ready: "Ready",
+    cooldown: (m: number) => `Again in ${m} min`,
+    needMc: "Hire an MC",
+    needHost: "Hire hosts",
+    needDj: "After the DJ starts",
+    used: "Used tonight",
+  },
+
   settings: {
     title: "Settings",
     open: "Settings",
@@ -673,6 +735,11 @@ export const en = {
 
   videotron: {
     shoutout: "SHOUTOUT",
+    anthem: "THE ANTHEM",
+    mc: "MC ON THE MIC",
+    handsUp: "HANDS UP!",
+    floor: "HOSTS ON THE FLOOR",
+    everybody: "EVERYBODY DANCE",
     topSpenders: "TOP SPENDERS TONIGHT",
     nowPlaying: "NOW ON THE DECKS",
     welcome: "WELCOME TO",
@@ -818,6 +885,18 @@ export const en = {
         return `A rival club launched a big promo: Hype ${e.hype}`;
       case "supplierDelay":
         return `Suppliers are running late: +${e.days} day on orders`;
+      case "tactic":
+        return {
+          mcHype: "MC on the mic: hands up, the whole room sings along",
+          hostsFloor: "Hosts hit the dance floor: the crowd follows",
+          djAnthem: "The DJ drops the anthem: nobody is going home",
+        }[e.tactic];
+      case "tablesSeated":
+        return `${e.tables} reserved table${e.tables > 1 ? "s" : ""} seated: +${fmt(e.revenue)} C bottle service`;
+      case "crowdThinning":
+        return `The room is going flat (energy ${e.energy}): guests are starting to leave`;
+      case "policyChanged":
+        return `House rules: ${e.policy.ladiesNight ? "ladies' night, " : ""}dress code ${e.policy.dressCode}`;
       case "gameOver":
         return `Game over: ${e.outcome}`;
     }

@@ -3,6 +3,7 @@ import {
   drinks,
   isAtFightRisk,
   isPeakTime,
+  active as tacticActive,
   isInside,
   night as nightData,
   type DrinkId,
@@ -116,6 +117,9 @@ export class VenueScene {
   private guests = new Map<number, Person>();
   private staff: Person[] = [];
   private stage: Person[] = [];
+  /** Hosts on shift: mingling at the tables and bar, or out on the floor during "Hosts to the floor". */
+  private hosts: Person[] = [];
+  private energy = 50;
   private staffKey = "";
   private stageKey = "";
   private floats: THREE.Sprite[] = [];
@@ -255,6 +259,8 @@ export class VenueScene {
       s.bookedTalent.length > 0 && s.night.minute >= nightData.djSetStartMinute;
     this.syncStaff(s);
     this.syncStage(s);
+    this.syncHosts(s);
+    this.energy = s.night.energy ?? 50;
     this.syncScreen(s);
     this.peak = isPeakTime(s);
     this.applyScreens();
@@ -266,7 +272,8 @@ export class VenueScene {
       if (g.state === "pending" || (g.state === "left" && !p)) continue;
       const [tx, tz] = this.spot(zoneFor[g.state], g.id, queueIndex.get(g.id));
       // Guests already inside when the scene (re)opens appear in place instead of all walking in again.
-      if (!p) p = this.spawnGuest(g.id, fresh ? [tx, tz] : this.entrance());
+      if (!p)
+        p = this.spawnGuest(g.id, fresh ? [tx, tz] : this.entrance(), g.female);
       if (!p.held) [p.tx, p.tz] = [tx, tz];
       p.leaving = g.state === "left";
       p.mode = g.state === "dance" ? "dance" : "idle";
@@ -289,7 +296,17 @@ export class VenueScene {
     }
 
     const dj = s.bookedTalent[0];
+    const n = s.night;
+    const callout =
+      n.tactics?.djAnthem && tacticActive(n, "djAnthem")
+        ? { kicker: en.videotron.anthem, text: dj ? djs[dj].name : "NYXERON" }
+        : n.tactics?.mcHype && tacticActive(n, "mcHype")
+          ? { kicker: en.videotron.mc, text: en.videotron.handsUp }
+          : n.tactics?.hostsFloor && tacticActive(n, "hostsFloor")
+            ? { kicker: en.videotron.floor, text: en.videotron.everybody }
+            : null;
     this.tron = {
+      callout,
       dj: this.djOn && dj ? djs[dj].name : null,
       top: [...this.spent]
         .sort((a, b) => b[1] - a[1])
@@ -326,6 +343,7 @@ export class VenueScene {
     this.guests.clear();
     this.staff = [];
     this.stage = [];
+    this.hosts = [];
     this.staffKey = this.stageKey = this.screenDj = "";
     this.floats = [];
     this.budgets.clear();
@@ -1023,8 +1041,19 @@ export class VenueScene {
     };
   }
 
-  private spawnGuest(id: number, at: [number, number]): Person {
-    const list = this.assets!.guests;
+  private spawnGuest(
+    id: number,
+    at: [number, number],
+    female?: boolean,
+  ): Person {
+    // Sprites 1–5 are men, 6–10 women; match the simulated guest.
+    const all = this.assets!.guests;
+    const list =
+      all.length === 10 && female !== undefined
+        ? female
+          ? all.slice(5)
+          : all.slice(0, 5)
+        : all;
     const tex = list.length
       ? list[Math.floor(hash(id + 31) * list.length)]
       : undefined;
@@ -1114,8 +1143,10 @@ export class VenueScene {
   private syncStage(s: GameState) {
     const a = this.assets!;
     const dj = s.bookedTalent[0];
+    // The MC takes the stage for "MC hype"; otherwise dancers during the set.
+    const hype = !!s.night?.tactics?.mcHype && tacticActive(s.night, "mcHype");
     const stageAct = this.zones.has("stage")
-      ? s.level >= 4 && this.djOn
+      ? s.level >= 4 && this.djOn && !hype
         ? "dancers"
         : "mc"
       : "none";
@@ -1169,6 +1200,44 @@ export class VenueScene {
     const names = en.videotron.names;
     const first = names[Math.floor(hash(id + 77) * names.length)]!;
     return `${first} ${String.fromCharCode(65 + Math.floor(hash(id + 78) * 26))}.`;
+  }
+
+  private syncHosts(s: GameState) {
+    const n = s.night!;
+    const count = Math.min(6, s.staff.host ?? 0);
+    const all = this.assets!.guests;
+    while (this.hosts.length > count) this.remove(this.hosts.pop()!);
+    while (this.hosts.length < count) {
+      const i = this.hosts.length;
+      const tex = all.length === 10 ? all[6 + (i % 2)] : all[0];
+      const [x, z] = this.entrance();
+      const p = this.addPerson(tex, PERSON_H, x, z, "idle", 700 + i);
+      // A soft magenta halo marks staff hosts apart from guests.
+      const halo = new THREE.Mesh(
+        new THREE.RingGeometry(0.16, 0.24, 24),
+        new THREE.MeshBasicMaterial({
+          color: PALETTE[0],
+          transparent: true,
+          opacity: 0.7,
+          depthWrite: false,
+        }),
+      );
+      halo.rotation.x = -Math.PI / 2;
+      halo.position.y = 0.02;
+      p.g.add(halo);
+      this.hosts.push(p);
+    }
+    const onFloor = !!n.tactics?.hostsFloor && tacticActive(n, "hostsFloor");
+    this.hosts.forEach((p, i) => {
+      const zone: ZoneId = onFloor ? "dance" : i % 2 ? "barFront" : "seating";
+      const pt = this.zonePoint(
+        zone,
+        0.2 + hash(p.seed + (onFloor ? 3 : 0)) * 0.6,
+        0.2 + hash(p.seed + 17) * 0.6,
+      );
+      if (pt) [p.tx, p.tz] = pt;
+      p.mode = onFloor ? "dance" : "idle";
+    });
   }
 
   private patrolPoint(seed: number): [number, number] {
@@ -1477,6 +1546,13 @@ export class VenueScene {
       animate(p);
     }
     this.stage.forEach(animate);
+    for (const p of this.hosts) {
+      p.g.position.x += (p.tx - p.g.position.x) * k * 0.6;
+      p.g.position.z += (p.tz - p.g.position.z) * k * 0.6;
+      animate(p);
+    }
+    // The room's energy drives how hard the lights and floor go.
+    const vibe = 0.55 + (this.energy / 100) * 0.7;
 
     // LED floor colour sweep; the floor light takes the average hue.
     if (this.led) {
@@ -1484,7 +1560,7 @@ export class VenueScene {
       this.led.cells.forEach(([x, y], i) => {
         const wave = 0.5 + 0.5 * Math.sin(tSec * 2.2 - (x + y) * 0.9);
         const level = this.djOn
-          ? 0.12 + wave * 0.45 + pulse * 0.3
+          ? (0.12 + wave * 0.45 + pulse * 0.3) * vibe
           : 0.04 + wave * 0.08;
         c.setHSL(
           ((tSec * 40 + (x + y) * 28) % 360) / 360,
@@ -1505,7 +1581,7 @@ export class VenueScene {
           0,
           dz.y + dz.h / 2 + Math.cos(tSec * 0.9 + phase) * dz.h * 0.35,
         );
-        light.intensity = this.djOn ? 35 + pulse * 40 : 6;
+        light.intensity = this.djOn ? (35 + pulse * 40) * vibe : 6;
       }
     this.beams.forEach((b, i) => {
       b.visible = this.djOn;

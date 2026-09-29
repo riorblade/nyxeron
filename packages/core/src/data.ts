@@ -9,6 +9,7 @@ import permitsJson from "./data/permits.json";
 import segmentsJson from "./data/segments.json";
 import scenariosJson from "./data/scenarios.json";
 import staffJson from "./data/staff.json";
+import strategyJson from "./data/strategy.json";
 import suppliersJson from "./data/suppliers.json";
 
 // ponytail: ids are the JSON keys, so adding an entry to a JSON file is the whole change.
@@ -24,6 +25,7 @@ export const economy = economyJson;
 export const legal = legalJson;
 export const night = nightJson;
 export const scenarios = scenariosJson;
+export const strategy = strategyJson;
 
 export type DrinkId = keyof typeof drinks;
 export type SupplierId = keyof typeof suppliers;
@@ -32,6 +34,8 @@ export type ChannelId = keyof typeof channels;
 export type TalentId = keyof typeof djs;
 export type StaffRole = keyof typeof staffRoles;
 export type SegmentId = keyof typeof segments;
+export type DressCode = keyof typeof strategy.dressCode;
+export type TacticId = keyof typeof strategy.tactics;
 export type Genre = string;
 export type Level = 1 | 2 | 3 | 4 | 5;
 
@@ -44,3 +48,11 @@ export const defaultPrice = (drink: DrinkId, level: Level) =>
   Math.round(drinks[drink].defaultPrice * priceScale(level));
 export const requiredPermits = (level: Level) =>
   levels[level].requiredPermits as PermitId[];
+
+/** Some roles are paid like the venue earns: their wage grows with the level's price scale. */
+export const wageOf = (role: StaffRole, level: Level) => {
+  const r = staffRoles[role] as { wagePerDay: number; wageScales?: boolean };
+  return r.wageScales
+    ? Math.round(r.wagePerDay * priceScale(level))
+    : r.wagePerDay;
+};

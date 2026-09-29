@@ -283,4 +283,13 @@ P0–P5 done (MVP playable). P6 Web3 and P7 deploy not started.
 - Audio (Web Audio, no generated media): DJ tracks from `apps/web/public/audio/<dj>.mp3` + `house.mp3` (user-made, see Suno prompts); missing tracks fall back to a synthesized beat; venue pulse follows the live kick (bass-band flux); synthesized cash/alert SFX; mute [M], muffled when paused. Tracks present: kalu, sable, jax (papi-jarang-pulang), rhea (shakalaka-boom), nova (dj-main-serong), landing (starts on first click/key; one continuous lounge track: landing → office muffled → club before the DJ → report muffled).
 - Venue is 3D (three.js, `apps/web/src/venue/scene3d.ts`): drag rotate, right-drag/arrows pan, wheel zoom, walls cut away toward the camera, liquor cabinet + fridge behind every bar. Mid-night Office (O / button): clock waits, `nightPromote` adds extra guests for the rest of the night; Talent/Build are day-only.
 - Wall screens: slots per layout (`layouts.ts` → `screens`: portrait / landscape / ad), clips from `apps/web/public/screens/playlist.json` (user-supplied mp4s, cover-cropped, rotating); empty lists show a beat visualizer / 'your brand here' ad placeholder. Main screen plays landscape clips between DJ sets.
-- Not built yet: table revenue (Level 3+), performers/bands, VIP/bottle service, Sandbox mode, sound.
+- Wall screens are all landscape now (clip / ad slots); dancer clips play only at peak hours (00:00–03:00 with a DJ on, `isPeakTime`), per Settings. The landing track never plays inside the club (house warm-up → DJ).
+- Settings (`apps/web/src/settings.ts`): volume, music outside / inside the club, SFX, clips (peak / always / off), ads, cutscene.
+- Club strategy (2026-09-30, `rules/strategy.ts`, numbers in `data/strategy.json`), all from Level 3:
+  - Guests have a gender. House rules (by day): ladies' night (women free, more women and a bigger crowd, men spend more) and dress code none/smart/strict (turns some away, fewer come, bigger budgets, more premium guests).
+  - New staff: host (fuller-looking room, men spend more and buy them drinks), guest relations (satisfaction, upsell, table reservations = bottle service revenue), MC. Their wages scale with the level's price scale.
+  - Crowd energy 0–100 each minute (dancing share + fullness + active moves): drives dancing, bar spend and satisfaction; a flat room with unhappy guests empties early.
+  - Crowd moves at night with cooldowns and fatigue: MC hype, hosts to the floor (best on an empty floor), DJ anthem (once a night, extends stays, stronger when the DJ matches the crowd).
+  - Men buy rounds for women and hosts (extra sales). Night Report shows energy, rounds, tables, dress-code rejections and moves used.
+  - Balance: a bot that ignores all of this still hits Level 2/3/4/5 ≈ day 17/28/43/56 (unchanged curve); each strategy nets roughly +20k to +90k per night at Level 4, all combined about +290k.
+- Not built yet: performers/bands, Sandbox mode.

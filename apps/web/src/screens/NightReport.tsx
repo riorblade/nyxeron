@@ -67,6 +67,13 @@ function factors(s: GameState): string[] {
           : en.report.factorDjMiss,
     );
   if (r.fights) out.push(en.report.factorFights(r.fights));
+  // Crowd energy only matters from Level 3 (reports from older saves may lack it).
+  if (s.level >= 3 && r.avgEnergy !== undefined) {
+    if (r.avgEnergy >= 65) out.push(en.report.factorEnergyHigh(r.avgEnergy));
+    else if (r.avgEnergy < 45) out.push(en.report.factorEnergyLow(r.avgEnergy));
+    if (r.tacticsUsed?.length)
+      out.push(en.report.factorMoves(r.tacticsUsed.length));
+  }
   return out.length ? out : [en.report.factorClean];
 }
 
@@ -140,6 +147,18 @@ export function NightReport({ s }: { s: GameState }) {
             <Row label={en.report.guests}>{r.guests}</Row>
             <Row label={en.report.rejected}>{r.rejectedUnderage}</Row>
             <Row label={en.report.fights}>{r.fights}</Row>
+            {s.level >= 3 && r.avgEnergy !== undefined && (
+              <>
+                <Row label={en.report.energy}>
+                  {en.report.energyValue(r.avgEnergy, r.peakEnergy)}
+                </Row>
+                <Row label={en.report.rounds}>{r.rounds}</Row>
+                {r.tables > 0 && <Row label={en.report.tables}>{r.tables}</Row>}
+                {r.rejectedDress > 0 && (
+                  <Row label={en.report.rejectedDress}>{r.rejectedDress}</Row>
+                )}
+              </>
+            )}
             <Row label={en.report.violations}>{r.violations}</Row>
             <Row label={en.report.satisfaction} strong>
               {r.avgSatisfaction}%

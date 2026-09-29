@@ -12,6 +12,7 @@ import {
   Handshake,
   Headphones,
   Megaphone,
+  Mic,
   Package,
   PartyPopper,
   ScrollText,
@@ -20,10 +21,12 @@ import {
   Siren,
   Star,
   Swords,
+  TrendingDown,
   TrendingUp,
   TriangleAlert,
   Truck,
   Users,
+  Wine,
   Zap,
   type LucideIcon,
 } from "lucide-react";
@@ -46,6 +49,7 @@ export const tabIcon = {
   staff: Users,
   permits: ScrollText,
   build: Building2,
+  rules: ScrollText,
 } satisfies Record<string, LucideIcon>;
 
 const eventIcons: Record<GameEvent["kind"], LucideIcon> = {
@@ -70,6 +74,10 @@ const eventIcons: Record<GameEvent["kind"], LucideIcon> = {
   guestEscorted: Shield,
   rivalPromo: TrendingUp,
   supplierDelay: Truck,
+  tactic: Mic,
+  tablesSeated: Wine,
+  crowdThinning: TrendingDown,
+  policyChanged: ScrollText,
   gameOver: Check,
 };
 export const eventIcon = (e: GameEvent) => eventIcons[e.kind];

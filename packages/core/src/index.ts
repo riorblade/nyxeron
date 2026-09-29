@@ -14,3 +14,4 @@ export * from "./state";
 export * from "./objectives";
 export * from "./rules/ceo";
 export * from "./scenario";
+export * from "./rules/strategy";

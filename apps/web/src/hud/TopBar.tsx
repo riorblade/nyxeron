@@ -20,6 +20,7 @@ function Stat({
   warn,
   dense,
   tier = 0,
+  roomy,
 }: {
   label: string;
   icon: LucideIcon;
@@ -28,13 +29,17 @@ function Stat({
   dense?: boolean;
   /** 0 = always shown; 1 = from xl; 2 = from 2xl. A stat in warning always shows. */
   tier?: 0 | 1 | 2;
+  /** Night HUD shares the bar with the controls, so its secondary stats need more room before they show. */
+  roomy?: boolean;
 }) {
   return (
     <div
       className={cn(
         "flex shrink-0 items-center gap-2.5 border-l border-white/10 pl-4 first-of-type:border-0 first-of-type:pl-0",
-        !warn && tier === 1 && "hidden xl:flex",
-        !warn && tier === 2 && "hidden 2xl:flex",
+        !warn && tier === 1 && (roomy ? "hidden 2xl:flex" : "hidden xl:flex"),
+        !warn &&
+          tier === 2 &&
+          (roomy ? "hidden min-[1800px]:flex" : "hidden 2xl:flex"),
       )}
     >
       {!dense && (
@@ -107,7 +112,7 @@ export function TopBar({
       )}
     >
       <Brand compact />
-      <div className="flex min-w-0 max-w-52 flex-col leading-tight">
+      <div className="flex max-w-52 min-w-28 shrink-0 flex-col leading-tight">
         <span className="truncate text-sm font-medium tracking-[0.22em] uppercase">
           {s.clubName}
         </span>
@@ -118,6 +123,7 @@ export function TopBar({
         </span>
       </div>
       <Stat
+        roomy={dense}
         dense={dense}
         icon={statIcon.coin}
         label={en.hud.coin}
@@ -125,16 +131,23 @@ export function TopBar({
       >
         {fmt(s.coin)}
       </Stat>
-      <Stat dense={dense} icon={statIcon.rep} label={en.hud.rep}>
+      <Stat roomy={dense} dense={dense} icon={statIcon.rep} label={en.hud.rep}>
         <span className="tracking-tighter text-white/80">
           {stars(s.reputation)}
         </span>{" "}
         {s.reputation}
       </Stat>
-      <Stat dense={dense} tier={2} icon={statIcon.hype} label={en.hud.hype}>
+      <Stat
+        roomy={dense}
+        dense={dense}
+        tier={2}
+        icon={statIcon.hype}
+        label={en.hud.hype}
+      >
         <Meter value={s.hype} />
       </Stat>
       <Stat
+        roomy={dense}
         dense={dense}
         tier={1}
         icon={statIcon.safety}
@@ -143,13 +156,20 @@ export function TopBar({
       >
         <Meter value={s.safety} warn={s.safety < 40} />
       </Stat>
-      <Stat dense={dense} tier={2} icon={statIcon.energy} label={en.hud.energy}>
+      <Stat
+        roomy={dense}
+        dense={dense}
+        tier={2}
+        icon={statIcon.energy}
+        label={en.hud.energy}
+      >
         {"●".repeat(s.ceoEnergy)}
         <span className="text-white/25">
           {"●".repeat(Math.max(0, economy.ceoEnergyPerDay - s.ceoEnergy))}
         </span>
       </Stat>
       <Stat
+        roomy={dense}
         dense={dense}
         tier={1}
         icon={statIcon.violations}
@@ -159,6 +179,7 @@ export function TopBar({
         {s.violations}/{legal.maxViolations}
       </Stat>
       <Stat
+        roomy={dense}
         dense={dense}
         tier={2}
         icon={statIcon.permits}

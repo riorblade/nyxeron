@@ -4,6 +4,7 @@ import {
   ids,
   levels,
   staffRoles,
+  wageOf,
   type GameState,
 } from "@nyxeron/core";
 import { Lock, Minus, Plus, Users } from "lucide-react";
@@ -19,6 +20,9 @@ export function StaffTab({ s }: { s: GameState }) {
   const hint = {
     security: en.staff.securityHint(levels[s.level].capacity),
     bartender: en.staff.bartenderHint,
+    host: en.staff.hostHint,
+    relations: en.staff.relationsHint,
+    mc: en.staff.mcHint,
   };
   return (
     <ul className="grid grid-cols-[repeat(auto-fill,minmax(20rem,1fr))] gap-4">
@@ -48,7 +52,7 @@ export function StaffTab({ s }: { s: GameState }) {
                 <div className="flex flex-col p-4">
                   <div className="text-lg font-semibold">{role.name}</div>
                   <div className="font-mono text-xs text-white/50">
-                    {en.staff.wage(role.wagePerDay)}
+                    {en.staff.wage(wageOf(r, s.level))}
                   </div>
                   <p className="mt-2 text-xs leading-relaxed text-white/65">
                     {locked ? en.office.lockedTab(role.minLevel) : hint[r]}

@@ -1,4 +1,4 @@
-import type { GameState } from "@nyxeron/core";
+import { migrateState, type GameState } from "@nyxeron/core";
 
 /** Bump when GameState shape changes; older saves are then ignored instead of crashing the game. */
 export const SAVE_VERSION = 1;
@@ -16,8 +16,9 @@ export function deserialize(raw: string | null): SaveFile | null {
   if (!raw) return null;
   try {
     const f = JSON.parse(raw) as SaveFile;
+    // Same version, but saves from before house rules / new staff get the new fields filled in.
     return f.v === SAVE_VERSION && f.state && typeof f.state.day === "number"
-      ? f
+      ? { ...f, state: migrateState(f.state) }
       : null;
   } catch {
     return null;

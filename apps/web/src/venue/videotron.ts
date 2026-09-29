@@ -34,6 +34,8 @@ export function setShoutouts(next: string[]) {
 // ---------- the LED board ----------
 
 export interface VideotronData {
+  /** A crowd move in play takes over the board (HANDS UP!, the anthem). */
+  callout?: { kicker: string; text: string } | null;
   dj: string | null;
   top: { name: string; spent: number }[];
 }
@@ -73,6 +75,7 @@ export class Videotron {
 
   private slides(data: VideotronData): Slide[] {
     const t = en.videotron;
+    if (data.callout) return [{ ...data.callout, hue: 330 }];
     const out: Slide[] = getShoutouts().map((text, i) => ({
       kicker: t.shoutout,
       text,

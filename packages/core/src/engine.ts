@@ -9,6 +9,7 @@ import {
   night,
   priceScale,
   segments,
+  strategy,
   type DrinkId,
   type ChannelId,
   type SegmentId,
@@ -28,6 +29,23 @@ import { r14_checkVictory } from "./rules/progression";
 import { r11_reputationDelta } from "./rules/reputation";
 import { r08_rejectAtDoor, r09_fightChance } from "./rules/security";
 import { dominantGenre, r04_djMultiplier } from "./rules/talent";
+import {
+  active,
+  barMultiplier,
+  coverFor,
+  danceMultiplier,
+  dressCode,
+  dressReject,
+  energyTarget,
+  femaleShare,
+  maleBudget,
+  POLICY_MIN_LEVEL,
+  policyDemand,
+  relationsCoverage,
+  roundChance,
+  tablesFor,
+  tableSpend,
+} from "./rules/strategy";
 import {
   clamp,
   type GameEvent,
@@ -53,7 +71,9 @@ export function expectedGuests(s: GameState): number {
     : 1;
   const factor =
     base + (hypeWeight * s.hype) / 100 + (repWeight * s.reputation) / 100;
-  return Math.round(levelData(s.level).demand * factor * busy);
+  return Math.round(
+    levelData(s.level).demand * factor * busy * policyDemand(s),
+  );
 }
 
 /** Base segment weights, with each active promo boosting its channel's audience (R5). */
@@ -63,6 +83,8 @@ function segmentWeights(s: GameState): Record<SegmentId, number> {
   ) as Record<SegmentId, number>;
   for (const c of s.activePromos)
     w[channels[c].segment as SegmentId] += night.promoSegmentBoost;
+  // A dress code attracts the big spenders.
+  w.premium += dressCode(s).premiumWeight;
   return w;
 }
 
@@ -76,6 +98,7 @@ function makeGuest(
 ): Guest {
   const segment = rng.weighted(weights);
   const seg = segments[segment];
+  const female = rng.chance(femaleShare(s));
   return {
     id: 0,
     segment,
@@ -83,7 +106,10 @@ function makeGuest(
       ? s.clubGenre
       : rng.pick(seg.genres),
     budget: Math.round(
-      rng.int(seg.budget[0]!, seg.budget[1]!) * priceScale(s.level),
+      rng.int(seg.budget[0]!, seg.budget[1]!) *
+        priceScale(s.level) *
+        dressCode(s).budgetMultiplier *
+        (female ? 1 : maleBudget(s)),
     ),
     drunk: 0,
     satisfaction: night.startSatisfaction,
@@ -93,6 +119,7 @@ function makeGuest(
     leaveMinute: arriveMinute + rng.int(stay[0]!, stay[1]!),
     admitted: false,
     disappointed: false,
+    female,
   };
 }
 
@@ -147,6 +174,14 @@ export function startNight(s: GameState): GameState {
       violationsTonight: 0,
       finesTonight: 0,
       outOfStockLogged: [],
+      energy: strategy.energy.start,
+      energySum: 0,
+      peakEnergy: 0,
+      thinningLogged: false,
+      tactics: {},
+      tablesBooked: sealed ? 0 : tablesFor(s),
+      rounds: 0,
+      rejectedDress: 0,
     },
     log: sealed ? [...s.log, { day: s.day, kind: "venueSealed" }] : s.log,
   };
@@ -171,7 +206,7 @@ export function tickNight(s: GameState): GameState {
     if (g.state === "pending" && g.arriveMinute <= m) g.state = "queue";
 
   // Door (R8 ID check, R10 capacity, cover charge).
-  const { capacity, coverCharge } = levelData(s.level);
+  const { capacity } = levelData(s.level);
   let inside = n.guests.filter(isInside).length;
   let admittedNow = 0;
   for (const g of n.guests) {
@@ -188,8 +223,15 @@ export function tickNight(s: GameState): GameState {
       n.rejectedUnderage++;
       continue;
     }
+    // Dress code: some are turned away (no rng draw when there is no dress code).
+    const dressOut = dressReject(st, g);
+    if (dressOut > 0 && rng.chance(dressOut)) {
+      g.state = "left";
+      n.rejectedDress++;
+      continue;
+    }
     if (g.underage) n.underageAdmitted++;
-    const pay = Math.min(coverCharge, g.budget);
+    const pay = Math.min(coverFor(st, g), g.budget);
     g.budget -= pay;
     st = {
       ...st,
@@ -231,6 +273,57 @@ export function tickNight(s: GameState): GameState {
     });
   }
 
+  // Reserved tables arrive and pay their minimum spend (bottle service).
+  if (m === strategy.relations.tablesArriveMinute && n.tablesBooked > 0) {
+    const revenue = n.tablesBooked * tableSpend(st);
+    st = {
+      ...st,
+      coin: st.coin + revenue,
+      nightRevenue: {
+        ...st.nightRevenue,
+        table: st.nightRevenue.table + revenue,
+      },
+    };
+    ev({ ...at, kind: "tablesSeated", tables: n.tablesBooked, revenue });
+  }
+
+  // Crowd energy follows how full the room looks and how many are dancing (plus any crowd move in play).
+  const insideNow = n.guests.filter(isInside);
+  const dancing = insideNow.filter((g) => g.state === "dance").length;
+  const femaleInside = insideNow.length
+    ? insideNow.filter((g) => g.female).length / insideNow.length
+    : 0;
+  n.energy +=
+    (energyTarget(st, n, insideNow.length, dancing) - n.energy) *
+    strategy.energy.follow;
+  n.energySum += n.energy;
+  n.peakEnergy = Math.max(n.peakEnergy, n.energy);
+  const E = strategy.energy;
+  if (
+    st.level >= POLICY_MIN_LEVEL &&
+    !n.thinningLogged &&
+    m > night.djSetStartMinute &&
+    insideNow.length >= 10 &&
+    n.energy < E.leaveBelowEnergy
+  ) {
+    n.thinningLogged = true;
+    ev({ ...at, kind: "crowdThinning", energy: Math.round(n.energy) });
+  }
+  const coverage = relationsCoverage(st, insideNow.length);
+  // The vibe only matters once there is a floor to fill (Level 3+); the booth and shop just sell drinks.
+  const vibe = st.level >= POLICY_MIN_LEVEL;
+  const perMinute =
+    (vibe ? ((n.energy - 50) / 50) * E.satisfactionPerMinute : 0) +
+    coverage * strategy.relations.satisfactionPerMinute +
+    (active(n, "mcHype")
+      ? strategy.tactics.mcHype.satisfactionPerMinute * n.tactics.mcHype!.power
+      : 0);
+  const danceBoost = vibe ? danceMultiplier(n.energy) : 1;
+  const barBoost =
+    (vibe ? barMultiplier(n.energy) : 1) *
+    (1 + strategy.relations.upsell * coverage);
+  const rounds = roundChance(st, femaleInside);
+
   // Guests inside.
   const menu = ids(drinks).filter((d) => drinks[d].minLevel <= st.level);
   // Bar throughput: the owner serves alone at first; each bartender adds a serving slot.
@@ -242,6 +335,20 @@ export function tickNight(s: GameState): GameState {
       continue;
     }
     g.drunk = Math.max(0, g.drunk - night.drunkDecayPerMinute);
+    // A flat, unhappy room empties early.
+    if (
+      vibe &&
+      n.energy < E.leaveBelowEnergy &&
+      g.satisfaction < E.leaveBelowSatisfaction &&
+      rng.chance(E.leaveChancePerMinute)
+    ) {
+      g.state = "left";
+      inside--;
+      continue;
+    }
+    g.satisfaction +=
+      perMinute +
+      (g.female ? 0 : st.staff.host * strategy.hosts.maleSatisfactionPerMinute);
 
     if (rng.chance(r09_fightChance(st, g.drunk, inside))) {
       g.state = "left";
@@ -263,6 +370,7 @@ export function tickNight(s: GameState): GameState {
       : st.prices[drink];
     // Pricier than default → fewer orders; drunk guests slow down.
     const barChance =
+      barBoost *
       night.barChancePerMinute *
       Math.min(1.5, defaultPrice(drink, st.level) / price) *
       Math.max(0.2, 1 - g.drunk / night.drunkSlowdown);
@@ -287,9 +395,25 @@ export function tickNight(s: GameState): GameState {
         g.budget -= price;
         g.drunk += drinks[drink].alcohol;
         g.satisfaction += night.drinkSatisfaction;
+        // Buying a round: a man gets one for a woman in the crowd or a host.
+        if (
+          !g.female &&
+          g.budget >= price &&
+          barSlots > 0 &&
+          rng.chance(rounds)
+        ) {
+          const again = r02_serveDrink(st, drink, price);
+          if (!again.outOfStock) {
+            barSlots--;
+            st = again.state;
+            g.budget -= price;
+            g.satisfaction += strategy.rounds.satisfaction;
+            n.rounds++;
+          }
+        }
       }
       g.satisfaction += res.satisfactionDelta;
-    } else if (r < barChance + night.danceChancePerMinute) {
+    } else if (r < barChance + night.danceChancePerMinute * danceBoost) {
       g.state = "dance";
       g.satisfaction += night.danceSatisfactionPerMinute * n.djMultiplier;
     } else {
@@ -376,6 +500,12 @@ export function endNight(s: GameState): GameState {
     violations: n.violationsTonight,
     shutDown: n.shutDown,
     sealed: n.sealed,
+    avgEnergy: Math.round(n.energySum / Math.max(1, n.minute)),
+    peakEnergy: Math.round(n.peakEnergy),
+    rounds: n.rounds,
+    tables: n.tablesBooked,
+    rejectedDress: n.rejectedDress,
+    tacticsUsed: Object.keys(n.tactics) as NightReport["tacticsUsed"],
   };
   return checkScenarioEnd(
     r14_checkVictory(

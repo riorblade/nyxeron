@@ -1,4 +1,30 @@
 {
-  "bartender": { "name": "Bartender", "wagePerDay": 300, "minLevel": 2 },
-  "security": { "name": "Security", "wagePerDay": 400, "minLevel": 4 }
+  "bartender": {
+    "name": "Bartender",
+    "wagePerDay": 300,
+    "minLevel": 2
+  },
+  "security": {
+    "name": "Security",
+    "wagePerDay": 400,
+    "minLevel": 4
+  },
+  "host": {
+    "name": "Host",
+    "wagePerDay": 250,
+    "minLevel": 3,
+    "wageScales": true
+  },
+  "relations": {
+    "name": "Guest Relations",
+    "wagePerDay": 350,
+    "minLevel": 3,
+    "wageScales": true
+  },
+  "mc": {
+    "name": "MC",
+    "wagePerDay": 400,
+    "minLevel": 4,
+    "wageScales": true
+  }
 }

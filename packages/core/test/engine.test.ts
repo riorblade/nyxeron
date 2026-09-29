@@ -83,7 +83,11 @@ describe("night engine", () => {
     const underage = noSec.night!.guests.filter((g) => g.underage).length;
     expect(underage).toBeGreaterThan(0);
     expect(s1.night!.underageAdmitted).toBe(underage);
-    const s2 = runNight(club({ staff: { bartender: 0, security: 5 } }));
+    const s2 = runNight(
+      club({
+        staff: { bartender: 0, security: 5, host: 0, relations: 0, mc: 0 },
+      }),
+    );
     expect(s2.night!.underageAdmitted).toBe(0);
     expect(s2.lastReport!.rejectedUnderage).toBe(underage);
   });
@@ -98,7 +102,7 @@ describe("night engine", () => {
       club({
         permits: p,
         forcedInspection: true,
-        staff: { bartender: 0, security: 5 },
+        staff: { bartender: 0, security: 5, host: 0, relations: 0, mc: 0 },
       }),
     );
     expect(s.violations).toBe(1);

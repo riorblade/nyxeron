@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { useGame } from "@/store";
 import { introEnabled } from "./IntroVideo";
 import { BuildTab } from "./office/BuildTab";
+import { HouseRulesTab } from "./office/HouseRulesTab";
 import { PermitsTab } from "./office/PermitsTab";
 import { PromoTab } from "./office/PromoTab";
 import { StaffTab } from "./office/StaffTab";
@@ -34,6 +35,7 @@ const TABS = [
   { id: "talent", minLevel: 4, C: TalentTab },
   { id: "promo", minLevel: 1, C: PromoTab },
   { id: "staff", minLevel: 2, C: StaffTab },
+  { id: "rules", minLevel: 3, C: HouseRulesTab },
   { id: "permits", minLevel: 1, C: PermitsTab },
   { id: "build", minLevel: 1, C: BuildTab },
 ] as const;
@@ -99,7 +101,7 @@ export function Office({ s }: { s: GameState }) {
   };
   /** Tabs that only make sense by day: the DJ is already on the schedule, and building waits for daylight. */
   const nightLock = (id: TabId) =>
-    atNight && (id === "talent" || id === "build");
+    atNight && (id === "talent" || id === "build" || id === "rules");
 
   return (
     <div className="fixed inset-0 overflow-x-hidden overflow-y-auto bg-black lg:overflow-hidden">

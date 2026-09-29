@@ -24,6 +24,7 @@ import { isAlert } from "@/hud/eventText";
 import { Button } from "@/components/ui/button";
 import { EventFeed } from "@/hud/EventFeed";
 import { Objectives } from "@/hud/Objectives";
+import { CrowdMoves, EnergyMeter } from "@/hud/CrowdMoves";
 import { StockBars } from "@/hud/StockBars";
 import { TopBar } from "@/hud/TopBar";
 import { clock, duration, en, fmt, genres } from "@/i18n/en";
@@ -293,7 +294,10 @@ export function Night({ s }: { s: GameState }) {
                   aria-label={en.night.skip}
                   title={en.night.skip}
                 >
-                  <span className="hidden 2xl:inline">{en.night.skip} </span>⏭
+                  <span className="hidden min-[1800px]:inline">
+                    {en.night.skip}{" "}
+                  </span>
+                  ⏭
                 </button>
                 <MuteButton className={seg(false)} />
               </div>
@@ -316,7 +320,9 @@ export function Night({ s }: { s: GameState }) {
                 title={`${en.night.editLayout} [L]`}
               >
                 <Sofa className="size-4" />
-                <span className="hidden 2xl:inline">{en.night.editLayout}</span>
+                <span className="hidden min-[1800px]:inline">
+                  {en.night.editLayout}
+                </span>
               </button>
               <button
                 className="flex h-10 items-center gap-2 rounded-lg bg-white px-3 text-xs font-semibold tracking-[0.12em] text-black uppercase shadow-[0_0_20px_rgba(255,255,255,.2)]"
@@ -336,6 +342,7 @@ export function Night({ s }: { s: GameState }) {
               className="glass enter shrink-0 space-y-6 rounded-xl p-4 lg:max-h-full lg:w-80 lg:self-start lg:overflow-y-auto"
               style={{ "--d": "80ms" } as CSSProperties}
             >
+              <CrowdMoves s={s} />
               <CeoCall s={s} />
               <VideotronPanel />
               <section>
@@ -414,6 +421,7 @@ export function Night({ s }: { s: GameState }) {
                 {en.night.queue(queue)}
               </p>
             </section>
+            <EnergyMeter s={s} />
             <StockBars s={s} />
           </aside>
         </div>

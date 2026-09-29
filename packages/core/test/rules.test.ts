@@ -150,15 +150,27 @@ describe("permits + R6 + R16", () => {
 describe("R8 / R9 / R10 security", () => {
   it("R8 rejects underage only with security", () => {
     expect(
-      r08_rejectAtDoor(club({ staff: { bartender: 0, security: 1 } }), true),
+      r08_rejectAtDoor(
+        club({
+          staff: { bartender: 0, security: 1, host: 0, relations: 0, mc: 0 },
+        }),
+        true,
+      ),
     ).toBe(true);
     expect(r08_rejectAtDoor(club(), true)).toBe(false);
     expect(
-      r08_rejectAtDoor(club({ staff: { bartender: 0, security: 1 } }), false),
+      r08_rejectAtDoor(
+        club({
+          staff: { bartender: 0, security: 1, host: 0, relations: 0, mc: 0 },
+        }),
+        false,
+      ),
     ).toBe(false);
   });
   it("R9 fight chance depends on drunk and 1:40 ratio", () => {
-    const s = club({ staff: { bartender: 0, security: 2 } });
+    const s = club({
+      staff: { bartender: 0, security: 2, host: 0, relations: 0, mc: 0 },
+    });
     expect(r09_fightChance(s, 79, 100)).toBe(0);
     expect(r09_fightChance(s, 80, 80)).toBe(night.fightChancePerMinute.staffed);
     expect(r09_fightChance(s, 80, 81)).toBe(

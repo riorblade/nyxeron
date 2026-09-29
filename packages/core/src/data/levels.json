@@ -10,7 +10,8 @@
     "entertainmentTaxRate": 0,
     "requiredPermits": ["business"],
     "stayMinutes": [20, 60],
-    "priceScale": 1.5
+    "priceScale": 1.5,
+    "tables": 0
   },
   "2": {
     "name": "Drink Shop",
@@ -23,7 +24,8 @@
     "entertainmentTaxRate": 0,
     "requiredPermits": ["business", "liquorTakeaway"],
     "stayMinutes": [20, 60],
-    "priceScale": 4
+    "priceScale": 4,
+    "tables": 0
   },
   "3": {
     "name": "Bar & Live Music",
@@ -36,7 +38,8 @@
     "entertainmentTaxRate": 0.4,
     "requiredPermits": ["business", "liquorOnPremise"],
     "stayMinutes": [45, 150],
-    "priceScale": 12
+    "priceScale": 12,
+    "tables": 4
   },
   "4": {
     "name": "Nightclub",
@@ -49,7 +52,8 @@
     "entertainmentTaxRate": 0.4,
     "requiredPermits": ["business", "liquorOnPremise"],
     "stayMinutes": [60, 240],
-    "priceScale": 48
+    "priceScale": 48,
+    "tables": 8
   },
   "5": {
     "name": "Premium Venue",
@@ -62,6 +66,7 @@
     "entertainmentTaxRate": 0.4,
     "requiredPermits": ["business", "liquorOnPremise"],
     "stayMinutes": [60, 240],
-    "priceScale": 60
+    "priceScale": 60,
+    "tables": 16
   }
 }
