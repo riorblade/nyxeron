@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { art } from "@/art";
 import { Img } from "@/components/Img";
 import { en, fmt } from "@/i18n/en";
+import { trapFocus } from "@/lib/utils";
 
 /** Full-screen card for one bar line: tonight's numbers plus what is actually poured under it. */
 export function DrinkDetail({
@@ -42,6 +43,8 @@ export function DrinkDetail({
     >
       <div
         role="dialog"
+        aria-modal
+        onKeyDown={trapFocus}
         aria-label={`${t.title}: ${info.line}`}
         className="glass glow enter grid max-h-[92dvh] w-full max-w-4xl grid-cols-1 overflow-y-auto rounded-2xl md:grid-cols-[17rem_1fr] md:overflow-hidden"
         onClick={(e) => e.stopPropagation()}
@@ -94,6 +97,7 @@ export function DrinkDetail({
               className="flex size-8 items-center justify-center rounded-md hover:bg-white/10"
               onClick={onClose}
               aria-label={t.close}
+              autoFocus
             >
               <X className="size-4" />
             </button>

@@ -119,6 +119,28 @@ export function Office({ s }: { s: GameState }) {
             className="glass enter flex min-h-0 gap-1 overflow-x-auto rounded-xl p-2 lg:flex-col lg:overflow-x-visible"
             style={d(60)}
             aria-label="Office"
+            role="tablist"
+            aria-orientation="vertical"
+            onKeyDown={(e) => {
+              // Arrow keys move between the unlocked tabs.
+              const step =
+                e.key === "ArrowDown" || e.key === "ArrowRight"
+                  ? 1
+                  : e.key === "ArrowUp" || e.key === "ArrowLeft"
+                    ? -1
+                    : 0;
+              if (!step) return;
+              e.preventDefault();
+              const open = TABS.filter(
+                (t) => t.minLevel <= s.level && !nightLock(t.id),
+              );
+              const i = open.findIndex((t) => t.id === tab);
+              const next = open[(i + step + open.length) % open.length]!;
+              setTab(next.id);
+              e.currentTarget
+                .querySelector<HTMLElement>(`[data-tab="${next.id}"]`)
+                ?.focus();
+            }}
           >
             {TABS.map((t) => {
               const Icon = tabIcon[t.id];
@@ -129,7 +151,10 @@ export function Office({ s }: { s: GameState }) {
                   key={t.id}
                   disabled={locked}
                   onClick={() => setTab(t.id)}
-                  aria-current={on ? "page" : undefined}
+                  role="tab"
+                  aria-selected={on}
+                  tabIndex={on ? 0 : -1}
+                  data-tab={t.id}
                   className={cn(
                     "group flex shrink-0 items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors",
                     on

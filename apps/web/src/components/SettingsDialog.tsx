@@ -2,7 +2,7 @@ import { Settings as Gear, X } from "lucide-react";
 import { useEffect, useSyncExternalStore, type ReactNode } from "react";
 import { audio } from "@/audio";
 import { en } from "@/i18n/en";
-import { cn } from "@/lib/utils";
+import { cn, trapFocus } from "@/lib/utils";
 import { useSettings, type ClipMode } from "@/settings";
 
 const t = en.settings;
@@ -37,6 +37,7 @@ export function SettingsDialog() {
         role="dialog"
         aria-modal
         aria-label={t.title}
+        onKeyDown={trapFocus}
         className="glass glow enter flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >

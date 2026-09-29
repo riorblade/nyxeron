@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { en } from "@/i18n/en";
+import { trapFocus } from "@/lib/utils";
 import { writeSave } from "@/save";
 import { useSettings } from "@/settings";
 import { useGame } from "@/store";
@@ -13,6 +14,7 @@ export function PauseMenu() {
       role="dialog"
       aria-modal
       aria-labelledby="pause-title"
+      onKeyDown={trapFocus}
     >
       <div className="glass glow enter flex w-80 flex-col gap-3 rounded-2xl p-6">
         <h2

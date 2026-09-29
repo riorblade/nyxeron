@@ -333,7 +333,7 @@ export function Night({ s }: { s: GameState }) {
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pointer-events-none! lg:flex-row lg:overflow-visible [&>*]:pointer-events-auto">
           {panel && (
             <aside
-              className="glass enter shrink-0 space-y-6 rounded-xl p-4 lg:w-80 lg:overflow-y-auto"
+              className="glass enter shrink-0 space-y-6 rounded-xl p-4 lg:max-h-full lg:w-80 lg:self-start lg:overflow-y-auto"
               style={{ "--d": "80ms" } as CSSProperties}
             >
               <CeoCall s={s} />
