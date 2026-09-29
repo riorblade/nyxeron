@@ -17,7 +17,7 @@ export function App() {
     const onKey = (e: KeyboardEvent) => {
       const st = useGame.getState();
       if (e.key !== "Escape" || st.screen !== "game" || st.intro) return;
-      if (st.game?.phase === "night" && st.view === "office" && !st.paused)
+      if (st.game?.phase === "night" && st.view !== "venue" && !st.paused)
         st.setView("venue");
       else setPaused(!st.paused);
     };

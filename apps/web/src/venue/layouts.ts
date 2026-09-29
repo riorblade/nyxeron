@@ -39,6 +39,8 @@ export interface ScreenSlot {
 }
 
 export interface Layout {
+  /** Key for the player's saved furniture arrangement. */
+  name: "booth" | "bar" | "club";
   w: number;
   h: number;
   zones: Zone[];
@@ -47,6 +49,7 @@ export interface Layout {
 
 /** Level 1–2: a drink booth on the street. */
 const booth: Layout = {
+  name: "booth",
   w: 8,
   h: 7,
   screens: [
@@ -76,6 +79,7 @@ const booth: Layout = {
 
 /** Level 3: bar with a live-music stage. */
 const bar: Layout = {
+  name: "bar",
   w: 12,
   h: 9,
   screens: [
@@ -102,6 +106,7 @@ const bar: Layout = {
 
 /** Level 4–5: "The Basement" (GDD 15.1 blockout). */
 const club: Layout = {
+  name: "club",
   w: 16,
   h: 12,
   screens: [

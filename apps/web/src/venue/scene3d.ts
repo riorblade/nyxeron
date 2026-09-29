@@ -27,6 +27,15 @@ import {
   type Zone,
   type ZoneId,
 } from "./layouts";
+import {
+  buildFurniture,
+  loadFurniture,
+  saveFurniture,
+  seatsOf,
+  defaultFurniture,
+  type FurnitureKind,
+  type Item,
+} from "./furniture";
 
 /** World units: 1 floor tile = 1 unit; people ~1.15 tall. */
 const PERSON_H = 1.15;
@@ -125,6 +134,17 @@ export class VenueScene {
   private last = performance.now();
   private cashAt = 0;
   private off: (() => void)[] = [];
+  /** Player-arranged furniture, one mesh group per item (same index). */
+  private items: Item[] = [];
+  private pieces: THREE.Group[] = [];
+  private furnitureRoot = new THREE.Group();
+  private seats = new Map<ZoneId, [number, number][]>();
+  private editing = false;
+  private selected = -1;
+  private selBox: THREE.BoxHelper | null = null;
+  private grid: THREE.GridHelper | null = null;
+  /** Told when the selection changes in edit mode (-1 = none). */
+  onSelect?: (index: number) => void;
 
   constructor(private onGuestClick: (id: number) => void) {}
 
@@ -248,6 +268,8 @@ export class VenueScene {
       ad: count("ad"),
     });
     this.root.clear();
+    this.grid = this.selBox = null;
+    this.selected = -1;
     this.guests.clear();
     this.staff = [];
     this.stage = [];
@@ -339,6 +361,11 @@ export class VenueScene {
     }
     const lane = this.zones.get("backbar");
     if (lane) this.buildCabinet(lane);
+    this.furnitureRoot = new THREE.Group();
+    this.root.add(this.furnitureRoot);
+    this.items = loadFurniture(layout);
+    this.rebuildFurniture();
+    this.setEditing(this.editing);
     this.buildWalls(layout);
     this.buildLights();
     this.frameCamera(layout);
@@ -688,6 +715,106 @@ export class VenueScene {
     this.controls.update();
   }
 
+  // ---------- furniture & layout editor ----------
+
+  private rebuildFurniture() {
+    this.disposeTree(this.furnitureRoot);
+    this.furnitureRoot.clear();
+    this.pieces = this.items.map((it, i) => {
+      const g = buildFurniture(it.kind, PALETTE[i % PALETTE.length]!);
+      g.position.set(it.x, 0, it.z);
+      g.rotation.y = (it.rot * Math.PI) / 2;
+      this.furnitureRoot.add(g);
+      return g;
+    });
+    // Seats belong to whichever guest zone they fall in.
+    this.seats.clear();
+    for (const it of this.items)
+      for (const [x, z] of seatsOf(it)) {
+        const zone = this.layout!.zones.find(
+          (q) => x >= q.x && x <= q.x + q.w && z >= q.y && z <= q.y + q.h,
+        );
+        if (zone)
+          this.seats.set(zone.id, [...(this.seats.get(zone.id) ?? []), [x, z]]);
+      }
+    this.select(Math.min(this.selected, this.items.length - 1));
+  }
+
+  private commitFurniture() {
+    saveFurniture(this.layout!, this.items);
+    this.rebuildFurniture();
+  }
+
+  private select(i: number) {
+    this.selected = i;
+    if (this.selBox) {
+      this.root.remove(this.selBox);
+      this.selBox.dispose();
+      this.selBox = null;
+    }
+    const g = this.pieces[i];
+    if (this.editing && g) {
+      this.selBox = new THREE.BoxHelper(g, 0xffffff);
+      this.root.add(this.selBox);
+    }
+    this.onSelect?.(this.editing ? i : -1);
+  }
+
+  setEditing(on: boolean) {
+    this.editing = on;
+    if (!this.ready || !this.layout) return;
+    if (on && !this.grid) {
+      const { w, h } = this.layout;
+      const n = Math.max(w, h);
+      this.grid = new THREE.GridHelper(n, n * 2, 0xffffff, 0xffffff);
+      (this.grid.material as THREE.Material).opacity = 0.12;
+      (this.grid.material as THREE.Material).transparent = true;
+      this.grid.position.set(n / 2, 0.02, n / 2);
+      this.root.add(this.grid);
+    }
+    if (this.grid) this.grid.visible = on;
+    this.select(on ? this.selected : -1);
+  }
+
+  /** Drops a new piece where the camera is looking. */
+  addFurniture(kind: FurnitureKind) {
+    if (!this.layout) return;
+    const t = this.controls.target;
+    this.items.push({ kind, ...this.snap(t.x, t.z), rot: 0 });
+    this.commitFurniture();
+    this.select(this.items.length - 1);
+  }
+
+  rotateSelected() {
+    const it = this.items[this.selected];
+    if (!it) return;
+    it.rot = (it.rot + 1) % 4;
+    this.commitFurniture();
+  }
+
+  deleteSelected() {
+    if (!this.items[this.selected]) return;
+    this.items.splice(this.selected, 1);
+    this.selected = -1;
+    this.commitFurniture();
+  }
+
+  resetFurniture() {
+    if (!this.layout) return;
+    saveFurniture(this.layout, null);
+    this.items = defaultFurniture(this.layout);
+    this.selected = -1;
+    this.rebuildFurniture();
+  }
+
+  /** Quarter-tile grid, kept inside the room. */
+  private snap(x: number, z: number) {
+    const { w, h } = this.layout!;
+    const q = (v: number, max: number) =>
+      Math.min(max - 0.25, Math.max(0.25, Math.round(v * 4) / 4));
+    return { x: q(x, w), z: q(z, h) };
+  }
+
   // ---------- people ----------
 
   private addPerson(
@@ -915,6 +1042,16 @@ export class VenueScene {
         z.y + 0.3 + Math.floor(queueIndex / perRow) * 0.5,
       ];
     }
+    // ponytail: about half the guests take a seat; seats can double up, fine at this scale.
+    const seats = this.seats.get(z.id) ?? [];
+    const pick = Math.floor(hash(id + 404) * seats.length * 2);
+    if (pick < seats.length) {
+      const [sx, sz] = seats[pick]!;
+      return [
+        sx + (hash(id + 1) - 0.5) * 0.12,
+        sz + (hash(id + 2) - 0.5) * 0.12,
+      ];
+    }
     return [
       z.x + 0.3 + hash(id) * (z.w - 0.6),
       z.y + 0.3 + hash(id + 7919) * (z.h - 0.6),
@@ -963,15 +1100,10 @@ export class VenueScene {
   private bindClicks(canvas: HTMLCanvasElement) {
     const ray = new THREE.Raycaster();
     let down: { x: number; y: number } | null = null;
-    const pdown = (e: PointerEvent) => (down = { x: e.clientX, y: e.clientY });
-    const pup = (e: PointerEvent) => {
-      // A click, not the end of an orbit drag.
-      if (
-        !down ||
-        Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5 ||
-        e.button !== 0
-      )
-        return;
+    const floor = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const hitPoint = new THREE.Vector3();
+    let drag: { i: number; dx: number; dz: number } | null = null;
+    const aim = (e: PointerEvent) => {
       const r = canvas.getBoundingClientRect();
       ray.setFromCamera(
         new THREE.Vector2(
@@ -980,6 +1112,58 @@ export class VenueScene {
         ),
         this.camera,
       );
+    };
+    const pdown = (e: PointerEvent) => {
+      down = { x: e.clientX, y: e.clientY };
+      if (!this.editing || e.button !== 0) return;
+      aim(e);
+      const hit = ray.intersectObjects(this.pieces, true)[0];
+      if (!hit) return;
+      const i = this.pieces.findIndex((g) => {
+        let o: THREE.Object3D | null = hit.object;
+        while (o && o !== g) o = o.parent;
+        return o === g;
+      });
+      if (i < 0 || !ray.ray.intersectPlane(floor, hitPoint)) return;
+      this.select(i);
+      drag = {
+        i,
+        dx: this.items[i]!.x - hitPoint.x,
+        dz: this.items[i]!.z - hitPoint.z,
+      };
+      this.controls.enabled = false; // dragging a piece, not orbiting
+      canvas.setPointerCapture(e.pointerId);
+    };
+    const pmove = (e: PointerEvent) => {
+      if (!drag) return;
+      aim(e);
+      if (!ray.ray.intersectPlane(floor, hitPoint)) return;
+      const it = this.items[drag.i]!;
+      Object.assign(it, this.snap(hitPoint.x + drag.dx, hitPoint.z + drag.dz));
+      this.pieces[drag.i]!.position.set(it.x, 0, it.z);
+      this.selBox?.update();
+    };
+    const pup = (e: PointerEvent) => {
+      if (drag) {
+        drag = null;
+        this.controls.enabled = true;
+        this.commitFurniture();
+        return;
+      }
+      if (
+        this.editing &&
+        down &&
+        Math.hypot(e.clientX - down.x, e.clientY - down.y) <= 5
+      )
+        return this.select(-1); // click on empty floor
+      // A click, not the end of an orbit drag.
+      if (
+        !down ||
+        Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5 ||
+        e.button !== 0
+      )
+        return;
+      aim(e);
       const targets = [...this.guests.values()]
         .filter((p) => p.alert?.visible)
         .flatMap((p) => [p.sprite, p.alert!]);
@@ -993,7 +1177,9 @@ export class VenueScene {
     };
     canvas.addEventListener("pointerdown", pdown);
     canvas.addEventListener("pointerup", pup);
+    canvas.addEventListener("pointermove", pmove);
     this.off.push(() => {
+      canvas.removeEventListener("pointermove", pmove);
       canvas.removeEventListener("pointerdown", pdown);
       canvas.removeEventListener("pointerup", pup);
     });

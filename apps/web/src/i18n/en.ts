@@ -306,6 +306,7 @@ export const en = {
     objectives: "OBJECTIVES",
     panel: "Panel [Tab]",
     toOffice: "Office",
+    editLayout: "Layout",
     mute: "Mute",
     unmute: "Unmute",
   },
@@ -363,7 +364,24 @@ export const en = {
     saved: (n: number) => `Saved to slot ${n}`,
     quit: "Quit to Menu",
     controls:
-      "Space pause · 1/2/3 speed · O office · Tab panel · Q CEO Call · M mute · drag rotate · right-drag / arrows pan · wheel zoom · Esc menu",
+      "Space pause · 1/2/3 speed · O office · L layout · Tab panel · Q CEO Call · M mute · drag rotate · right-drag / arrows pan · wheel zoom · Esc menu",
+  },
+
+  editor: {
+    title: "Edit layout",
+    hint: "Drag furniture to move · R rotate · Del remove · drag floor to orbit · Esc done",
+    add: "Add",
+    kinds: {
+      sofa: "Sofa",
+      chair: "Chair",
+      table: "Table",
+      stool: "Bar stool",
+      highTable: "High table",
+    },
+    rotate: "Rotate",
+    remove: "Remove",
+    reset: "Reset to default",
+    done: "Done",
   },
 
   tutorial: {

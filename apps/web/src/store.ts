@@ -21,9 +21,9 @@ interface Store {
   origin: NewGame | null;
   paused: boolean;
   running: boolean;
-  /** At night: looking at the club floor, or stepped back into the office (the night clock waits). */
-  view: "venue" | "office";
-  setView(v: "venue" | "office"): void;
+  /** At night: looking at the club floor, stepped back into the office, or rearranging furniture (the clock waits for both). */
+  view: "venue" | "office" | "edit";
+  setView(v: "venue" | "office" | "edit"): void;
   speed: 1 | 2 | 3;
   toast: { id: number; text: string; error: boolean } | null;
 

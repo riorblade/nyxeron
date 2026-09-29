@@ -17,7 +17,7 @@ import {
   useSyncExternalStore,
   type CSSProperties,
 } from "react";
-import { Briefcase, Volume2, VolumeX } from "lucide-react";
+import { Briefcase, Sofa, Volume2, VolumeX } from "lucide-react";
 import { Office } from "./Office";
 import { audio, nightTrack, TRACKS, useMusic } from "@/audio";
 import { isAlert } from "@/hud/eventText";
@@ -39,7 +39,7 @@ function useNightLoop() {
   const { paused, running, speed, intro, view } = useGame();
   useEffect(() => {
     // The clock waits while the CEO is in the office.
-    if (paused || !running || intro || view === "office") return;
+    if (paused || !running || intro || view !== "venue") return;
     const id = setInterval(() => {
       const { game, set } = useGame.getState();
       if (!game || game.phase !== "night") return;
@@ -145,10 +145,11 @@ export function Night({ s }: { s: GameState }) {
         e.target instanceof HTMLInputElement ||
         paused ||
         intro ||
-        v === "office"
+        v !== "venue"
       )
         return;
       if (e.key.toLowerCase() === "o") return setView("office");
+      if (e.key.toLowerCase() === "l") return setView("edit");
       if (e.key === " ") {
         e.preventDefault();
         setRunning(!useGame.getState().running);
@@ -184,9 +185,18 @@ export function Night({ s }: { s: GameState }) {
 
   return (
     <div className="fixed inset-0 overflow-hidden bg-black">
-      <VenueView s={s} />
+      <VenueView
+        s={s}
+        editing={view === "edit"}
+        onDone={() => setView("venue")}
+      />
       {/* HUD floats over the full-bleed venue; the layer ignores clicks except on panels. */}
-      <div className="pointer-events-none absolute inset-0 flex flex-col gap-3 p-3 [&>*]:pointer-events-auto">
+      <div
+        className={cn(
+          "pointer-events-none absolute inset-0 flex flex-col gap-3 p-3 [&>*]:pointer-events-auto",
+          view === "edit" && "hidden",
+        )}
+      >
         <TopBar
           s={s}
           dense
@@ -217,6 +227,14 @@ export function Night({ s }: { s: GameState }) {
                 </button>
                 <MuteButton className={seg(false)} />
               </div>
+              <button
+                className="flex h-10 items-center gap-2 rounded-lg border border-white/25 bg-black/30 px-3.5 text-xs font-semibold tracking-[0.12em] uppercase hover:bg-white/10"
+                onClick={() => setView("edit")}
+                title={`${en.night.editLayout} [L]`}
+              >
+                <Sofa className="size-4" />
+                {en.night.editLayout}
+              </button>
               <button
                 className="flex h-10 items-center gap-2 rounded-lg bg-white px-3.5 text-xs font-semibold tracking-[0.12em] text-black uppercase shadow-[0_0_20px_rgba(255,255,255,.2)]"
                 onClick={() => setView("office")}
