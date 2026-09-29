@@ -2,7 +2,7 @@ import {
   channels,
   ids,
   legal,
-  r05_promote,
+  nightPromote,
   r17_controversialPromo,
   type ChannelId,
   type GameState,
@@ -35,7 +35,8 @@ export function PromoTab({ s }: { s: GameState }) {
   return (
     <div className="space-y-5">
       <p className="flex items-center gap-2 text-xs text-white/55">
-        <Zap className="size-3.5" /> {en.promo.energyNote}
+        <Zap className="size-3.5" />{" "}
+        {s.phase === "night" ? en.promo.nightNote : en.promo.energyNote}
       </p>
       <ul className="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-3">
         {ids(channels).map((id) => {
@@ -73,7 +74,7 @@ export function PromoTab({ s }: { s: GameState }) {
               </div>
               <button
                 disabled={locked || posted}
-                onClick={() => act((g) => r05_promote(g, id))}
+                onClick={() => act((g) => nightPromote(g, id))}
                 className={cn(
                   "flex h-9 items-center justify-center gap-1.5 rounded-lg text-xs font-semibold tracking-[0.14em] uppercase",
                   posted
@@ -108,7 +109,9 @@ export function PromoTab({ s }: { s: GameState }) {
           </div>
         </div>
         <button
-          className="h-9 rounded-lg border border-white/30 px-4 text-xs font-semibold tracking-[0.14em] uppercase hover:bg-white hover:text-black"
+          className="h-9 rounded-lg border border-white/30 px-4 text-xs font-semibold tracking-[0.14em] uppercase enabled:hover:bg-white enabled:hover:text-black disabled:opacity-35"
+          disabled={s.phase === "night"}
+          title={s.phase === "night" ? en.office.dayOnly : undefined}
           onClick={() => act(r17_controversialPromo)}
         >
           {en.promo.risk}

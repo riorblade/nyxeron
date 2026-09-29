@@ -9,7 +9,9 @@ import {
   isInside,
   nextDay,
   nightOver,
+  nightPromote,
   objectives,
+  r05_promote,
   r01_orderStock,
   runNight,
   startNight,
@@ -150,5 +152,44 @@ describe("objectives", () => {
     s = endNight(s);
     const g = objectives(s).find((o) => o.id === "reachGuests")!;
     expect(g.current).toBe(s.lastReport!.guests);
+  });
+});
+
+describe("nightPromote (it's quiet, post a promo)", () => {
+  const night = (minute: number) => {
+    const s = startNight({ ...createBasement(4), hype: 20 });
+    return { ...s, night: { ...s.night!, minute } };
+  };
+
+  it("mid-night: pays like R5 and brings extra guests who arrive later tonight", () => {
+    const s = night(90);
+    const r = nightPromote(s, "tiktok");
+    if (!r.ok) throw new Error(r.reason);
+    const added = r.state.night!.guests.slice(s.night!.guests.length);
+    expect(added.length).toBeGreaterThan(0);
+    expect(r.state.coin).toBeLessThan(s.coin);
+    expect(r.state.ceoEnergy).toBe(s.ceoEnergy - 1);
+    expect(
+      added.every(
+        (g, i) => g.id === s.night!.guests.length + i && g.arriveMinute > 90,
+      ),
+    ).toBe(true);
+    // The added guests really show up.
+    let t = r.state;
+    while (!nightOver(t)) t = tickNight(t);
+    expect(
+      t.night!.guests.slice(s.night!.guests.length).some((g) => g.admitted),
+    ).toBe(true);
+  });
+
+  it("last hour: still pays, but nobody new is coming", () => {
+    const s = night(330);
+    const r = nightPromote(s, "tiktok");
+    expect(r.ok && r.state.night!.guests.length).toBe(s.night!.guests.length);
+  });
+
+  it("by day it is just R5", () => {
+    const s = createBasement(4);
+    expect(nightPromote(s, "tiktok")).toEqual(r05_promote(s, "tiktok"));
   });
 });

@@ -1,15 +1,15 @@
 import { escortGuest, type GameState } from "@nyxeron/core";
 import { useEffect, useRef } from "react";
 import { useGame } from "@/store";
-import { VenueRenderer } from "./renderer";
+import { VenueScene } from "./scene3d";
 
 export function VenueView({ s }: { s: GameState }) {
   const el = useRef<HTMLDivElement>(null);
-  const r = useRef<VenueRenderer | null>(null);
+  const r = useRef<VenueScene | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    const v = new VenueRenderer((id) =>
+    const v = new VenueScene((id) =>
       useGame.getState().act((g) => escortGuest(g, id)),
     );
     v.init(el.current!).then(() => {

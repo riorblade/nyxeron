@@ -10,9 +10,12 @@ import {
   priceScale,
   segments,
   type DrinkId,
+  type ChannelId,
   type SegmentId,
 } from "./data";
 import { createRng } from "./rng";
+import type { ActionResult } from "./result";
+import { r05_promote } from "./rules/marketing";
 import { applyDayEvents, checkScenarioEnd } from "./scenario";
 import {
   r13_checkDefeat,
@@ -39,6 +42,9 @@ export const isInside = (g: Guest) => INSIDE.has(g.state);
 /** Day 1 is a Sunday, so Day 7 is the Saturday event night (GDD 15.3). 0 = Sunday. */
 export const weekday = (day: number) => (day - 1) % 7;
 
+const busyFactor = (s: GameState) =>
+  night.busyWeekdays.includes(weekday(s.day)) ? night.busyDayBonus : 1;
+
 /** Guests expected tonight = f(hype, reputation, busy weekday, level demand). */
 export function expectedGuests(s: GameState): number {
   const { base, hypeWeight, repWeight } = night.demand;
@@ -60,6 +66,36 @@ function segmentWeights(s: GameState): Record<SegmentId, number> {
   return w;
 }
 
+/** One guest arriving at `arriveMinute`: segment by weight, genre, budget, stay. id is assigned by the caller. */
+function makeGuest(
+  rng: ReturnType<typeof createRng>,
+  s: GameState,
+  weights: Record<SegmentId, number>,
+  arriveMinute: number,
+  stay: readonly number[],
+): Guest {
+  const segment = rng.weighted(weights);
+  const seg = segments[segment];
+  return {
+    id: 0,
+    segment,
+    genre: rng.chance(night.clubGenreShare)
+      ? s.clubGenre
+      : rng.pick(seg.genres),
+    budget: Math.round(
+      rng.int(seg.budget[0]!, seg.budget[1]!) * priceScale(s.level),
+    ),
+    drunk: 0,
+    satisfaction: night.startSatisfaction,
+    underage: rng.chance(night.underageChance),
+    state: "pending",
+    arriveMinute,
+    leaveMinute: arriveMinute + rng.int(stay[0]!, stay[1]!),
+    admitted: false,
+    disappointed: false,
+  };
+}
+
 /** Day → Night ("Open Club"). Generates tonight's guests and rolls the inspection. */
 export function startNight(s: GameState): GameState {
   if (s.phase !== "day" || s.outcome) return s;
@@ -70,29 +106,10 @@ export function startNight(s: GameState): GameState {
   const stay = levelData(s.level).stayMinutes;
   const guests: Guest[] = [];
   const count = sealed ? 0 : expectedGuests(s);
-  for (let i = 0; i < count; i++) {
-    const segment = rng.weighted(weights);
-    const seg = segments[segment];
-    const arriveMinute = rng.int(0, night.arrivalWindow - 1);
-    guests.push({
-      id: 0,
-      segment,
-      genre: rng.chance(night.clubGenreShare)
-        ? s.clubGenre
-        : rng.pick(seg.genres),
-      budget: Math.round(
-        rng.int(seg.budget[0]!, seg.budget[1]!) * priceScale(s.level),
-      ),
-      drunk: 0,
-      satisfaction: night.startSatisfaction,
-      underage: rng.chance(night.underageChance),
-      state: "pending",
-      arriveMinute,
-      leaveMinute: arriveMinute + rng.int(stay[0]!, stay[1]!),
-      admitted: false,
-      disappointed: false,
-    });
-  }
+  for (let i = 0; i < count; i++)
+    guests.push(
+      makeGuest(rng, s, weights, rng.int(0, night.arrivalWindow - 1), stay),
+    );
   guests
     .sort((a, b) => a.arriveMinute - b.arriveMinute)
     .forEach((g, i) => (g.id = i));
@@ -402,4 +419,44 @@ export function stockForecast(s: GameState): Partial<Record<DrinkId, number>> {
     (expectedGuests(s) * night.forecastDrinksPerGuest) / menu.length,
   );
   return Object.fromEntries(menu.map((d) => [d, perDrink]));
+}
+
+/**
+ * R5 during the night ("it's quiet, post a promo"): same cost, energy and hype as by day, and the new hype pulls in
+ * extra guests spread over the rest of the night. No new arrivals in the last hour before close.
+ */
+export function nightPromote(s: GameState, channel: ChannelId): ActionResult {
+  const r = r05_promote(s, channel);
+  if (!r.ok || s.phase !== "night" || !s.night) return r;
+  const n = s.night;
+  const lastArrival = night.minutes - night.lateArrivalCutoff;
+  const share = Math.max(
+    0,
+    Math.min(1, (lastArrival - n.minute) / lastArrival),
+  );
+  const gained = r.state.hype - s.hype;
+  const extra = Math.round(
+    ((levelData(s.level).demand * night.demand.hypeWeight * gained) / 100) *
+      busyFactor(s) *
+      share,
+  );
+  if (extra <= 0) return r;
+  const rng = createRng(r.state.seed);
+  const weights = segmentWeights(r.state);
+  const stay = levelData(s.level).stayMinutes;
+  const guests = [...n.guests];
+  for (let i = 0; i < extra; i++) {
+    const g = makeGuest(
+      rng,
+      r.state,
+      weights,
+      rng.int(n.minute + 1, Math.max(n.minute + 1, lastArrival)),
+      stay,
+    );
+    guests.push({ ...g, id: guests.length }); // id = index (escortGuest looks guests up by id)
+  }
+  return {
+    ok: true,
+    state: { ...r.state, seed: rng.seed, night: { ...n, guests } },
+  };
 }

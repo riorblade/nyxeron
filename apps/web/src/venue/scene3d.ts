@@ -1,0 +1,1188 @@
+import {
+  isAtFightRisk,
+  isInside,
+  night as nightData,
+  type GameState,
+} from "@nyxeron/core";
+import * as THREE from "three";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { audio } from "@/audio";
+import {
+  loadDjVideo,
+  loadVenueAssets,
+  shadowTexture,
+  textTexture,
+  type VenueAssets,
+} from "./assets";
+import {
+  loadPlaylist,
+  SCREEN_SIZE,
+  ScreenWall,
+  type ScreenKind,
+} from "./screens";
+import {
+  layoutFor,
+  zoneFor,
+  type Layout,
+  type Zone,
+  type ZoneId,
+} from "./layouts";
+
+/** World units: 1 floor tile = 1 unit; people ~1.15 tall. */
+const PERSON_H = 1.15;
+const BLOCK_H = 0.45;
+const WALL_H = 3.2;
+/** Club light palette: magenta, electric blue, violet, amber. */
+const PALETTE = [0xff2bd6, 0x22d3ee, 0xa855f7, 0xffb020];
+const GLASS = [0xd9a441, 0x6fbf73, 0xe8e8f0, 0xb8452f, 0x4a8fd6, 0xf2d06b];
+
+/** Deterministic 0..1 from an integer, so a guest always picks the same spot and outfit. */
+const hash = (n: number) => {
+  let t = (n * 2654435761) >>> 0;
+  t ^= t >>> 15;
+  t = Math.imul(t, 2246822519) >>> 0;
+  return (t >>> 0) / 4294967296;
+};
+
+type Task =
+  | { kind: "post"; x: number; z: number }
+  | { kind: "patrol"; x: number; z: number; wait: number }
+  | { kind: "escort"; guest: number; phase: "approach" | "out" };
+
+interface Person {
+  g: THREE.Group;
+  sprite: THREE.Sprite;
+  alert?: THREE.Sprite;
+  h: number;
+  tx: number;
+  tz: number;
+  leaving: boolean;
+  fade: number;
+  mode: "dance" | "idle" | "work" | "perform";
+  seed: number;
+  /** Standing height (stage/booth top). */
+  lift: number;
+  task?: Task;
+  home?: Task;
+  /** Being walked out by security: it follows the bodyguard and only fades at the door. */
+  held?: boolean;
+}
+
+/**
+ * The club in 3D: orbit (drag), pan (right-drag / arrows), zoom (wheel). Characters are camera-facing sprites.
+ * Read-only view of GameState.night: it never mutates state, only calls back on clicks.
+ */
+export class VenueScene {
+  private renderer!: THREE.WebGLRenderer;
+  private scene = new THREE.Scene();
+  private camera = new THREE.PerspectiveCamera(40, 1, 0.1, 200);
+  private controls!: OrbitControls;
+  private root = new THREE.Group();
+  private assets: VenueAssets | null = null;
+  private shadowTex = shadowTexture();
+  private alertTex = textTexture("!", {
+    size: 96,
+    color: "#ffd23f",
+    weight: "800",
+    font: "Inter Tight, sans-serif",
+    stroke: true,
+  });
+  private floatCache = new Map<
+    string,
+    { tex: THREE.Texture; aspect: number }
+  >();
+  private guests = new Map<number, Person>();
+  private staff: Person[] = [];
+  private stage: Person[] = [];
+  private staffKey = "";
+  private stageKey = "";
+  private floats: THREE.Sprite[] = [];
+  private budgets = new Map<number, number>();
+  private led: {
+    mesh: THREE.InstancedMesh;
+    cells: [number, number][];
+    light: THREE.PointLight;
+  } | null = null;
+  private spots: { light: THREE.SpotLight; phase: number }[] = [];
+  private beams: THREE.Mesh[] = [];
+  private walls: {
+    mesh: THREE.Object3D;
+    visible: (c: THREE.Vector3) => boolean;
+  }[] = [];
+  /** Main (DJ) screen: the DJ loop during the set; otherwise landscape clips if any, else the logo. */
+  private screen: { mat: THREE.MeshBasicMaterial; idle: THREE.Texture } | null =
+    null;
+  private screenWall: ScreenWall | null = null;
+  private playlist: Awaited<ReturnType<typeof loadPlaylist>> | null = null;
+  private screenDj = "";
+  private videos = new Map<string, Promise<THREE.VideoTexture | undefined>>();
+  private logSeen = 0;
+  private layout: Layout | null = null;
+  private zones = new Map<ZoneId, Zone>();
+  private djOn = false;
+  private ready = false;
+  private dead = false;
+  private last = performance.now();
+  private cashAt = 0;
+  private off: (() => void)[] = [];
+
+  constructor(private onGuestClick: (id: number) => void) {}
+
+  async init(el: HTMLElement) {
+    [this.assets, this.playlist] = await Promise.all([
+      loadVenueAssets(),
+      loadPlaylist(),
+    ]);
+    if (this.dead) return;
+    const r = new THREE.WebGLRenderer({ antialias: true });
+    r.setPixelRatio(Math.min(devicePixelRatio, 2));
+    r.outputColorSpace = THREE.SRGBColorSpace;
+    r.toneMapping = THREE.ACESFilmicToneMapping;
+    r.toneMappingExposure = 1.15;
+    this.renderer = r;
+    el.appendChild(r.domElement);
+    this.scene.background = new THREE.Color(0x07050c);
+    this.scene.fog = new THREE.Fog(0x07050c, 28, 70);
+    this.scene.add(this.root);
+
+    const c = new OrbitControls(this.camera, r.domElement);
+    c.enableDamping = true;
+    c.dampingFactor = 0.08;
+    c.minDistance = 3;
+    c.maxDistance = 45;
+    c.maxPolarAngle = 1.4; // never below the floor
+    c.minPolarAngle = 0.12;
+    c.screenSpacePanning = false; // pan along the floor
+    c.mouseButtons = {
+      LEFT: THREE.MOUSE.ROTATE,
+      MIDDLE: THREE.MOUSE.DOLLY,
+      RIGHT: THREE.MOUSE.PAN,
+    };
+    c.listenToKeyEvents(window); // arrow keys pan
+    this.controls = c;
+
+    const resize = () => {
+      const w = el.clientWidth || 1,
+        h = el.clientHeight || 1;
+      r.setSize(w, h);
+      this.camera.aspect = w / h;
+      this.camera.updateProjectionMatrix();
+    };
+    const ro = new ResizeObserver(resize);
+    ro.observe(el);
+    resize();
+    this.bindClicks(r.domElement);
+    this.off.push(() => ro.disconnect());
+    r.setAnimationLoop(() => this.frame());
+    this.ready = true;
+  }
+
+  destroy() {
+    this.dead = true;
+    this.off.forEach((f) => f());
+    if (!this.ready) return;
+    this.renderer.setAnimationLoop(null);
+    this.controls.dispose();
+    this.screenWall?.dispose();
+    this.disposeTree(this.scene);
+    this.renderer.dispose();
+    this.renderer.domElement.remove();
+  }
+
+  update(s: GameState) {
+    if (!this.ready || !s.night) return;
+    const layout = layoutFor(s.level);
+    const fresh = layout !== this.layout;
+    if (fresh) this.build(layout, s);
+    this.djOn =
+      s.bookedTalent.length > 0 && s.night.minute >= nightData.djSetStartMinute;
+    this.syncStaff(s);
+    this.syncStage(s);
+    this.syncScreen(s);
+
+    const queue = s.night.guests.filter((g) => g.state === "queue");
+    const queueIndex = new Map(queue.map((g, i) => [g.id, i]));
+    for (const g of s.night.guests) {
+      let p = this.guests.get(g.id);
+      if (g.state === "pending" || (g.state === "left" && !p)) continue;
+      const [tx, tz] = this.spot(zoneFor[g.state], g.id, queueIndex.get(g.id));
+      // Guests already inside when the scene (re)opens appear in place instead of all walking in again.
+      if (!p) p = this.spawnGuest(g.id, fresh ? [tx, tz] : this.entrance());
+      if (!p.held) [p.tx, p.tz] = [tx, tz];
+      p.leaving = g.state === "left";
+      p.mode = g.state === "dance" ? "dance" : "idle";
+      // Satisfaction as brightness: unhappy guests fade toward grey.
+      const v = 0.6 + (g.satisfaction / 100) * 0.4;
+      (p.sprite.material as THREE.SpriteMaterial).color.setRGB(v, v, v);
+      p.alert!.visible = isAtFightRisk(g);
+
+      const prev = this.budgets.get(g.id);
+      if (
+        prev !== undefined &&
+        g.state === "bar" &&
+        g.budget < prev &&
+        isInside(g)
+      )
+        this.float(p, `+${prev - g.budget}`);
+      this.budgets.set(g.id, g.budget);
+    }
+
+    // Security reacts to what just happened tonight: escorts and fights send a bodyguard over.
+    for (const e of s.log.slice(this.logSeen))
+      if (e.day === s.day && (e.kind === "guestEscorted" || e.kind === "fight"))
+        this.dispatchSecurity(e.guest);
+    this.logSeen = s.log.length;
+  }
+
+  // ---------- building the room ----------
+
+  private build(layout: Layout, s: GameState) {
+    this.disposeTree(this.root);
+    this.screenWall?.dispose();
+    const count = (k: ScreenKind) =>
+      layout.screens.filter((x) => x.kind === k).length;
+    // +1 landscape for the main screen, which plays landscape clips when no DJ is on.
+    this.screenWall = new ScreenWall(this.playlist!, {
+      portrait: count("portrait"),
+      landscape: count("landscape") + 1,
+      ad: count("ad"),
+    });
+    this.root.clear();
+    this.guests.clear();
+    this.staff = [];
+    this.stage = [];
+    this.staffKey = this.stageKey = this.screenDj = "";
+    this.floats = [];
+    this.budgets.clear();
+    this.spots = [];
+    this.beams = [];
+    this.walls = [];
+    this.led = null;
+    this.screen = null;
+    this.logSeen = s.log.length;
+    this.layout = layout;
+    this.zones = new Map(layout.zones.map((z) => [z.id, z]));
+    const tex = this.assets!.tex;
+
+    const floorMat = (
+      t: THREE.Texture | undefined,
+      w: number,
+      h: number,
+      color: number,
+      per = 4,
+    ) => {
+      const m = new THREE.MeshStandardMaterial({
+        color,
+        roughness: 0.85,
+        metalness: 0.05,
+      });
+      if (t) {
+        const tt = t.clone();
+        tt.wrapS = tt.wrapT = THREE.RepeatWrapping;
+        tt.repeat.set(w / per, h / per);
+        tt.needsUpdate = true;
+        m.map = tt;
+      }
+      return m;
+    };
+    const plane = (
+      x: number,
+      z: number,
+      w: number,
+      h: number,
+      mat: THREE.Material,
+      y = 0,
+    ) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+      m.rotation.x = -Math.PI / 2;
+      m.position.set(x + w / 2, y, z + h / 2);
+      this.root.add(m);
+      return m;
+    };
+
+    plane(
+      0,
+      0,
+      layout.w,
+      layout.h,
+      floorMat(tex.concrete, layout.w, layout.h, 0x8a8494),
+    );
+    for (const z of layout.zones) {
+      const locked = z.lockedBelow !== undefined && s.level < z.lockedBelow;
+      if (z.solid) this.buildBlock(z);
+      else if (z.id === "dance") this.buildDanceFloor(z);
+      else {
+        const woodish =
+          z.id === "seating" ||
+          z.id === "barFront" ||
+          z.id === "backbar" ||
+          z.id === "vip" ||
+          z.id === "office";
+        const t = z.outside ? tex.asphalt : woodish ? tex.wood : undefined;
+        const color = locked
+          ? 0x3a3340
+          : z.outside
+            ? 0x7d8aa0
+            : woodish
+              ? 0xc9a27e
+              : 0x2a2533;
+        plane(
+          z.x,
+          z.y,
+          z.w,
+          z.h,
+          floorMat(t, z.w, z.h, color, z.outside ? 3 : 4),
+          0.004,
+        );
+      }
+      if (z.label) this.label(z, locked);
+    }
+    const lane = this.zones.get("backbar");
+    if (lane) this.buildCabinet(lane);
+    this.buildWalls(layout);
+    this.buildLights();
+    this.frameCamera(layout);
+  }
+
+  private label(z: Zone, locked: boolean) {
+    const { tex, aspect } = textTexture(
+      locked ? `${z.label} · LOCKED` : z.label!,
+      { size: 48, color: "rgba(255,255,255,.55)" },
+    );
+    const h = 0.32;
+    const m = new THREE.Mesh(
+      new THREE.PlaneGeometry(h * aspect, h),
+      new THREE.MeshBasicMaterial({
+        map: tex,
+        transparent: true,
+        depthWrite: false,
+      }),
+    );
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(
+      z.x + z.w / 2,
+      (z.solid ? BLOCK_H : 0) + 0.012,
+      z.y + z.h / 2 + (z.solid ? 0 : z.h * 0.3),
+    );
+    this.root.add(m);
+  }
+
+  /** Furniture as a solid box with coloured LED trim along its top edges. */
+  private buildBlock(z: Zone) {
+    const box = new THREE.Mesh(
+      new THREE.BoxGeometry(z.w, BLOCK_H, z.h),
+      new THREE.MeshStandardMaterial({
+        color: z.id === "counter" ? 0x3b3140 : 0x2c2638,
+        roughness: 0.5,
+        metalness: 0.3,
+      }),
+    );
+    box.position.set(z.x + z.w / 2, BLOCK_H / 2, z.y + z.h / 2);
+    this.root.add(box);
+    const edge =
+      z.id === "dj" ? PALETTE[1]! : z.id === "stage" ? PALETTE[0]! : 0xffb020;
+    const trim = new THREE.LineSegments(
+      new THREE.EdgesGeometry(box.geometry),
+      new THREE.LineBasicMaterial({ color: edge }),
+    );
+    trim.position.copy(box.position);
+    this.root.add(trim);
+  }
+
+  /** LED dance floor: one additive tile per cell; colour and brightness follow the beat in frame(). */
+  private buildDanceFloor(z: Zone) {
+    const base = new THREE.Mesh(
+      new THREE.PlaneGeometry(z.w, z.h),
+      new THREE.MeshStandardMaterial({
+        color: 0x0b0910,
+        roughness: 0.3,
+        metalness: 0.6,
+      }),
+    );
+    base.rotation.x = -Math.PI / 2;
+    base.position.set(z.x + z.w / 2, 0.006, z.y + z.h / 2);
+    this.root.add(base);
+    const cells: [number, number][] = [];
+    for (let x = 0; x < z.w; x++)
+      for (let y = 0; y < z.h; y++) cells.push([x, y]);
+    const geo = new THREE.PlaneGeometry(0.92, 0.92);
+    geo.rotateX(-Math.PI / 2);
+    const mesh = new THREE.InstancedMesh(
+      geo,
+      new THREE.MeshBasicMaterial({
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+      cells.length,
+    );
+    const m = new THREE.Matrix4();
+    cells.forEach(([x, y], i) => {
+      mesh.setMatrixAt(
+        i,
+        m.makeTranslation(z.x + x + 0.5, 0.012, z.y + y + 0.5),
+      );
+      mesh.setColorAt(i, new THREE.Color(0));
+    });
+    this.root.add(mesh);
+    // The floor also throws its colour onto the dancers.
+    const light = new THREE.PointLight(0xffffff, 0, 9, 1.2);
+    light.position.set(z.x + z.w / 2, 0.8, z.y + z.h / 2);
+    this.root.add(light);
+    this.led = { mesh, cells, light };
+  }
+
+  /** Back-bar liquor cabinet: shelves of bottles in front of a warm backlight, plus a glass-door fridge. */
+  private buildCabinet(lane: Zone) {
+    const alongX = lane.w >= lane.h;
+    const len = alongX ? lane.w : lane.h;
+    const depth = 0.34,
+      height = 2.1;
+    const g = new THREE.Group();
+    const wood = new THREE.MeshStandardMaterial({
+      color: 0x3a2618,
+      roughness: 0.7,
+    });
+    const carcass = new THREE.Mesh(
+      new THREE.BoxGeometry(len, height, 0.06),
+      wood,
+    );
+    carcass.position.set(len / 2, height / 2, 0.03);
+    g.add(carcass);
+    const glow = new THREE.Mesh(
+      new THREE.PlaneGeometry(len - 0.2, height - 0.7),
+      new THREE.MeshBasicMaterial({
+        color: 0xffa24a,
+        transparent: true,
+        opacity: 0.55,
+      }),
+    );
+    glow.position.set(len / 2, 0.6 + (height - 0.7) / 2, 0.065);
+    g.add(glow);
+    const shelfYs = [0.62, 1.12, 1.62];
+    for (const y of shelfYs) {
+      const shelf = new THREE.Mesh(
+        new THREE.BoxGeometry(len - 0.1, 0.04, depth),
+        wood,
+      );
+      shelf.position.set(len / 2, y, depth / 2);
+      g.add(shelf);
+    }
+    const perShelf = Math.floor((len - 1.2) / 0.13);
+    const bottleGeo = new THREE.CylinderGeometry(0.035, 0.042, 0.24, 10);
+    bottleGeo.translate(0, 0.12, 0);
+    const bottles = new THREE.InstancedMesh(
+      bottleGeo,
+      new THREE.MeshStandardMaterial({
+        roughness: 0.15,
+        metalness: 0.2,
+        transparent: true,
+        opacity: 0.88,
+        emissive: 0x221100,
+      }),
+      perShelf * shelfYs.length,
+    );
+    const m = new THREE.Matrix4();
+    let i = 0;
+    for (const y of shelfYs)
+      for (let k = 0; k < perShelf; k++) {
+        m.makeTranslation(0.25 + k * 0.13, y + 0.02, depth * 0.55);
+        bottles.setMatrixAt(i, m);
+        bottles.setColorAt(
+          i,
+          new THREE.Color(GLASS[Math.floor(hash(i + 3) * GLASS.length)]!),
+        );
+        i++;
+      }
+    g.add(bottles);
+    // Beer fridge at the far end, glowing through its glass door.
+    const fridge = new THREE.Mesh(
+      new THREE.BoxGeometry(0.7, 1.1, depth + 0.05),
+      new THREE.MeshStandardMaterial({
+        color: 0x1b1d22,
+        roughness: 0.4,
+        metalness: 0.5,
+      }),
+    );
+    fridge.position.set(len - 0.45, 0.55, (depth + 0.05) / 2);
+    g.add(fridge);
+    const door = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.58, 0.95),
+      new THREE.MeshBasicMaterial({
+        color: 0x9fd8ff,
+        transparent: true,
+        opacity: 0.55,
+      }),
+    );
+    door.position.set(len - 0.45, 0.55, depth + 0.052);
+    g.add(door);
+
+    if (alongX) g.position.set(lane.x, 0, lane.y);
+    else {
+      // Lane runs along z (cabinet against the x = lane.x wall): local x → world −z, local depth → world +x.
+      g.rotation.y = Math.PI / 2;
+      g.position.set(lane.x, 0, lane.y + len);
+    }
+    this.root.add(g);
+  }
+
+  /** Four walls (the south one has the entrance gap). Each hides when it sits between the camera and the room. */
+  private buildWalls(layout: Layout) {
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0x14111c,
+      roughness: 0.9,
+    });
+    const strip = new THREE.MeshBasicMaterial({ color: PALETTE[0] });
+    const T = 0.12;
+    const wall = (x: number, z: number, w: number, d: number) => {
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.BoxGeometry(w, WALL_H, d), mat);
+      body.position.set(x + w / 2, WALL_H / 2, z + d / 2);
+      const led = new THREE.Mesh(
+        new THREE.BoxGeometry(w, 0.05, d + 0.02),
+        strip,
+      );
+      led.position.set(x + w / 2, WALL_H, z + d / 2);
+      g.add(body, led);
+      this.root.add(g);
+      return g;
+    };
+    const { w, h } = layout;
+    this.walls.push({ mesh: wall(0, -T, w, T), visible: (c) => c.z > 0 });
+    this.walls.push({ mesh: wall(-T, 0, T, h), visible: (c) => c.x > 0 });
+    this.walls.push({ mesh: wall(w, 0, T, h), visible: (c) => c.x < w });
+    const door = this.zones.get("entrance");
+    const south = new THREE.Group();
+    if (door && door.y + door.h >= h) {
+      south.add(
+        wall(0, h, door.x, T),
+        wall(door.x + door.w, h, w - door.x - door.w, T),
+      );
+    } else south.add(wall(0, h, w, T));
+    this.root.add(south);
+    this.walls.push({ mesh: south, visible: (c) => c.z < h });
+
+    // Clip / ad screens on the walls, facing into the room (each hides with its wall).
+    const wallIndex = { n: 0, w: 1, e: 2, s: 3 } as const;
+    for (const slot of layout.screens) {
+      const { w: sw, h: sh } = SCREEN_SIZE[slot.kind];
+      const y = WALL_H - 0.3 - sh / 2;
+      const [pos, rot] = {
+        n: [new THREE.Vector3(slot.at, y, 0.04), 0],
+        w: [new THREE.Vector3(0.04, y, slot.at), Math.PI / 2],
+        e: [new THREE.Vector3(w - 0.04, y, slot.at), -Math.PI / 2],
+        s: [new THREE.Vector3(slot.at, y, h - 0.04), Math.PI],
+      }[slot.wall] as [THREE.Vector3, number];
+      const scr = new THREE.Mesh(
+        new THREE.PlaneGeometry(sw, sh),
+        new THREE.MeshBasicMaterial({
+          map: this.screenWall!.texture(slot.kind, sw / sh),
+          toneMapped: false,
+        }),
+      );
+      scr.position.copy(pos);
+      scr.rotation.y = rot;
+      const bezel = new THREE.Mesh(
+        new THREE.BoxGeometry(sw + 0.12, sh + 0.12, 0.05),
+        new THREE.MeshStandardMaterial({ color: 0x050507 }),
+      );
+      bezel.position
+        .copy(pos)
+        .addScaledVector(
+          new THREE.Vector3(Math.sin(rot), 0, Math.cos(rot)),
+          -0.04,
+        );
+      bezel.rotation.y = rot;
+      this.walls[wallIndex[slot.wall]]!.mesh.add(bezel, scr);
+    }
+
+    // Concert screen on the back wall above the stage / DJ booth.
+    const stage = this.zones.get("stage"),
+      dj = this.zones.get("dj");
+    if (!stage && !dj) return;
+    const x0 = Math.min(stage?.x ?? Infinity, dj?.x ?? Infinity) + 0.2;
+    const x1 =
+      Math.max(
+        stage ? stage.x + stage.w : -Infinity,
+        dj ? dj.x + dj.w : -Infinity,
+      ) - 0.2;
+    const sw = x1 - x0,
+      sh = Math.min(WALL_H - 1.1, sw * 0.5625);
+    const idle = textTexture("NYXERON", {
+      size: 120,
+      weight: "800",
+      font: "Inter Tight, sans-serif",
+    }).tex;
+    const mat2 = new THREE.MeshBasicMaterial({ map: idle, toneMapped: false });
+    const scr = new THREE.Mesh(new THREE.PlaneGeometry(sw, sh), mat2);
+    scr.position.set((x0 + x1) / 2, WALL_H - 0.25 - sh / 2, 0.04); // in front of the bezel face (z 0.025)
+    const bezel = new THREE.Mesh(
+      new THREE.BoxGeometry(sw + 0.16, sh + 0.16, 0.05),
+      new THREE.MeshStandardMaterial({ color: 0x050507 }),
+    );
+    bezel.position.set(scr.position.x, scr.position.y, 0);
+    this.walls[0]!.mesh.add(bezel, scr);
+    // Between DJ sets the big screen plays landscape clips when there are any, else the logo.
+    const between = this.screenWall!.has("landscape")
+      ? this.screenWall!.texture("landscape", sw / sh)
+      : idle;
+    mat2.map = between;
+    this.screen = { mat: mat2, idle: between };
+  }
+
+  private buildLights() {
+    this.root.add(new THREE.AmbientLight(0x6a5a8a, 0.9));
+    this.root.add(new THREE.HemisphereLight(0x8878ff, 0x201830, 0.6));
+    const point = (zone: ZoneId, color: number, intensity: number, y = 1.8) => {
+      const z = this.zones.get(zone);
+      if (!z) return;
+      const l = new THREE.PointLight(color, intensity, 8, 1.2);
+      l.position.set(z.x + z.w / 2, y, z.y + z.h / 2);
+      this.root.add(l);
+    };
+    point("barFront", 0xffa24a, 6);
+    point("entrance", 0xffd9a0, 4);
+    point("dj", PALETTE[1]!, 5, 2.2);
+    point("seating", 0xa855f7, 2.5);
+    const dance = this.zones.get("dance");
+    if (dance)
+      for (let i = 0; i < 3; i++) {
+        const l = new THREE.SpotLight(PALETTE[i], 40, 18, 0.32, 0.6, 1.2);
+        l.position.set(dance.x + dance.w / 2, 6, dance.y + dance.h / 2);
+        this.root.add(l, l.target);
+        this.spots.push({ light: l, phase: i * 2.1 });
+      }
+    // Light beams out of the booth, like light cutting through haze.
+    const src = this.zones.get("dj") ?? this.zones.get("stage");
+    if (src) {
+      const geo = new THREE.ConeGeometry(0.9, 7, 24, 1, true);
+      geo.translate(0, -3.5, 0); // apex at the origin
+      for (let i = 0; i < 4; i++) {
+        const beam = new THREE.Mesh(
+          geo,
+          new THREE.MeshBasicMaterial({
+            color: PALETTE[i],
+            transparent: true,
+            opacity: 0.07,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+          }),
+        );
+        beam.position.set(src.x + src.w / 2, 2.6, src.y + src.h / 2);
+        this.root.add(beam);
+        this.beams.push(beam);
+      }
+    }
+  }
+
+  private frameCamera(layout: Layout) {
+    const target = new THREE.Vector3(layout.w / 2, 0, layout.h / 2 + 0.5);
+    const d = Math.max(layout.w, layout.h) * 1.05 + 3;
+    this.controls.target.copy(target);
+    this.camera.position.set(
+      target.x + d * 0.62,
+      d * 0.72,
+      target.z + d * 0.78,
+    );
+    this.controls.update();
+  }
+
+  // ---------- people ----------
+
+  private addPerson(
+    tex: THREE.Texture | undefined,
+    h: number,
+    x: number,
+    z: number,
+    mode: Person["mode"],
+    seed: number,
+  ): Person {
+    const g = new THREE.Group();
+    const shadow = new THREE.Mesh(
+      new THREE.PlaneGeometry(h * 0.55, h * 0.3),
+      new THREE.MeshBasicMaterial({
+        map: this.shadowTex,
+        transparent: true,
+        depthWrite: false,
+      }),
+    );
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.position.y = 0.015;
+    const mat = new THREE.SpriteMaterial({
+      map: tex ?? null,
+      color: tex ? 0xffffff : 0xdddddd,
+      alphaTest: 0.5,
+    });
+    const sprite = new THREE.Sprite(mat);
+    sprite.center.set(0.5, 0);
+    const aspect = tex
+      ? (tex.image as HTMLImageElement).width /
+        (tex.image as HTMLImageElement).height
+      : 0.35;
+    sprite.scale.set(h * aspect, h, 1);
+    g.add(shadow, sprite);
+    g.position.set(x, 0, z);
+    this.root.add(g);
+    return {
+      g,
+      sprite,
+      h,
+      tx: x,
+      tz: z,
+      leaving: false,
+      fade: 1,
+      mode,
+      seed,
+      lift: 0,
+    };
+  }
+
+  private spawnGuest(id: number, at: [number, number]): Person {
+    const list = this.assets!.guests;
+    const tex = list.length
+      ? list[Math.floor(hash(id + 31) * list.length)]
+      : undefined;
+    const p = this.addPerson(
+      tex,
+      PERSON_H * (0.9 + hash(id + 5) * 0.18),
+      at[0],
+      at[1],
+      "idle",
+      id,
+    );
+    const alert = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: this.alertTex.tex, depthTest: false }),
+    );
+    alert.center.set(0.5, 0);
+    alert.scale.set(0.28 * this.alertTex.aspect, 0.28, 1);
+    alert.position.y = p.h + 0.08;
+    alert.visible = false;
+    alert.userData.guest = id;
+    p.g.add(alert);
+    p.alert = alert;
+    this.guests.set(id, p);
+    return p;
+  }
+
+  private zonePoint(
+    zone: ZoneId,
+    fx: number,
+    fz: number,
+  ): [number, number] | null {
+    const z = this.zones.get(zone);
+    return z ? [z.x + z.w * fx, z.y + z.h * fz] : null;
+  }
+
+  /** Bartenders and security follow the hired counts. Two bodyguards hold the door, the rest patrol. */
+  private syncStaff(s: GameState) {
+    const a = this.assets!;
+    const bartenders = Math.min(3, Math.max(1, s.staff.bartender)); // the owner pours at the booth
+    const bouncers = Math.min(5, s.staff.security);
+    const key = `${bartenders}|${bouncers}`;
+    if (key === this.staffKey) return;
+    this.staffKey = key;
+    this.staff.forEach((p) => this.remove(p));
+    this.staff = [];
+    const lane = this.zones.get("backbar");
+    for (let i = 0; i < bartenders && lane; i++) {
+      const along = (i + 0.5) / bartenders;
+      // In the lane between the counter and the cabinet.
+      const [x, z] =
+        lane.w >= lane.h
+          ? [lane.x + along * lane.w, lane.y + 0.62]
+          : [lane.x + 0.62, lane.y + along * lane.h];
+      this.staff.push(
+        this.addPerson(
+          a.bartenders[i % Math.max(1, a.bartenders.length)],
+          PERSON_H,
+          x,
+          z,
+          "work",
+          900 + i,
+        ),
+      );
+    }
+    for (let i = 0; i < bouncers; i++) {
+      const door = i < 2;
+      const pos = door
+        ? this.zonePoint("entrance", i % 2 ? 0.92 : 0.08, 0.4)
+        : this.patrolPoint(950 + i);
+      if (!pos) continue;
+      const p = this.addPerson(
+        a.bouncers[i % Math.max(1, a.bouncers.length)],
+        PERSON_H * 1.12,
+        pos[0],
+        pos[1],
+        "idle",
+        950 + i,
+      );
+      p.home = door
+        ? { kind: "post", x: pos[0], z: pos[1] }
+        : { kind: "patrol", x: pos[0], z: pos[1], wait: 0 };
+      p.task = p.home;
+      this.staff.push(p);
+    }
+  }
+
+  /** The booked DJ's own character in the booth once the set starts; MC or dancers on the stage. */
+  private syncStage(s: GameState) {
+    const a = this.assets!;
+    const dj = s.bookedTalent[0];
+    const stageAct = this.zones.has("stage")
+      ? s.level >= 4 && this.djOn
+        ? "dancers"
+        : "mc"
+      : "none";
+    const key = `${this.djOn ? dj : ""}|${stageAct}`;
+    if (key === this.stageKey) return;
+    this.stageKey = key;
+    this.stage.forEach((p) => this.remove(p));
+    this.stage = [];
+    const add = (
+      tex: THREE.Texture | undefined,
+      zone: ZoneId,
+      fx: number,
+      mode: Person["mode"],
+      seed: number,
+      h = PERSON_H,
+    ) => {
+      const pos = this.zonePoint(zone, fx, zone === "dj" ? 0.55 : 0.5);
+      if (!pos) return;
+      const p = this.addPerson(tex, h, pos[0], pos[1], mode, seed);
+      p.lift = BLOCK_H; // standing on the booth / stage
+      this.stage.push(p);
+    };
+    if (this.djOn && dj)
+      add(a.decks[dj] ?? a.dj, "dj", 0.5, "perform", 990, PERSON_H * 1.55);
+    if (stageAct === "dancers") {
+      add(a.dancers[0], "stage", 0.3, "dance", 991);
+      add(a.dancers[1] ?? a.dancers[0], "stage", 0.72, "dance", 992);
+    } else if (stageAct === "mc") add(a.mc, "stage", 0.5, "perform", 993);
+  }
+
+  /** The LED wall plays the booked DJ's loop during their set, and an idle logo otherwise. */
+  private syncScreen(s: GameState) {
+    if (!this.screen) return;
+    const dj = this.djOn ? (s.bookedTalent[0] ?? "") : "";
+    if (dj === this.screenDj) return;
+    this.screenDj = dj;
+    const scr = this.screen;
+    scr.mat.map = scr.idle;
+    scr.mat.needsUpdate = true;
+    if (!dj) return;
+    if (!this.videos.has(dj)) this.videos.set(dj, loadDjVideo(dj));
+    this.videos.get(dj)!.then((tex) => {
+      if (!tex || this.screen !== scr || this.screenDj !== dj) return;
+      scr.mat.map = tex;
+      scr.mat.needsUpdate = true;
+    });
+  }
+
+  private patrolPoint(seed: number): [number, number] {
+    const zone: ZoneId = hash(seed * 3) < 0.6 ? "dance" : "seating";
+    return (
+      this.zonePoint(
+        zone,
+        0.15 + hash(seed) * 0.7,
+        0.15 + hash(seed + 11) * 0.7,
+      ) ?? this.entrance()
+    );
+  }
+
+  /** Send the nearest free bodyguard to walk this guest out (click-to-escort, or after a fight). */
+  private dispatchSecurity(guestId: number) {
+    const g = this.guests.get(guestId);
+    const free = this.staff.filter((p) => p.task && p.task.kind !== "escort");
+    if (!g || !free.length) return;
+    const dist = (p: Person) => p.g.position.distanceTo(g.g.position);
+    const b = free.reduce((best, p) => (dist(p) < dist(best) ? p : best));
+    g.held = true;
+    [g.tx, g.tz] = [g.g.position.x, g.g.position.z];
+    b.task = { kind: "escort", guest: guestId, phase: "approach" };
+  }
+
+  private spot(
+    zone: ZoneId,
+    id: number,
+    queueIndex?: number,
+  ): [number, number] {
+    const z = this.zones.get(zone) ?? this.zones.get("dance")!;
+    if (queueIndex !== undefined) {
+      const perRow = Math.max(1, Math.floor(z.w * 2));
+      return [
+        z.x + 0.25 + (queueIndex % perRow) * 0.5,
+        z.y + 0.3 + Math.floor(queueIndex / perRow) * 0.5,
+      ];
+    }
+    return [
+      z.x + 0.3 + hash(id) * (z.w - 0.6),
+      z.y + 0.3 + hash(id + 7919) * (z.h - 0.6),
+    ];
+  }
+
+  private entrance(): [number, number] {
+    const q = this.zones.get("queue")!;
+    return [q.x + q.w / 2, q.y + q.h];
+  }
+
+  private float(p: Person, text: string) {
+    if (this.floats.length > 30) return;
+    let t = this.floatCache.get(text);
+    if (!t)
+      this.floatCache.set(
+        text,
+        (t = textTexture(text, { size: 56, color: "#ffd23f", stroke: true })),
+      );
+    const s = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: t.tex,
+        transparent: true,
+        depthTest: false,
+      }),
+    );
+    s.scale.set(0.3 * t.aspect, 0.3, 1);
+    // At the bar spot the guest is heading to, so sales visibly come from the bar.
+    s.position.set(p.tx, PERSON_H + 0.3, p.tz);
+    this.root.add(s);
+    this.floats.push(s);
+    const now = performance.now();
+    if (now - this.cashAt > 180) {
+      this.cashAt = now;
+      audio.cash();
+    }
+  }
+
+  private remove(p: Person) {
+    this.root.remove(p.g);
+    this.disposeTree(p.g);
+  }
+
+  // ---------- input ----------
+
+  private bindClicks(canvas: HTMLCanvasElement) {
+    const ray = new THREE.Raycaster();
+    let down: { x: number; y: number } | null = null;
+    const pdown = (e: PointerEvent) => (down = { x: e.clientX, y: e.clientY });
+    const pup = (e: PointerEvent) => {
+      // A click, not the end of an orbit drag.
+      if (
+        !down ||
+        Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5 ||
+        e.button !== 0
+      )
+        return;
+      const r = canvas.getBoundingClientRect();
+      ray.setFromCamera(
+        new THREE.Vector2(
+          ((e.clientX - r.left) / r.width) * 2 - 1,
+          -((e.clientY - r.top) / r.height) * 2 + 1,
+        ),
+        this.camera,
+      );
+      const targets = [...this.guests.values()]
+        .filter((p) => p.alert?.visible)
+        .flatMap((p) => [p.sprite, p.alert!]);
+      const hit = ray.intersectObjects(targets, false)[0];
+      if (hit) {
+        const id = [...this.guests.entries()].find(
+          ([, p]) => p.sprite === hit.object || p.alert === hit.object,
+        )?.[0];
+        if (id !== undefined) this.onGuestClick(id);
+      }
+    };
+    canvas.addEventListener("pointerdown", pdown);
+    canvas.addEventListener("pointerup", pup);
+    this.off.push(() => {
+      canvas.removeEventListener("pointerdown", pdown);
+      canvas.removeEventListener("pointerup", pup);
+    });
+  }
+
+  // ---------- animation ----------
+
+  /** Security walks (units/ms) and runs when escorting someone out. */
+  private stepSecurity(p: Person, dt: number) {
+    const task = p.task!;
+    const speed = task.kind === "escort" ? 0.0028 : 0.0011;
+    if (task.kind === "escort") {
+      const g = this.guests.get(task.guest);
+      if (!g) p.task = p.home;
+      else if (task.phase === "approach") {
+        [p.tx, p.tz] = [g.g.position.x + 0.3, g.g.position.z + 0.15];
+        if (Math.hypot(p.tx - p.g.position.x, p.tz - p.g.position.z) < 0.15)
+          task.phase = "out";
+      } else {
+        [p.tx, p.tz] = this.entrance();
+        [g.tx, g.tz] = [p.g.position.x - 0.35, p.g.position.z - 0.1];
+        if (Math.hypot(p.tx - p.g.position.x, p.tz - p.g.position.z) < 0.25) {
+          g.held = false; // now it may fade out at the door
+          p.task = p.home;
+        }
+      }
+    } else if (task.kind === "patrol") {
+      [p.tx, p.tz] = [task.x, task.z];
+      if (
+        Math.hypot(p.tx - p.g.position.x, p.tz - p.g.position.z) < 0.1 &&
+        (task.wait -= dt) <= 0
+      ) {
+        const [x, z] = this.patrolPoint(
+          p.seed + Math.floor(performance.now() / 1000),
+        );
+        p.task = p.home = {
+          kind: "patrol",
+          x,
+          z,
+          wait: 2500 + hash(p.seed) * 3000,
+        };
+      }
+    } else [p.tx, p.tz] = [task.x, task.z];
+    const dx = p.tx - p.g.position.x,
+      dz = p.tz - p.g.position.z,
+      d = Math.hypot(dx, dz);
+    if (d > 0.01) {
+      const step = Math.min(d, speed * dt);
+      p.g.position.x += (dx / d) * step;
+      p.g.position.z += (dz / d) * step;
+    }
+  }
+
+  private frame() {
+    const now = performance.now();
+    const dt = Math.min(100, now - this.last);
+    this.last = now;
+    const tSec = now / 1000;
+    // With music playing the club moves on the track's real kick; otherwise on its own clock.
+    const beatMs = this.djOn ? 60000 / 124 : 60000 / 100;
+    const pulse = audio.live
+      ? audio.pulse()
+      : Math.pow(1 - (now % beatMs) / beatMs, 3);
+    const k = Math.min(1, dt / 250);
+
+    const animate = (p: Person) => {
+      const moving =
+        Math.hypot(p.tx - p.g.position.x, p.tz - p.g.position.z) > 0.04;
+      const t = tSec + p.seed * 0.37;
+      let y: number,
+        sy = 1,
+        rot = 0;
+      if (moving) y = Math.abs(Math.sin(t * 9)) * 0.05;
+      else if (p.mode === "dance") {
+        y = pulse * 0.09 + Math.abs(Math.sin(t * 3)) * 0.03;
+        sy = 1 - pulse * 0.04;
+        rot = Math.sin(t * 2.6) * 0.06;
+      } else if (p.mode === "perform") {
+        y = pulse * 0.05;
+        rot = Math.sin(t * 1.8) * 0.03;
+      } else if (p.mode === "work") y = Math.abs(Math.sin(t * 4)) * 0.02;
+      else y = Math.sin(t * 1.6) * 0.008;
+      p.sprite.position.y = p.lift + y;
+      p.g.children[0]!.position.y = p.lift + 0.015; // shadow on the block top when raised
+      p.sprite.scale.y = p.h * sy;
+      (p.sprite.material as THREE.SpriteMaterial).rotation = rot;
+    };
+
+    for (const [id, p] of this.guests) {
+      if (p.leaving && !p.held) {
+        p.fade -= dt / 800;
+        (p.sprite.material as THREE.SpriteMaterial).opacity = Math.max(
+          0,
+          p.fade,
+        );
+        (p.sprite.material as THREE.SpriteMaterial).transparent = true;
+        if (p.fade <= 0) {
+          this.remove(p);
+          this.guests.delete(id);
+          continue;
+        }
+      }
+      const kk = p.held ? Math.min(1, dt / 120) : k;
+      p.g.position.x += (p.tx - p.g.position.x) * kk;
+      p.g.position.z += (p.tz - p.g.position.z) * kk;
+      animate(p);
+      if (p.alert?.visible)
+        (p.alert.material as THREE.SpriteMaterial).opacity =
+          0.5 + 0.5 * Math.sin(now / 120);
+    }
+    for (const p of this.staff) {
+      if (p.task) this.stepSecurity(p, dt);
+      animate(p);
+    }
+    this.stage.forEach(animate);
+
+    // LED floor colour sweep; the floor light takes the average hue.
+    if (this.led) {
+      const c = new THREE.Color();
+      this.led.cells.forEach(([x, y], i) => {
+        const wave = 0.5 + 0.5 * Math.sin(tSec * 2.2 - (x + y) * 0.9);
+        const level = this.djOn
+          ? 0.12 + wave * 0.45 + pulse * 0.3
+          : 0.04 + wave * 0.08;
+        c.setHSL(
+          ((tSec * 40 + (x + y) * 28) % 360) / 360,
+          0.9,
+          0.5,
+        ).multiplyScalar(level);
+        this.led!.mesh.setColorAt(i, c);
+      });
+      this.led.mesh.instanceColor!.needsUpdate = true;
+      this.led.light.color.setHSL(((tSec * 40) % 360) / 360, 0.9, 0.55);
+      this.led.light.intensity = this.djOn ? 3 + pulse * 4 : 0.6;
+    }
+    const dz = this.zones.get("dance");
+    if (dz)
+      for (const { light, phase } of this.spots) {
+        light.target.position.set(
+          dz.x + dz.w / 2 + Math.sin(tSec * 0.7 + phase) * dz.w * 0.35,
+          0,
+          dz.y + dz.h / 2 + Math.cos(tSec * 0.9 + phase) * dz.h * 0.35,
+        );
+        light.intensity = this.djOn ? 35 + pulse * 40 : 6;
+      }
+    this.beams.forEach((b, i) => {
+      b.visible = this.djOn;
+      b.rotation.set(
+        0.5 + Math.sin(tSec * 0.8 + i * 1.3) * 0.35,
+        0,
+        Math.sin(tSec * 0.6 + i * 1.7) * 0.7,
+      );
+      (b.material as THREE.MeshBasicMaterial).opacity = 0.05 + pulse * 0.05;
+    });
+
+    for (let i = this.floats.length - 1; i >= 0; i--) {
+      const f = this.floats[i]!;
+      f.position.y += dt / 1500;
+      const m = f.material as THREE.SpriteMaterial;
+      m.opacity -= dt / 1200;
+      if (m.opacity <= 0) {
+        this.root.remove(f);
+        m.dispose();
+        this.floats.splice(i, 1);
+      }
+    }
+
+    // Cutaway: hide the walls between the camera and the room.
+    const cam = this.camera.position;
+    for (const w of this.walls) w.mesh.visible = w.visible(cam);
+
+    this.controls.update();
+    this.screenWall?.tick(now, pulse);
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  private disposeTree(o: THREE.Object3D) {
+    o.traverse((c) => {
+      const m = c as THREE.Mesh;
+      m.geometry?.dispose();
+      const mats = Array.isArray(m.material)
+        ? m.material
+        : m.material
+          ? [m.material]
+          : [];
+      for (const mat of mats) {
+        // Shared textures (sprites, shadows, alert) are owned by the scene/assets, not by one object.
+        mat.dispose();
+      }
+    });
+  }
+}

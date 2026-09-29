@@ -1,4 +1,4 @@
-import { LOUNGE, useMusic } from "@/audio";
+import { LOUNGE, nightTrack, useMusic } from "@/audio";
 import {
   djs,
   expectedGuests,
@@ -18,7 +18,7 @@ import { EventFeed } from "@/hud/EventFeed";
 import { tabIcon } from "@/hud/icons";
 import { Objectives } from "@/hud/Objectives";
 import { TopBar } from "@/hud/TopBar";
-import { en, genres } from "@/i18n/en";
+import { clock, en, genres } from "@/i18n/en";
 import { cn } from "@/lib/utils";
 import { useGame } from "@/store";
 import { introEnabled } from "./IntroVideo";
@@ -77,12 +77,14 @@ function Card({
 }
 
 export function Office({ s }: { s: GameState }) {
-  useMusic(LOUNGE, true); // the club, heard through the wall
-  const { set, setIntro } = useGame();
+  const atNight = s.phase === "night";
+  // The club, heard through the wall: the lounge by day, whatever is playing downstairs at night.
+  useMusic(atNight ? nightTrack(s) : LOUNGE, true);
+  const { set, setIntro, setView } = useGame();
   const [tab, setTab] = useState<TabId>("stock");
   const expected = expectedGuests(s);
   const dj = s.bookedTalent[0];
-  const hint = tutorial(s);
+  const hint = atNight ? null : tutorial(s);
   const crowdRisk =
     s.level >= 4 &&
     expected > legal.crowdPermitThreshold &&
@@ -91,9 +93,13 @@ export function Office({ s }: { s: GameState }) {
   const active = TABS.find((t) => t.id === tab)!;
   const info = en.office.tabInfo[tab]!;
   const openClub = () => {
+    if (atNight) return setView("venue");
     set(startNight(s));
     if (introEnabled()) setIntro(true);
   };
+  /** Tabs that only make sense by day: the DJ is already on the schedule, and building waits for daylight. */
+  const nightLock = (id: TabId) =>
+    atNight && (id === "talent" || id === "build");
 
   return (
     <div className="fixed inset-0 overflow-hidden bg-black">
@@ -116,7 +122,7 @@ export function Office({ s }: { s: GameState }) {
           >
             {TABS.map((t) => {
               const Icon = tabIcon[t.id];
-              const locked = t.minLevel > s.level;
+              const locked = t.minLevel > s.level || nightLock(t.id);
               const on = t.id === tab;
               return (
                 <button
@@ -152,9 +158,11 @@ export function Office({ s }: { s: GameState }) {
                         on ? "text-black/55" : "text-white/40",
                       )}
                     >
-                      {locked
-                        ? en.office.lockedTab(t.minLevel)
-                        : en.office.tabInfo[t.id]!.title}
+                      {nightLock(t.id)
+                        ? en.office.dayOnly
+                        : locked
+                          ? en.office.lockedTab(t.minLevel)
+                          : en.office.tabInfo[t.id]!.title}
                     </span>
                   </span>
                   {locked && <Lock className="ml-auto size-3.5" />}
@@ -204,7 +212,10 @@ export function Office({ s }: { s: GameState }) {
               >
                 <div className="enter">
                   <div className="text-[10px] tracking-[0.3em] text-white/60 uppercase">
-                    {en.hud.day(s.day)} · {en.office.daytime}
+                    {en.hud.day(s.day)} ·{" "}
+                    {atNight
+                      ? `${en.office.nightTime} · ${clock(s.night!.minute)}`
+                      : en.office.daytime}
                   </div>
                   <h1 className="mt-1 text-4xl font-medium tracking-[-0.03em]">
                     {info.title}
@@ -225,6 +236,7 @@ export function Office({ s }: { s: GameState }) {
             </header>
             <div className="min-h-0 flex-1 overflow-y-auto p-6">
               {hint && <Banner badge="CEO">{hint}</Banner>}
+              {atNight && <Banner badge="OPEN">{en.office.nightBanner}</Banner>}
               {crowdRisk && (
                 <Banner warn>{en.office.crowdWarning(expected)}</Banner>
               )}
@@ -287,10 +299,17 @@ export function Office({ s }: { s: GameState }) {
               <div className="relative flex h-full items-end justify-between p-4">
                 <div>
                   <div className="text-[10px] tracking-[0.3em] text-white/70 uppercase">
-                    {en.office.openKicker}
+                    {atNight ? en.office.backKicker : en.office.openKicker}
                   </div>
-                  <div className="text-2xl font-semibold tracking-[0.14em] uppercase">
-                    {en.office.open}
+                  <div
+                    className={cn(
+                      "font-semibold whitespace-nowrap uppercase",
+                      atNight
+                        ? "text-xl tracking-[0.1em]"
+                        : "text-2xl tracking-[0.14em]",
+                    )}
+                  >
+                    {atNight ? en.office.back : en.office.open}
                   </div>
                 </div>
                 <span className="flex size-11 items-center justify-center rounded-lg bg-white text-black transition-transform group-hover:translate-x-0.5">

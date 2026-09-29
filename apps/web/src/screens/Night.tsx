@@ -17,8 +17,9 @@ import {
   useSyncExternalStore,
   type CSSProperties,
 } from "react";
-import { Volume2, VolumeX } from "lucide-react";
-import { audio, LOUNGE, TRACKS, useMusic } from "@/audio";
+import { Briefcase, Volume2, VolumeX } from "lucide-react";
+import { Office } from "./Office";
+import { audio, nightTrack, TRACKS, useMusic } from "@/audio";
 import { isAlert } from "@/hud/eventText";
 import { Button } from "@/components/ui/button";
 import { EventFeed } from "@/hud/EventFeed";
@@ -35,9 +36,10 @@ import { StockTab } from "./office/StockTab";
 
 /** 1 tick = 1 in-game minute; 1× = 1 tick per real second (a night ≈ 6 minutes). */
 function useNightLoop() {
-  const { paused, running, speed, intro } = useGame();
+  const { paused, running, speed, intro, view } = useGame();
   useEffect(() => {
-    if (paused || !running || intro) return;
+    // The clock waits while the CEO is in the office.
+    if (paused || !running || intro || view === "office") return;
     const id = setInterval(() => {
       const { game, set } = useGame.getState();
       if (!game || game.phase !== "night") return;
@@ -45,7 +47,7 @@ function useNightLoop() {
       set(nightOver(next) ? endNight(next) : next);
     }, 1000 / speed);
     return () => clearInterval(id);
-  }, [paused, running, speed, intro]);
+  }, [paused, running, speed, intro, view]);
 }
 
 function skipToEnd() {
@@ -86,13 +88,11 @@ function CeoCall({ s, onDone }: { s: GameState; onDone?: () => void }) {
   );
 }
 
-/** Night soundtrack: house playlist until the DJ set, then the booked DJ; silent during the cutscene. */
+/** Night soundtrack + alert tones. */
 function useNightAudio(s: GameState, intro: boolean, paused: boolean) {
-  const dj = s.bookedTalent[0];
-  const setOn = !!s.night && s.night.minute >= nightData.djSetStartMinute;
   // Lounge (continuing from the office) until the set starts, then the booked DJ. The cutscene and the pause menu
   // muffle it rather than stopping it, so the music never cuts out.
-  useMusic(dj && setOn ? dj : LOUNGE, intro || paused);
+  useMusic(nightTrack(s), intro || paused);
 
   // A short alert tone whenever something needs the CEO's attention.
   const seen = useRef(s.log.length);
@@ -122,8 +122,17 @@ function MuteButton({ className }: { className?: string }) {
 }
 
 export function Night({ s }: { s: GameState }) {
-  const { running, speed, setRunning, setSpeed, act, intro, paused } =
-    useGame();
+  const {
+    running,
+    speed,
+    setRunning,
+    setSpeed,
+    act,
+    intro,
+    paused,
+    view,
+    setView,
+  } = useGame();
   const [panel, setPanel] = useState(true);
   const [ceoOpen, setCeoOpen] = useState(false);
   useNightLoop();
@@ -131,8 +140,15 @@ export function Night({ s }: { s: GameState }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const { paused, intro } = useGame.getState();
-      if (e.target instanceof HTMLInputElement || paused || intro) return;
+      const { paused, intro, view: v } = useGame.getState();
+      if (
+        e.target instanceof HTMLInputElement ||
+        paused ||
+        intro ||
+        v === "office"
+      )
+        return;
+      if (e.key.toLowerCase() === "o") return setView("office");
       if (e.key === " ") {
         e.preventDefault();
         setRunning(!useGame.getState().running);
@@ -146,7 +162,7 @@ export function Night({ s }: { s: GameState }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [setRunning, setSpeed]);
+  }, [setRunning, setSpeed, setView]);
 
   const n = s.night!;
   const inside = n.guests.filter(isInside);
@@ -175,34 +191,44 @@ export function Night({ s }: { s: GameState }) {
           s={s}
           dense
           right={
-            <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-black/30 p-1">
-              <button
-                className={seg(!running)}
-                onClick={() => setRunning(!running)}
-                aria-label={running ? "Pause" : "Play"}
-              >
-                {running ? "❚❚" : "▶"}
-              </button>
-              {([1, 2, 3] as const).map((x) => (
+            <>
+              <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-black/30 p-1">
                 <button
-                  key={x}
-                  className={seg(speed === x && running)}
-                  onClick={() => setSpeed(x)}
+                  className={seg(!running)}
+                  onClick={() => setRunning(!running)}
+                  aria-label={running ? "Pause" : "Play"}
                 >
-                  {x}×
+                  {running ? "❚❚" : "▶"}
                 </button>
-              ))}
+                {([1, 2, 3] as const).map((x) => (
+                  <button
+                    key={x}
+                    className={seg(speed === x && running)}
+                    onClick={() => setSpeed(x)}
+                  >
+                    {x}×
+                  </button>
+                ))}
+                <button
+                  className={cn(seg(false), "tracking-wide")}
+                  onClick={skipToEnd}
+                >
+                  {en.night.skip} ⏭
+                </button>
+                <MuteButton className={seg(false)} />
+              </div>
               <button
-                className={cn(seg(false), "tracking-wide")}
-                onClick={skipToEnd}
+                className="flex h-10 items-center gap-2 rounded-lg bg-white px-3.5 text-xs font-semibold tracking-[0.12em] text-black uppercase shadow-[0_0_20px_rgba(255,255,255,.2)]"
+                onClick={() => setView("office")}
+                title={`${en.night.toOffice} [O]`}
               >
-                {en.night.skip} ⏭
+                <Briefcase className="size-4" />
+                {en.night.toOffice}
               </button>
-              <MuteButton className={seg(false)} />
-            </div>
+            </>
           }
         />
-        <div className="pointer-events-none flex min-h-0 flex-1 gap-3 [&>*]:pointer-events-auto">
+        <div className="flex min-h-0 flex-1 gap-3 pointer-events-none! [&>*]:pointer-events-auto">
           {panel && (
             <aside
               className="glass enter w-80 space-y-6 overflow-y-auto rounded-xl p-4"
@@ -229,7 +255,8 @@ export function Night({ s }: { s: GameState }) {
               )}
             </aside>
           )}
-          <div className="pointer-events-none relative flex-1">
+          {/* pointer-events-none! beats the row's [&>*]:pointer-events-auto, so the 3D canvas underneath gets orbit/pan/zoom/clicks. */}
+          <div className="relative flex-1 pointer-events-none!">
             {!running && (
               <div className="glass absolute top-2 left-1/2 -translate-x-1/2 rounded-md px-4 py-1.5 text-xs tracking-[0.3em]">
                 {en.night.paused}
@@ -351,6 +378,12 @@ export function Night({ s }: { s: GameState }) {
           </section>
         </footer>
       </div>
+      {/* The office opens over the club; the venue scene stays alive underneath, so coming back is seamless. */}
+      {view === "office" && (
+        <div className="fixed inset-0 z-30">
+          <Office s={s} />
+        </div>
+      )}
     </div>
   );
 }

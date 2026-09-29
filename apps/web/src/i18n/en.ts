@@ -149,6 +149,12 @@ export const en = {
     lockedTab: (lv: number) => `Unlocks at Level ${lv}`,
     open: "Open Club",
     openKicker: "Let the night begin",
+    back: "Back to the floor",
+    backKicker: "The club is waiting",
+    nightTime: "Club open",
+    dayOnly: "Daytime only",
+    nightBanner:
+      "The club is open and the clock waits while you're up here. Promos you post now pull in extra guests for the rest of the night; staff and stock changes apply the moment you're back.",
     tabInfo: {
       stock: {
         title: "Stock Room",
@@ -225,6 +231,8 @@ export const en = {
     post: "POST",
     posted: "POSTED",
     energyNote: "Each post costs 1 CEO Energy.",
+    nightNote:
+      "Club is open: every post brings extra guests for the rest of the night (none in the last hour). Costs 1 CEO Energy.",
     controversial: "Controversial stunt",
     controversialDesc:
       "Hype +30. 25% chance it backfires: Rep −20 and a guaranteed inspection.",
@@ -297,6 +305,7 @@ export const en = {
     drunkAlert: "Drunk guest! Click to send security",
     objectives: "OBJECTIVES",
     panel: "Panel [Tab]",
+    toOffice: "Office",
     mute: "Mute",
     unmute: "Unmute",
   },
@@ -354,7 +363,7 @@ export const en = {
     saved: (n: number) => `Saved to slot ${n}`,
     quit: "Quit to Menu",
     controls:
-      "Space pause · 1/2/3 speed · Tab panel · Q CEO Call · WASD / right-drag pan · wheel zoom · Esc menu",
+      "Space pause · 1/2/3 speed · O office · Tab panel · Q CEO Call · M mute · drag rotate · right-drag / arrows pan · wheel zoom · Esc menu",
   },
 
   tutorial: {

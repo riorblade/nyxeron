@@ -41,5 +41,6 @@
   "drinksServedPerMinute": 2,
   "slowServicePenalty": 1,
   "drunkSlowdown": 150,
-  "forecastDrinksPerGuest": 3
+  "forecastDrinksPerGuest": 3,
+  "lateArrivalCutoff": 60
 }

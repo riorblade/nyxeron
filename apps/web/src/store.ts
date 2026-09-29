@@ -21,6 +21,9 @@ interface Store {
   origin: NewGame | null;
   paused: boolean;
   running: boolean;
+  /** At night: looking at the club floor, or stepped back into the office (the night clock waits). */
+  view: "venue" | "office";
+  setView(v: "venue" | "office"): void;
   speed: 1 | 2 | 3;
   toast: { id: number; text: string; error: boolean } | null;
 
@@ -49,6 +52,8 @@ export const useGame = create<Store>((set, get) => ({
   origin: null,
   paused: false,
   running: true,
+  view: "venue",
+  setView: (view) => set({ view }),
   speed: 1,
   toast: null,
 
@@ -87,7 +92,12 @@ export const useGame = create<Store>((set, get) => ({
     // Autosave after every Night Report.
     if (game.phase === "report" && prev?.phase === "night")
       writeSave("auto", game);
-    set({ game });
+    // Every new night starts on the club floor.
+    set(
+      game.phase === "night" && prev?.phase !== "night"
+        ? { game, view: "venue" }
+        : { game },
+    );
   },
   act: (fn) => {
     const g = get().game;

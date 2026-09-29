@@ -1,3 +1,4 @@
+import { night, type GameState } from "@nyxeron/core";
 import { useEffect } from "react";
 
 /**
@@ -21,6 +22,12 @@ export const TRACKS: Record<string, { file: string; title?: string }> = {
 };
 /** One continuous lounge track: landing → office (muffled, the club downstairs) → the club before the DJ → report. */
 export const LOUNGE = "landing";
+
+/** What plays at the club right now: the booked DJ once their set starts, the lounge before that. */
+export const nightTrack = (s: GameState) =>
+  s.bookedTalent[0] && s.night && s.night.minute >= night.djSetStartMinute
+    ? s.bookedTalent[0]
+    : LOUNGE;
 
 const trackUrl = (id: string) => `/audio/${TRACKS[id]?.file ?? id}.mp3`;
 

@@ -28,16 +28,33 @@ export interface Zone {
   lockedBelow?: Level;
 }
 
+/**
+ * A video screen on a wall. `at` = centre along the wall (x for n/s walls, z for w/e walls).
+ * portrait = 9:16 clips (e.g. dancer clips), landscape = 16:9 footage, ad = sponsor slot.
+ */
+export interface ScreenSlot {
+  wall: "n" | "w" | "e" | "s";
+  at: number;
+  kind: "portrait" | "landscape" | "ad";
+}
+
 export interface Layout {
   w: number;
   h: number;
   zones: Zone[];
+  screens: ScreenSlot[];
 }
 
 /** Level 1–2: a drink booth on the street. */
 const booth: Layout = {
   w: 8,
   h: 7,
+  screens: [
+    { wall: "n", at: 6.4, kind: "portrait" },
+    { wall: "w", at: 5, kind: "portrait" },
+    { wall: "e", at: 3, kind: "ad" },
+    { wall: "s", at: 2.5, kind: "landscape" },
+  ],
   zones: [
     { id: "backbar", x: 0, y: 0, w: 4, h: 1 },
     {
@@ -61,6 +78,15 @@ const booth: Layout = {
 const bar: Layout = {
   w: 12,
   h: 9,
+  screens: [
+    { wall: "n", at: 10.5, kind: "portrait" },
+    { wall: "w", at: 8, kind: "portrait" },
+    { wall: "e", at: 1.8, kind: "portrait" },
+    { wall: "e", at: 4.6, kind: "ad" },
+    { wall: "e", at: 7.4, kind: "portrait" },
+    { wall: "s", at: 2.5, kind: "landscape" },
+    { wall: "s", at: 10, kind: "ad" },
+  ],
   zones: [
     { id: "backbar", x: 0, y: 1, w: 1, h: 6 },
     { id: "counter", x: 1, y: 1, w: 1, h: 6, label: "BAR", solid: true },
@@ -78,6 +104,17 @@ const bar: Layout = {
 const club: Layout = {
   w: 16,
   h: 12,
+  screens: [
+    { wall: "n", at: 1.5, kind: "portrait" },
+    { wall: "n", at: 13.5, kind: "ad" },
+    { wall: "w", at: 10.5, kind: "portrait" },
+    { wall: "e", at: 2, kind: "landscape" },
+    { wall: "e", at: 5.2, kind: "portrait" },
+    { wall: "e", at: 6.8, kind: "portrait" },
+    { wall: "e", at: 10, kind: "ad" },
+    { wall: "s", at: 3, kind: "landscape" },
+    { wall: "s", at: 13, kind: "ad" },
+  ],
   zones: [
     { id: "office", x: 0, y: 0, w: 3, h: 2, label: "CEO OFFICE" },
     { id: "stage", x: 3, y: 0, w: 3, h: 2, label: "STAGE", solid: true },

@@ -1,7 +1,7 @@
 import { djs, ids } from "@nyxeron/core";
-import { Assets, Texture } from "pixi.js";
+import * as THREE from "three";
 
-/** Venue sprites/textures (Higgsfield GPT Image 2, trimmed to 256px tall WebP). */
+/** Venue sprites/textures (trimmed WebP in /public/sprites). */
 export const SPRITE = {
   guests: Array.from({ length: 10 }, (_, i) => `/sprites/guest-${i + 1}.webp`),
   dj: "/sprites/dj-deck.webp",
@@ -16,27 +16,36 @@ export const SPRITE = {
   },
 };
 
-/** Each DJ's own character behind the decks (colour), and their concert-screen loop. */
+/** Each DJ's own character behind the decks, and their concert-screen loop. */
 export const djDeck = (id: string) => `/sprites/deck-${id}.webp`;
 export const djVideo = (id: string) => `/video/dj-${id}.mp4`;
 
 export interface VenueAssets {
-  guests: Texture[];
-  decks: Partial<Record<string, Texture>>;
-  dj?: Texture;
-  dancers: Texture[];
-  mc?: Texture;
-  bartenders: Texture[];
-  bouncers: Texture[];
-  tex: Partial<Record<keyof typeof SPRITE.tex, Texture>>;
-  glow: Texture;
+  guests: THREE.Texture[];
+  decks: Partial<Record<string, THREE.Texture>>;
+  dj?: THREE.Texture;
+  dancers: THREE.Texture[];
+  mc?: THREE.Texture;
+  bartenders: THREE.Texture[];
+  bouncers: THREE.Texture[];
+  tex: Partial<Record<keyof typeof SPRITE.tex, THREE.Texture>>;
 }
 
-/** Loads everything it can; any missing file just drops that element back to the simple fallback. */
+const loader = new THREE.TextureLoader();
+
+/** Loads everything it can; any missing file just drops that element back to a simple fallback. */
 export async function loadVenueAssets(): Promise<VenueAssets> {
-  const one = (url: string) => Assets.load<Texture>(url).catch(() => undefined);
+  const one = (url: string): Promise<THREE.Texture | undefined> =>
+    loader
+      .loadAsync(url)
+      .then((t) => {
+        t.colorSpace = THREE.SRGBColorSpace;
+        t.anisotropy = 4;
+        return t;
+      })
+      .catch(() => undefined);
   const many = async (urls: string[]) =>
-    (await Promise.all(urls.map(one))).filter((t): t is Texture => !!t);
+    (await Promise.all(urls.map(one))).filter((t): t is THREE.Texture => !!t);
   const [
     guests,
     dj,
@@ -47,6 +56,7 @@ export async function loadVenueAssets(): Promise<VenueAssets> {
     concrete,
     wood,
     asphalt,
+    deckList,
   ] = await Promise.all([
     many(SPRITE.guests),
     one(SPRITE.dj),
@@ -57,8 +67,8 @@ export async function loadVenueAssets(): Promise<VenueAssets> {
     one(SPRITE.tex.concrete),
     one(SPRITE.tex.wood),
     one(SPRITE.tex.asphalt),
+    Promise.all(ids(djs).map((id) => one(djDeck(id)))),
   ]);
-  const deckList = await Promise.all(ids(djs).map((id) => one(djDeck(id))));
   const decks = Object.fromEntries(ids(djs).map((id, i) => [id, deckList[i]]));
   return {
     guests,
@@ -69,29 +79,13 @@ export async function loadVenueAssets(): Promise<VenueAssets> {
     bartenders,
     bouncers,
     tex: { concrete, wood, asphalt },
-    glow: glowTexture(),
   };
 }
 
-/** Soft round light (white core fading out), drawn once on a canvas; used additively for every light. */
-function glowTexture(): Texture {
-  const c = document.createElement("canvas");
-  c.width = c.height = 256;
-  const ctx = c.getContext("2d")!;
-  const g = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-  g.addColorStop(0, "rgba(255,255,255,1)");
-  g.addColorStop(0.35, "rgba(255,255,255,.35)");
-  g.addColorStop(1, "rgba(255,255,255,0)");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, 256, 256);
-  return Texture.from(c);
-}
-
-/**
- * The booked DJ's screen loop as a video texture (muted, looping). Resolves to undefined if the file is missing,
- * so the LED wall just shows its idle pattern.
- */
-export function loadDjVideo(id: string): Promise<Texture | undefined> {
+/** The booked DJ's screen loop as a muted, looping video texture; undefined if the file is missing. */
+export function loadDjVideo(
+  id: string,
+): Promise<THREE.VideoTexture | undefined> {
   return new Promise((resolve) => {
     const v = document.createElement("video");
     Object.assign(v, {
@@ -106,7 +100,9 @@ export function loadDjVideo(id: string): Promise<Texture | undefined> {
       "canplay",
       () => {
         v.play().catch(() => {});
-        resolve(Texture.from(v));
+        const t = new THREE.VideoTexture(v);
+        t.colorSpace = THREE.SRGBColorSpace;
+        resolve(t);
       },
       { once: true },
     );
@@ -114,3 +110,58 @@ export function loadDjVideo(id: string): Promise<Texture | undefined> {
     v.load();
   });
 }
+
+/** Small canvas-drawn textures: labels, the "!" alert, sale floats, blob shadows. */
+export function canvasTexture(
+  w: number,
+  h: number,
+  draw: (ctx: CanvasRenderingContext2D) => void,
+): THREE.CanvasTexture {
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  draw(c.getContext("2d")!);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+export function textTexture(
+  text: string,
+  opts: {
+    size?: number;
+    color?: string;
+    weight?: string;
+    font?: string;
+    stroke?: boolean;
+  } = {},
+) {
+  const size = opts.size ?? 64;
+  const font = `${opts.weight ?? "600"} ${size}px ${opts.font ?? "ui-monospace, Menlo, monospace"}`;
+  const probe = document.createElement("canvas").getContext("2d")!;
+  probe.font = font;
+  const w = Math.ceil(probe.measureText(text).width + size * 0.6);
+  const h = Math.ceil(size * 1.4);
+  const tex = canvasTexture(w, h, (ctx) => {
+    ctx.font = font;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    if (opts.stroke) {
+      ctx.lineWidth = size * 0.16;
+      ctx.strokeStyle = "rgba(0,0,0,.85)";
+      ctx.strokeText(text, w / 2, h / 2);
+    }
+    ctx.fillStyle = opts.color ?? "#fff";
+    ctx.fillText(text, w / 2, h / 2);
+  });
+  return { tex, aspect: w / h };
+}
+
+export const shadowTexture = () =>
+  canvasTexture(64, 64, (ctx) => {
+    const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, "rgba(0,0,0,.7)");
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 64, 64);
+  });

@@ -42,7 +42,7 @@ The GDD v0.1 lists Unity. For building with Claude Code, a **TypeScript web stac
 | App            | Vite + React + TypeScript                                                         |
 | State          | Zustand (UI state) wrapping the sim core                                          |
 | UI             | Tailwind + shadcn/ui, black and white palette, subtle glow, no neon, no gradients |
-| Venue renderer | PixiJS v8, isometric tiles, simple sprites                                        |
+| Venue renderer | three.js 3D (orbit camera), billboard character sprites (was PixiJS isometric)    |
 | Tests          | Vitest (core must be heavily tested)                                              |
 | Contracts      | Foundry + OpenZeppelin                                                            |
 | Web3 client    | viem + wagmi                                                                      |
@@ -281,4 +281,6 @@ P0–P5 done (MVP playable). P6 Web3 and P7 deploy not started.
 - Venue scene: 18 character sprites (10 guests, DJ at decks, 2 stage dancers, karaoke MC, 2 bartenders, 2 bodyguards) + floor textures in `apps/web/public/sprites`; LED dance floor on the beat, light beams, spotlights. Staff sprites follow hired counts; dancers/MC are cosmetic (no performer booking system yet).
 - Colour venue (2026-09-29): full-colour characters, club lights, hue-sweeping LED floor, back wall with a concert LED screen playing the booked DJ's loop (`public/video/dj-*.mp4`, Seedance from each DJ portrait), each DJ's own character at the decks (`sprites/deck-*.webp`), bodyguards hold the door, patrol, and walk escorted/fighting guests out.
 - Audio (Web Audio, no generated media): DJ tracks from `apps/web/public/audio/<dj>.mp3` + `house.mp3` (user-made, see Suno prompts); missing tracks fall back to a synthesized beat; venue pulse follows the live kick (bass-band flux); synthesized cash/alert SFX; mute [M], muffled when paused. Tracks present: kalu, sable, jax (papi-jarang-pulang), rhea (shakalaka-boom), nova (dj-main-serong), landing (starts on first click/key; one continuous lounge track: landing → office muffled → club before the DJ → report muffled).
+- Venue is 3D (three.js, `apps/web/src/venue/scene3d.ts`): drag rotate, right-drag/arrows pan, wheel zoom, walls cut away toward the camera, liquor cabinet + fridge behind every bar. Mid-night Office (O / button): clock waits, `nightPromote` adds extra guests for the rest of the night; Talent/Build are day-only.
+- Wall screens: slots per layout (`layouts.ts` → `screens`: portrait / landscape / ad), clips from `apps/web/public/screens/playlist.json` (user-supplied mp4s, cover-cropped, rotating); empty lists show a beat visualizer / 'your brand here' ad placeholder. Main screen plays landscape clips between DJ sets.
 - Not built yet: table revenue (Level 3+), performers/bands, VIP/bottle service, Sandbox mode, sound.
