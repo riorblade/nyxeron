@@ -1,10 +1,12 @@
 import { Button } from "@/components/ui/button";
 import { en } from "@/i18n/en";
 import { writeSave } from "@/save";
+import { useSettings } from "@/settings";
 import { useGame } from "@/store";
 
 export function PauseMenu() {
   const { game, setPaused, home, notify } = useGame();
+  const openSettings = useSettings((s) => s.setOpen);
   return (
     <div
       className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-md"
@@ -30,6 +32,9 @@ export function PauseMenu() {
             </Button>
           ))}
         </div>
+        <Button variant="outline" onClick={() => openSettings(true)}>
+          {en.settings.open}
+        </Button>
         <Button variant="ghost" onClick={home}>
           {en.pause.quit}
         </Button>

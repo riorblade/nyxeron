@@ -82,6 +82,11 @@ class Player {
     this.load();
   }
 
+  setPlaying(on: boolean) {
+    if (on) this.video.play().catch(() => {});
+    else this.video.pause();
+  }
+
   dispose() {
     this.video.pause();
     this.video.removeAttribute("src");
@@ -176,11 +181,6 @@ export class ScreenWall {
     }
   }
 
-  /** True when this kind has real clips (not just the fallback). */
-  has(kind: ScreenKind) {
-    return this.players[kind].length > 0;
-  }
-
   /** Texture for the next screen of this kind, cropped to `planeAspect`. */
   texture(kind: ScreenKind, planeAspect: number): THREE.Texture {
     const pool = this.players[kind];
@@ -197,6 +197,16 @@ export class ScreenWall {
     };
     this.textures.push(tex);
     return tex;
+  }
+
+  /** The animated stand-in for this kind (visualizer / ad placeholder). */
+  fallback(kind: ScreenKind): THREE.Texture {
+    return this.fallbacks[kind].tex;
+  }
+
+  /** Hidden clips stop decoding. */
+  setPlaying(kind: ScreenKind, on: boolean) {
+    this.players[kind].forEach((p) => p.setPlaying(on));
   }
 
   tick(now: number, pulse: number) {

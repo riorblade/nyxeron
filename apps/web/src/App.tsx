@@ -1,3 +1,4 @@
+import { SettingsDialog } from "@/components/SettingsDialog";
 import { useEffect } from "react";
 import { Toast } from "@/hud/Toast";
 import { ClubSetup } from "@/screens/ClubSetup";
@@ -48,6 +49,7 @@ export function App() {
         <IntroVideo day={game.day} />
       )}
       {paused && screen === "game" && <PauseMenu />}
+      <SettingsDialog />
       <Toast />
     </>
   );

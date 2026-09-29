@@ -4,6 +4,8 @@ import {
   endNight,
   expectedGuests,
   isInside,
+  isPeakTime,
+  night,
   levels,
   nightOver,
   runNight,
@@ -169,5 +171,22 @@ describe("night report factors + stock forecast", () => {
       "wine",
     ]);
     expect(f.beer).toBeGreaterThan(0);
+  });
+});
+
+describe("isPeakTime", () => {
+  const at = (minute: number, dj: boolean) => {
+    const s = startNight(club({ bookedTalent: dj ? ["sable"] : [] }));
+    return { ...s, night: { ...s.night!, minute } };
+  };
+  it("is true only inside the peak window with a DJ booked", () => {
+    expect(isPeakTime(at(night.peakStartMinute - 1, true))).toBe(false);
+    expect(isPeakTime(at(night.peakStartMinute, true))).toBe(true);
+    expect(isPeakTime(at(night.peakEndMinute - 1, true))).toBe(true);
+    expect(isPeakTime(at(night.peakEndMinute, true))).toBe(false);
+    expect(isPeakTime(at(night.peakStartMinute, false))).toBe(false);
+  });
+  it("is false by day", () => {
+    expect(isPeakTime(club({ bookedTalent: ["sable"] }))).toBe(false);
   });
 });

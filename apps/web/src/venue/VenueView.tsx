@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { DrinkDetail } from "@/hud/DrinkDetail";
 import { en } from "@/i18n/en";
 import { cn } from "@/lib/utils";
+import { useSettings } from "@/settings";
 import { useGame } from "@/store";
 import { KINDS } from "./furniture";
 import { VenueScene } from "./scene3d";
@@ -21,6 +22,8 @@ export function VenueView({
   const r = useRef<VenueScene | null>(null);
   const [selected, setSelected] = useState(-1);
   const [drink, setDrink] = useState<DrinkId | null>(null);
+  const clips = useSettings((x) => x.clips);
+  const ads = useSettings((x) => x.ads);
 
   useEffect(() => {
     let cancelled = false;
@@ -33,6 +36,8 @@ export function VenueView({
       // StrictMode mounts twice; a renderer torn down before init finished must not become current.
       if (cancelled) return;
       r.current = v;
+      const { clips, ads } = useSettings.getState();
+      v.setScreenPrefs({ clips, ads });
       const g = useGame.getState().game;
       if (g) v.update(g);
     });
@@ -46,6 +51,10 @@ export function VenueView({
   useEffect(() => {
     r.current?.update(s);
   }, [s]);
+
+  useEffect(() => {
+    r.current?.setScreenPrefs({ clips, ads });
+  }, [clips, ads]);
 
   useEffect(() => {
     r.current?.setEditing(editing);

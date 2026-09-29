@@ -7,6 +7,7 @@ import {
 } from "@nyxeron/core";
 import type { ReactNode } from "react";
 import { Brand, HomeButton } from "@/components/Brand";
+import { SettingsButton } from "@/components/SettingsDialog";
 import { clock, en, fmt } from "@/i18n/en";
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
@@ -156,6 +157,7 @@ export function TopBar({
       </Stat>
       <div className="ml-auto flex items-center gap-2">
         {right}
+        <SettingsButton />
         <HomeButton />
       </div>
     </header>

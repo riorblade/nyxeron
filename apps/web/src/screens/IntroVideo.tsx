@@ -1,17 +1,22 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { en } from "@/i18n/en";
 import { cn } from "@/lib/utils";
+import { useSettings } from "@/settings";
 import { useGame } from "@/store";
 
+/** Older builds stored "don't show again" under its own key; fold it into Settings. */
 const SKIP_KEY = "nyxeron:skipIntro";
 
-/** Per-viewer preference; storage can be unavailable (private mode), so default to showing the intro. */
 export function introEnabled(): boolean {
   try {
-    return localStorage.getItem(SKIP_KEY) !== "1";
+    if (localStorage.getItem(SKIP_KEY) === "1") {
+      localStorage.removeItem(SKIP_KEY);
+      useSettings.getState().set({ intro: false });
+    }
   } catch {
-    return true;
+    /* storage unavailable: Settings still holds this session's choice */
   }
+  return useSettings.getState().intro;
 }
 
 /** Full-screen "Open Club" cutscene. The night clock waits until it ends or is skipped. */
@@ -24,11 +29,7 @@ export function IntroVideo({ day }: { day: number }) {
   const done = () => {
     if (leaving) return;
     setLeaving(true);
-    try {
-      if (dontShow) localStorage.setItem(SKIP_KEY, "1");
-    } catch {
-      /* preference just won't persist */
-    }
+    if (dontShow) useSettings.getState().set({ intro: false });
     setTimeout(() => setIntro(false), 500);
   };
   const doneRef = useRef(done);

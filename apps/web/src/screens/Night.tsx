@@ -155,9 +155,9 @@ function VideotronPanel() {
 
 /** Night soundtrack + alert tones. */
 function useNightAudio(s: GameState, intro: boolean, paused: boolean) {
-  // Lounge (continuing from the office) until the set starts, then the booked DJ. The cutscene and the pause menu
+  // House warm-up until the set starts, then the booked DJ (the landing track never plays inside). The cutscene and the pause menu
   // muffle it rather than stopping it, so the music never cuts out.
-  useMusic(nightTrack(s), intro || paused);
+  useMusic(nightTrack(s), intro || paused, "venue");
 
   // A short alert tone whenever something needs the CEO's attention.
   const seen = useRef(s.log.length);

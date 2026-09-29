@@ -1,3 +1,4 @@
+import { useSettings } from "@/settings";
 import { levels } from "@nyxeron/core";
 import {
   Fragment,
@@ -452,6 +453,7 @@ export function Landing() {
               [L.career, () => go("setup")],
               [L.scenario, () => start({ mode: "basement" })],
               [L.load, () => setLoading(true)],
+              [L.settings, () => useSettings.getState().setOpen(true)],
             ].map(([label, fn], i) => (
               <button
                 key={i}

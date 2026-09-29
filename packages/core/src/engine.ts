@@ -460,3 +460,14 @@ export function nightPromote(s: GameState, channel: ChannelId): ActionResult {
     state: { ...r.state, seed: rng.seed, night: { ...n, guests } },
   };
 }
+
+/** Peak hours: a DJ is on and the clock is inside the peak window (the venue saves its dancer clips for this). */
+export function isPeakTime(s: GameState): boolean {
+  const m = s.night?.minute;
+  return (
+    m !== undefined &&
+    s.bookedTalent.length > 0 &&
+    m >= night.peakStartMinute &&
+    m < night.peakEndMinute
+  );
+}

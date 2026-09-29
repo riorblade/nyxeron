@@ -22,6 +22,8 @@
   "idleSatisfactionPerMinute": -0.05,
   "drunkDecayPerMinute": 0.1,
   "djSetStartMinute": 60,
+  "peakStartMinute": 120,
+  "peakEndMinute": 300,
   "djMatchBonus": 0.2,
   "djMismatchPenalty": 0.15,
   "fightDrunkThreshold": 80,

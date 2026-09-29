@@ -79,7 +79,7 @@ function Card({
 export function Office({ s }: { s: GameState }) {
   const atNight = s.phase === "night";
   // The club, heard through the wall: the lounge by day, whatever is playing downstairs at night.
-  useMusic(atNight ? nightTrack(s) : LOUNGE, true);
+  useMusic(atNight ? nightTrack(s) : LOUNGE, true, atNight ? "venue" : "menu");
   const { set, setIntro, setView } = useGame();
   const [tab, setTab] = useState<TabId>("stock");
   const expected = expectedGuests(s);

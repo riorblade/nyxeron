@@ -1,5 +1,6 @@
 import { night, type GameState } from "@nyxeron/core";
 import { useEffect } from "react";
+import { useSettings } from "./settings";
 
 /**
  * Club audio: music tracks (user-supplied files in /public/audio), a synthesized fallback beat for tracks that
@@ -20,14 +21,16 @@ export const TRACKS: Record<string, { file: string; title?: string }> = {
   jax: { file: "papi-jarang-pulang", title: "Papi Jarang Pulang" },
   nova: { file: "dj-main-serong", title: "DJ Main Serong" },
 };
-/** One continuous lounge track: landing → office (muffled, the club downstairs) → the club before the DJ → report. */
+/** One continuous lounge track outside the club: landing → setup → office by day (muffled) → report. */
 export const LOUNGE = "landing";
+/** Inside the club before the DJ: the house warm-up (never the landing track). */
+export const HOUSE = "house";
 
-/** What plays at the club right now: the booked DJ once their set starts, the lounge before that. */
+/** What plays at the club right now: the booked DJ once their set starts, the house warm-up before that. */
 export const nightTrack = (s: GameState) =>
   s.bookedTalent[0] && s.night && s.night.minute >= night.djSetStartMinute
     ? s.bookedTalent[0]
-    : LOUNGE;
+    : HOUSE;
 
 const trackUrl = (id: string) => `/audio/${TRACKS[id]?.file ?? id}.mp3`;
 
@@ -326,7 +329,7 @@ class ClubAudio {
   /** Cash register "ka-ching" for bar sales (two quick bell partials). */
   cash() {
     const c = this.ctx;
-    if (!c || this.muted) return;
+    if (!c || this.muted || !useSettings.getState().sfx) return;
     const t = c.currentTime;
     for (const [f, d] of [
       [2093, 0],
@@ -348,7 +351,7 @@ class ClubAudio {
   /** Two-tone alert for fights, inspections and stock-outs. */
   alert() {
     const c = this.ctx;
-    if (!c || this.muted) return;
+    if (!c || this.muted || !useSettings.getState().sfx) return;
     const t = c.currentTime;
     [880, 660].forEach((f, i) => {
       const o = c.createOscillator(),
@@ -379,9 +382,17 @@ export const audio = new ClubAudio();
 /**
  * A screen's soundtrack. Screens sharing an id keep one track playing without restarting it (play() ignores the
  * current track), so the lounge flows from the landing into the game; `muffled` = heard through a wall.
+ * `scope` picks which Settings switch applies: menu music (outside the club) or venue music (inside).
  */
-export function useMusic(id: string | null, muffled = false) {
-  useEffect(() => audio.play(id), [id]);
+export function useMusic(
+  id: string | null,
+  muffled = false,
+  scope: "menu" | "venue" = "menu",
+) {
+  const on = useSettings((s) =>
+    scope === "venue" ? s.venueMusic : s.menuMusic,
+  );
+  useEffect(() => audio.play(on ? id : null), [id, on]);
   useEffect(() => audio.setMuffled(muffled), [muffled]);
 }
 if (typeof window !== "undefined")

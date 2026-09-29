@@ -2,6 +2,7 @@ import {
   djs,
   drinks,
   isAtFightRisk,
+  isPeakTime,
   isInside,
   night as nightData,
   type DrinkId,
@@ -10,6 +11,7 @@ import {
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { audio } from "@/audio";
+import type { ClipMode } from "@/settings";
 import {
   loadDjVideo,
   loadVenueAssets,
@@ -129,7 +131,21 @@ export class VenueScene {
     mesh: THREE.Object3D;
     visible: (c: THREE.Vector3) => boolean;
   }[] = [];
-  /** Main (DJ) screen: the DJ loop during the set; otherwise clips if any, else the logo. */
+  /** Wall screens; what they show depends on the hour and the player's settings (see applyScreens). */
+  private wallScreens: {
+    kind: ScreenKind;
+    mat: THREE.MeshBasicMaterial;
+    aspect: number;
+    clip?: THREE.Texture;
+    ad?: THREE.Texture;
+  }[] = [];
+  private screenKey = "";
+  private peak = false;
+  private prefs: { clips: ClipMode; ads: boolean } = {
+    clips: "peak",
+    ads: true,
+  };
+  /** Main (DJ) screen: the DJ loop during the set, otherwise the logo. */
   private screen: { mat: THREE.MeshBasicMaterial; idle: THREE.Texture } | null =
     null;
   private screenWall: ScreenWall | null = null;
@@ -240,6 +256,8 @@ export class VenueScene {
     this.syncStaff(s);
     this.syncStage(s);
     this.syncScreen(s);
+    this.peak = isPeakTime(s);
+    this.applyScreens();
 
     const queue = s.night.guests.filter((g) => g.state === "queue");
     const queueIndex = new Map(queue.map((g, i) => [g.id, i]));
@@ -293,11 +311,13 @@ export class VenueScene {
     this.screenWall?.dispose();
     const count = (k: ScreenKind) =>
       layout.screens.filter((x) => x.kind === k).length;
-    // +1 clip for the main screen, which plays clips when no DJ is on.
+    // Ad slots can switch to clips (ads off in Settings), so they count toward the clip players too.
     this.screenWall = new ScreenWall(this.playlist!, {
-      clip: count("clip") + 1,
+      clip: count("clip") + count("ad"),
       ad: count("ad"),
     });
+    this.wallScreens = [];
+    this.screenKey = "";
     this.root.clear();
     this.grid = this.selBox = null;
     this.cabinetHits = [];
@@ -690,13 +710,17 @@ export class VenueScene {
         e: [new THREE.Vector3(w - 0.04, y, slot.at), -Math.PI / 2],
         s: [new THREE.Vector3(slot.at, y, h - 0.04), Math.PI],
       }[slot.wall] as [THREE.Vector3, number];
-      const scr = new THREE.Mesh(
-        new THREE.PlaneGeometry(sw, sh),
-        new THREE.MeshBasicMaterial({
-          map: this.screenWall!.texture(slot.kind, sw / sh),
-          toneMapped: false,
-        }),
-      );
+      const smat = new THREE.MeshBasicMaterial({ toneMapped: false });
+      this.wallScreens.push({
+        kind: slot.kind,
+        mat: smat,
+        aspect: sw / sh,
+        ad:
+          slot.kind === "ad"
+            ? this.screenWall!.texture("ad", sw / sh)
+            : undefined,
+      });
+      const scr = new THREE.Mesh(new THREE.PlaneGeometry(sw, sh), smat);
       scr.position.copy(pos);
       scr.rotation.y = rot;
       const bezel = new THREE.Mesh(
@@ -739,12 +763,7 @@ export class VenueScene {
     );
     bezel.position.set(scr.position.x, scr.position.y, 0);
     this.walls[0]!.mesh.add(bezel, scr);
-    // Between DJ sets the big screen plays clips when there are any, else the logo.
-    const between = this.screenWall!.has("clip")
-      ? this.screenWall!.texture("clip", sw / sh)
-      : idle;
-    mat2.map = between;
-    this.screen = { mat: mat2, idle: between };
+    this.screen = { mat: mat2, idle };
 
     // Videotron on top of the wall, right above the DJ: shoutouts and top spenders.
     this.videotron = new Videotron();
@@ -822,6 +841,36 @@ export class VenueScene {
       target.z + d * 0.78,
     );
     this.controls.update();
+  }
+
+  // ---------- wall screens ----------
+
+  /** Player settings for the wall screens (from VenueView). */
+  setScreenPrefs(prefs: { clips: ClipMode; ads: boolean }) {
+    this.prefs = prefs;
+    this.applyScreens();
+  }
+
+  /**
+   * Dancer / club clips only at peak hours (or always / never, per Settings); before that the screens run the
+   * visualizer. Ad slots show sponsors, or join the clip screens when ads are off.
+   */
+  private applyScreens() {
+    const wall = this.screenWall;
+    if (!wall) return;
+    const { clips, ads } = this.prefs;
+    const showClips = clips === "always" || (clips === "peak" && this.peak);
+    const key = `${showClips}|${ads}`;
+    if (key === this.screenKey) return;
+    this.screenKey = key;
+    for (const w of this.wallScreens) {
+      if (w.kind === "ad" && ads) w.mat.map = w.ad!;
+      else if (showClips) w.mat.map = w.clip ??= wall.texture("clip", w.aspect);
+      else w.mat.map = wall.fallback("clip");
+      w.mat.needsUpdate = true;
+    }
+    wall.setPlaying("clip", showClips);
+    wall.setPlaying("ad", ads);
   }
 
   // ---------- furniture & layout editor ----------
