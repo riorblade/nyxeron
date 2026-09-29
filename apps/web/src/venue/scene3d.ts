@@ -1,4 +1,5 @@
 import {
+  djs,
   isAtFightRisk,
   isInside,
   night as nightData,
@@ -36,6 +37,8 @@ import {
   type FurnitureKind,
   type Item,
 } from "./furniture";
+import { en } from "@/i18n/en";
+import { Videotron, VIDEOTRON_ASPECT, type VideotronData } from "./videotron";
 
 /** World units: 1 floor tile = 1 unit; people ~1.15 tall. */
 const PERSON_H = 1.15;
@@ -118,7 +121,7 @@ export class VenueScene {
     mesh: THREE.Object3D;
     visible: (c: THREE.Vector3) => boolean;
   }[] = [];
-  /** Main (DJ) screen: the DJ loop during the set; otherwise landscape clips if any, else the logo. */
+  /** Main (DJ) screen: the DJ loop during the set; otherwise clips if any, else the logo. */
   private screen: { mat: THREE.MeshBasicMaterial; idle: THREE.Texture } | null =
     null;
   private screenWall: ScreenWall | null = null;
@@ -143,6 +146,10 @@ export class VenueScene {
   private selected = -1;
   private selBox: THREE.BoxHelper | null = null;
   private grid: THREE.GridHelper | null = null;
+  private videotron: Videotron | null = null;
+  private tron: VideotronData = { dj: null, top: [] };
+  /** What each guest has spent tonight, from watching their budget drop. */
+  private spent = new Map<number, number>();
   /** Told when the selection changes in edit mode (-1 = none). */
   onSelect?: (index: number) => void;
 
@@ -173,6 +180,7 @@ export class VenueScene {
     c.maxPolarAngle = 1.4; // never below the floor
     c.minPolarAngle = 0.12;
     c.screenSpacePanning = false; // pan along the floor
+    c.zoomToCursor = true; // wheel zooms toward what the mouse points at
     c.mouseButtons = {
       LEFT: THREE.MOUSE.ROTATE,
       MIDDLE: THREE.MOUSE.DOLLY,
@@ -237,6 +245,8 @@ export class VenueScene {
       p.alert!.visible = isAtFightRisk(g);
 
       const prev = this.budgets.get(g.id);
+      if (prev !== undefined && g.budget < prev)
+        this.spent.set(g.id, (this.spent.get(g.id) ?? 0) + prev - g.budget);
       if (
         prev !== undefined &&
         g.state === "bar" &&
@@ -246,6 +256,15 @@ export class VenueScene {
         this.float(p, `+${prev - g.budget}`);
       this.budgets.set(g.id, g.budget);
     }
+
+    const dj = s.bookedTalent[0];
+    this.tron = {
+      dj: this.djOn && dj ? djs[dj].name : null,
+      top: [...this.spent]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([id, spent]) => ({ name: this.guestName(id), spent })),
+    };
 
     // Security reacts to what just happened tonight: escorts and fights send a bodyguard over.
     for (const e of s.log.slice(this.logSeen))
@@ -261,10 +280,9 @@ export class VenueScene {
     this.screenWall?.dispose();
     const count = (k: ScreenKind) =>
       layout.screens.filter((x) => x.kind === k).length;
-    // +1 landscape for the main screen, which plays landscape clips when no DJ is on.
+    // +1 clip for the main screen, which plays clips when no DJ is on.
     this.screenWall = new ScreenWall(this.playlist!, {
-      portrait: count("portrait"),
-      landscape: count("landscape") + 1,
+      clip: count("clip") + 1,
       ad: count("ad"),
     });
     this.root.clear();
@@ -276,6 +294,9 @@ export class VenueScene {
     this.staffKey = this.stageKey = this.screenDj = "";
     this.floats = [];
     this.budgets.clear();
+    this.spent.clear();
+    this.videotron?.tex.dispose();
+    this.videotron = null;
     this.spots = [];
     this.beams = [];
     this.walls = [];
@@ -649,12 +670,31 @@ export class VenueScene {
     );
     bezel.position.set(scr.position.x, scr.position.y, 0);
     this.walls[0]!.mesh.add(bezel, scr);
-    // Between DJ sets the big screen plays landscape clips when there are any, else the logo.
-    const between = this.screenWall!.has("landscape")
-      ? this.screenWall!.texture("landscape", sw / sh)
+    // Between DJ sets the big screen plays clips when there are any, else the logo.
+    const between = this.screenWall!.has("clip")
+      ? this.screenWall!.texture("clip", sw / sh)
       : idle;
     mat2.map = between;
     this.screen = { mat: mat2, idle: between };
+
+    // Videotron on top of the wall, right above the DJ: shoutouts and top spenders.
+    this.videotron = new Videotron();
+    const vh = sw / VIDEOTRON_ASPECT;
+    const vy = WALL_H + 0.12 + vh / 2;
+    const board = new THREE.Mesh(
+      new THREE.PlaneGeometry(sw, vh),
+      new THREE.MeshBasicMaterial({
+        map: this.videotron.tex,
+        toneMapped: false,
+      }),
+    );
+    board.position.set(scr.position.x, vy, 0.04);
+    const frame = new THREE.Mesh(
+      new THREE.BoxGeometry(sw + 0.16, vh + 0.16, 0.14),
+      new THREE.MeshStandardMaterial({ color: 0x050507, metalness: 0.6 }),
+    );
+    frame.position.set(scr.position.x, vy, -0.05);
+    this.walls[0]!.mesh.add(frame, board);
   }
 
   private buildLights() {
@@ -1006,6 +1046,13 @@ export class VenueScene {
     });
   }
 
+  /** A stable display name for a guest, e.g. "RAKA M." */
+  private guestName(id: number) {
+    const names = en.videotron.names;
+    const first = names[Math.floor(hash(id + 77) * names.length)]!;
+    return `${first} ${String.fromCharCode(65 + Math.floor(hash(id + 78) * 26))}.`;
+  }
+
   private patrolPoint(seed: number): [number, number] {
     const zone: ZoneId = hash(seed * 3) < 0.6 ? "dance" : "seating";
     return (
@@ -1353,6 +1400,7 @@ export class VenueScene {
 
     this.controls.update();
     this.screenWall?.tick(now, pulse);
+    this.videotron?.draw(now, pulse, this.tron);
     this.renderer.render(this.scene, this.camera);
   }
 

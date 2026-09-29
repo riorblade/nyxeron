@@ -1,5 +1,5 @@
 {
-  "_help": "Put .mp4 files in this folder and list their file names below. portrait = vertical 9:16 clips (e.g. dancer clips), landscape = 16:9 footage (e.g. real club nights), ads = sponsor videos. Screens rotate through their list; empty lists show the built-in visualizer / 'your brand here' placeholder. Keep clips short (5-30 s), 720p, muted is fine.",
+  "_help": "Put .mp4 files in this folder and list their file names below. Every wall screen is landscape: 'landscape' (16:9, e.g. real club nights) and 'portrait' (9:16, e.g. dancer clips, cropped to fill) both play on the clip screens; 'ads' = sponsor videos. Screens rotate through their list; empty lists show the built-in visualizer / 'your brand here' placeholder. Keep clips short (5-30 s), 720p, muted is fine.",
   "portrait": [
     "tiktok-1.mp4",
     "tiktok-2.mp4",

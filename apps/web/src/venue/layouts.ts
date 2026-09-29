@@ -29,13 +29,13 @@ export interface Zone {
 }
 
 /**
- * A video screen on a wall. `at` = centre along the wall (x for n/s walls, z for w/e walls).
- * portrait = 9:16 clips (e.g. dancer clips), landscape = 16:9 footage, ad = sponsor slot.
+ * A landscape video screen on a wall. `at` = centre along the wall (x for n/s walls, z for w/e walls).
+ * clip = dancer clips / club footage, ad = sponsor slot. Clip screens are 3 wide, ads 2.6.
  */
 export interface ScreenSlot {
   wall: "n" | "w" | "e" | "s";
   at: number;
-  kind: "portrait" | "landscape" | "ad";
+  kind: "clip" | "ad";
 }
 
 export interface Layout {
@@ -53,10 +53,10 @@ const booth: Layout = {
   w: 8,
   h: 7,
   screens: [
-    { wall: "n", at: 6.4, kind: "portrait" },
-    { wall: "w", at: 5, kind: "portrait" },
+    { wall: "n", at: 6.4, kind: "clip" },
+    { wall: "w", at: 5, kind: "clip" },
     { wall: "e", at: 3, kind: "ad" },
-    { wall: "s", at: 2.5, kind: "landscape" },
+    { wall: "s", at: 2.5, kind: "clip" },
   ],
   zones: [
     { id: "backbar", x: 0, y: 0, w: 4, h: 1 },
@@ -83,12 +83,11 @@ const bar: Layout = {
   w: 12,
   h: 9,
   screens: [
-    { wall: "n", at: 10.5, kind: "portrait" },
-    { wall: "w", at: 8, kind: "portrait" },
-    { wall: "e", at: 1.8, kind: "portrait" },
-    { wall: "e", at: 4.6, kind: "ad" },
-    { wall: "e", at: 7.4, kind: "portrait" },
-    { wall: "s", at: 2.5, kind: "landscape" },
+    { wall: "n", at: 10.4, kind: "clip" },
+    { wall: "e", at: 1.6, kind: "clip" },
+    { wall: "e", at: 4.5, kind: "ad" },
+    { wall: "e", at: 7.4, kind: "clip" },
+    { wall: "s", at: 2.5, kind: "clip" },
     { wall: "s", at: 10, kind: "ad" },
   ],
   zones: [
@@ -110,14 +109,14 @@ const club: Layout = {
   w: 16,
   h: 12,
   screens: [
-    { wall: "n", at: 1.5, kind: "portrait" },
+    { wall: "n", at: 1.5, kind: "clip" },
     { wall: "n", at: 13.5, kind: "ad" },
-    { wall: "w", at: 10.5, kind: "portrait" },
-    { wall: "e", at: 2, kind: "landscape" },
-    { wall: "e", at: 5.2, kind: "portrait" },
-    { wall: "e", at: 6.8, kind: "portrait" },
-    { wall: "e", at: 10, kind: "ad" },
-    { wall: "s", at: 3, kind: "landscape" },
+    { wall: "w", at: 1.5, kind: "clip" },
+    { wall: "w", at: 10.5, kind: "clip" },
+    { wall: "e", at: 1.7, kind: "clip" },
+    { wall: "e", at: 5, kind: "clip" },
+    { wall: "e", at: 8.3, kind: "clip" },
+    { wall: "s", at: 3, kind: "clip" },
     { wall: "s", at: 13, kind: "ad" },
   ],
   zones: [

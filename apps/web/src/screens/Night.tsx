@@ -33,6 +33,7 @@ import { VenueView } from "@/venue/VenueView";
 import { art } from "@/art";
 import { Img } from "@/components/Img";
 import { StockTab } from "./office/StockTab";
+import { getShoutouts, MAX_SHOUTOUTS, setShoutouts } from "@/venue/videotron";
 
 /** 1 tick = 1 in-game minute; 1× = 1 tick per real second (a night ≈ 6 minutes). */
 function useNightLoop() {
@@ -84,6 +85,70 @@ function CeoCall({ s, onDone }: { s: GameState; onDone?: () => void }) {
           </span>
         </Button>
       ))}
+    </section>
+  );
+}
+
+/** Messages for the LED board above the DJ (birthday wishes and the like). */
+function VideotronPanel() {
+  const [list, setList] = useState(getShoutouts);
+  const [text, setText] = useState("");
+  const save = (next: string[]) => {
+    setShoutouts(next);
+    setList(next);
+  };
+  const add = () => {
+    const t = text.trim();
+    if (!t || list.length >= MAX_SHOUTOUTS) return;
+    save([...list, t]);
+    setText("");
+  };
+  return (
+    <section>
+      <h3 className="mb-1 text-[10px] tracking-[0.2em] text-white/45 uppercase">
+        {en.videotron.title}
+      </h3>
+      <p className="mb-2 text-[11px] text-white/40">{en.videotron.hint}</p>
+      <form
+        className="flex gap-1.5"
+        onSubmit={(e) => {
+          e.preventDefault();
+          add();
+        }}
+      >
+        <input
+          value={text}
+          maxLength={80}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={en.videotron.placeholder}
+          className="h-8 min-w-0 flex-1 rounded-md border border-white/15 bg-black/40 px-2 text-xs outline-none focus:border-white/50"
+        />
+        <Button
+          type="submit"
+          size="sm"
+          variant="outline"
+          disabled={!text.trim() || list.length >= MAX_SHOUTOUTS}
+        >
+          {en.videotron.add}
+        </Button>
+      </form>
+      <ul className="mt-2 space-y-1">
+        {list.map((m, i) => (
+          <li
+            key={i}
+            className="flex items-center gap-2 rounded-md bg-white/[0.04] px-2 py-1 text-xs"
+          >
+            <span className="min-w-0 flex-1 truncate">{m}</span>
+            <button
+              className="text-white/45 hover:text-white"
+              aria-label={en.videotron.remove}
+              onClick={() => save(list.filter((_, j) => j !== i))}
+            >
+              ×
+            </button>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -253,6 +318,7 @@ export function Night({ s }: { s: GameState }) {
               style={{ "--d": "80ms" } as CSSProperties}
             >
               <CeoCall s={s} />
+              <VideotronPanel />
               <section>
                 <h3 className="mb-2 text-[10px] tracking-[0.2em] text-white/45 uppercase">
                   {en.stock.emergency}

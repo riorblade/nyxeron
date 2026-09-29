@@ -1,20 +1,18 @@
 import * as THREE from "three";
 
 /**
- * Wall screens. Clips are user-supplied files in /public/screens, listed in /public/screens/playlist.json:
- * portrait (9:16, e.g. dancer clips), landscape (16:9 club footage), ads (sponsor slots).
+ * Wall screens, all landscape. Clips are user-supplied files in /public/screens, listed in /public/screens/playlist.json:
+ * "landscape" and "portrait" both feed the clip screens (portrait clips are cropped to fill), "ads" the sponsor slots.
  * A kind with no clips shows a built-in animated fallback (visualizer, or a "your brand here" ad placeholder).
  */
-export type ScreenKind = "portrait" | "landscape" | "ad";
+export type ScreenKind = "clip" | "ad";
 interface Playlist {
-  portrait: string[];
-  landscape: string[];
+  clip: string[];
   ad: string[];
 }
 
 export const SCREEN_SIZE: Record<ScreenKind, { w: number; h: number }> = {
-  portrait: { w: 1.3, h: 2.3 },
-  landscape: { w: 3, h: 1.69 },
+  clip: { w: 3, h: 1.69 },
   ad: { w: 2.6, h: 1.46 },
 };
 const MAX_PLAYERS = 4; // decoding more videos at once costs more than it adds
@@ -33,8 +31,7 @@ export function loadPlaylist(): Promise<Playlist> {
             )
           : [];
       return {
-        portrait: list("portrait"),
-        landscape: list("landscape"),
+        clip: [...list("landscape"), ...list("portrait")],
         ad: list("ads"),
       };
     });
@@ -100,7 +97,7 @@ class Fallback {
 
   constructor(private kind: ScreenKind) {
     const c = document.createElement("canvas");
-    [c.width, c.height] = kind === "portrait" ? [180, 320] : [320, 180];
+    [c.width, c.height] = [320, 180];
     this.ctx = c.getContext("2d")!;
     this.tex = new THREE.CanvasTexture(c);
     this.tex.colorSpace = THREE.SRGBColorSpace;
@@ -130,7 +127,7 @@ class Fallback {
       ctx.textAlign = "left";
       ctx.fillText("AD", 16, 26);
     } else {
-      const bars = this.kind === "portrait" ? 7 : 16;
+      const bars = 16;
       const bw = W / bars;
       for (let i = 0; i < bars; i++) {
         const level =
@@ -143,41 +140,33 @@ class Fallback {
       }
       ctx.fillStyle = "rgba(255,255,255,.9)";
       ctx.textAlign = "center";
-      ctx.font = `800 ${this.kind === "portrait" ? 22 : 26}px Inter Tight, sans-serif`;
+      ctx.font = "800 26px Inter Tight, sans-serif";
       ctx.fillText("NYXERON", W / 2, 34);
     }
     this.tex.needsUpdate = true;
   }
 }
 
-/** Crop a texture to fill a plane without stretching (CSS object-fit: cover). */
+/** Crop a texture to fill a plane without stretching (CSS object-fit: cover). Tall clips keep their upper part, where the faces are. */
 function cover(tex: THREE.Texture, source: number, plane: number) {
   if (source > plane) {
     tex.repeat.set(plane / source, 1);
     tex.offset.set((1 - plane / source) / 2, 0);
   } else {
     tex.repeat.set(1, source / plane);
-    tex.offset.set(0, (1 - source / plane) / 2);
+    tex.offset.set(0, (1 - source / plane) * 0.62);
   }
 }
 
 export class ScreenWall {
-  private players: Record<ScreenKind, Player[]> = {
-    portrait: [],
-    landscape: [],
-    ad: [],
-  };
+  private players: Record<ScreenKind, Player[]> = { clip: [], ad: [] };
   private fallbacks: Record<ScreenKind, Fallback>;
-  private used = { portrait: 0, landscape: 0, ad: 0 };
+  private used = { clip: 0, ad: 0 };
   private textures: THREE.Texture[] = [];
 
   constructor(list: Playlist, slots: Record<ScreenKind, number>) {
-    this.fallbacks = {
-      portrait: new Fallback("portrait"),
-      landscape: new Fallback("landscape"),
-      ad: new Fallback("ad"),
-    };
-    for (const k of ["portrait", "landscape", "ad"] as const) {
+    this.fallbacks = { clip: new Fallback("clip"), ad: new Fallback("ad") };
+    for (const k of ["clip", "ad"] as const) {
       // Spread start points so neighbouring screens don't show the same clip.
       const n = Math.min(MAX_PLAYERS, list[k].length, Math.max(1, slots[k]));
       for (let i = 0; i < n && list[k].length; i++)
@@ -215,7 +204,7 @@ export class ScreenWall {
   }
 
   dispose() {
-    for (const k of ["portrait", "landscape", "ad"] as const)
+    for (const k of ["clip", "ad"] as const)
       this.players[k].forEach((p) => p.dispose());
     this.textures.forEach((t) => t.dispose());
     for (const f of Object.values(this.fallbacks)) f.tex.dispose();
