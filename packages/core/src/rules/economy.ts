@@ -60,9 +60,10 @@ export function r15_entertainmentTax(s: GameState): {
 export function r13_checkDefeat(s: GameState): GameState {
   const negativeCashDays = s.coin < 0 ? s.negativeCashDays + 1 : 0;
   const lost =
-    negativeCashDays >= economy.bankruptAfterNegativeDays ||
-    s.violations >= legal.maxViolations ||
-    s.reputation <= 0;
+    s.mode !== "sandbox" &&
+    (negativeCashDays >= economy.bankruptAfterNegativeDays ||
+      s.violations >= legal.maxViolations ||
+      s.reputation <= 0);
   return lost
     ? endGame({ ...s, negativeCashDays }, "defeat")
     : { ...s, negativeCashDays };

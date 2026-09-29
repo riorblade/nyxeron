@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createGameState,
   bookPromoter,
+  createSandbox,
   bottlePrice,
   buyUpgrade,
   commissionOf,
@@ -388,5 +389,21 @@ describe("encore", () => {
       x.night!.guests.filter((g) => g.encore && isInside(g)).length;
     expect(stayed(ticks(set(100), 3))).toBeGreaterThan(0);
     expect(stayed(ticks(set(10), 3))).toBe(0);
+  });
+});
+
+describe("sandbox", () => {
+  it("starts at the Premium Venue ready to open, and never ends", () => {
+    const s = createSandbox(5);
+    expect(s.level).toBe(5);
+    expect(s.mode).toBe("sandbox");
+    expect(s.permits.crowd.valid).toBe(true);
+    let g = s;
+    for (let i = 0; i < 3; i++) g = nextDay(runNight(g));
+    expect(g.outcome).toBe(null);
+    const broke = endNight(
+      ticks(startNight({ ...s, coin: -1e9, negativeCashDays: 5 }), 9999),
+    );
+    expect(broke.outcome).toBe(null);
   });
 });

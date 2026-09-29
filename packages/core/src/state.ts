@@ -22,7 +22,8 @@ import {
 
 export type Phase = "day" | "night" | "report";
 export type Outcome = "victory" | "defeat" | "survived";
-export type Mode = "career" | "basement";
+/** sandbox: free play at a chosen venue, no win or loss. */
+export type Mode = "career" | "basement" | "sandbox";
 export type Difficulty = "easy" | "normal" | "hard";
 export type CeoCall = "happyHour" | "closeDoor";
 

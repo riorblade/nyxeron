@@ -5,7 +5,7 @@ import { endGame } from "./economy";
 
 /** R14: Level 5 and reputation ≥ 80 → victory. Day 60 without it → survived. */
 export function r14_checkVictory(s: GameState): GameState {
-  if (s.outcome) return s;
+  if (s.outcome || s.mode === "sandbox") return s; // free play never ends
   if (s.level === 5 && s.reputation >= economy.victoryReputation)
     return endGame(s, "victory");
   if (s.day >= economy.maxDays) return endGame(s, "survived");

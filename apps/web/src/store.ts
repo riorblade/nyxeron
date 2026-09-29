@@ -1,5 +1,6 @@
 import {
   createBasement,
+  createSandbox,
   createGameState,
   type ActionResult,
   type Difficulty,
@@ -12,6 +13,7 @@ import { writeSave } from "./save";
 export type Screen = "menu" | "setup" | "game" | "over";
 type NewGame =
   | { mode: "basement" }
+  | { mode: "sandbox" }
   | { mode: "career"; name: string; genre: string; difficulty: Difficulty };
 
 interface Store {
@@ -75,10 +77,12 @@ export const useGame = create<Store>((set, get) => ({
       game:
         g.mode === "basement"
           ? createBasement(newSeed())
-          : createGameState(newSeed(), g.genre, {
-              clubName: g.name,
-              difficulty: g.difficulty,
-            }),
+          : g.mode === "sandbox"
+            ? createSandbox(newSeed())
+            : createGameState(newSeed(), g.genre, {
+                clubName: g.name,
+                difficulty: g.difficulty,
+              }),
     }),
   load: (state) =>
     set({

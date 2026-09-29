@@ -452,6 +452,7 @@ export function Landing() {
             {[
               [L.career, () => go("setup")],
               [L.scenario, () => start({ mode: "basement" })],
+              [L.sandbox, () => start({ mode: "sandbox" })],
               [L.load, () => setLoading(true)],
               [L.settings, () => useSettings.getState().setOpen(true)],
             ].map(([label, fn], i) => (

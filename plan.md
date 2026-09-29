@@ -294,4 +294,5 @@ P0–P5 done (MVP playable). P6 Web3 and P7 deploy not started.
   - Balance: a bot that ignores all of this still hits Level 2/3/4/5 ≈ day 17/28/43/56 (unchanged curve); each strategy nets roughly +20k to +90k per night at Level 4, all combined about +290k.
 - More strategy (2026-09-30): cover price set by the player (cheaper door = more but thriftier guests), scheduled happy hour (early: arrive sooner and stay; late: stay till close), promoters with guest lists (`data/promoters.json`: early crowd, no cover, commission per head), sound system and lighting tiers (energy + satisfaction, reset with a new venue), sparkler parade (bottle service show: copycat tables order bottles, partly impulse spend), encore (a buzzing room keeps guests past their planned leave time). Balance at Level 4: standard cover is near the sweet spot (2× cover ≈ −63k/night); promoters ≈ +30–40k net; full rig ≈ +31k/night (≈ 9-night payback).
 - Staff cards for host / guest relations / MC / promoter are composed in code from the existing character sprites (`art/staff-*.jpg`), no generated media.
-- Not built yet: performers/bands, Sandbox mode.
+- Sandbox (landing menu): starts at the Premium Venue (Level 5) with 20M Coin, all permits, full crew and stock; no win or game over (`createSandbox`, `scenarios.json` → sandbox).
+- Not built yet: performers/bands.

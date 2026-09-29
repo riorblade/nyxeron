@@ -35,5 +35,29 @@
         "forcedInspection": true
       }
     }
+  },
+  "sandbox": {
+    "clubName": "Nyxeron Premium",
+    "clubGenre": "house",
+    "level": 5,
+    "coin": 20000000,
+    "reputation": 75,
+    "hype": 60,
+    "stock": {
+      "beer": 600,
+      "softDrink": 400,
+      "vodka": 400,
+      "whisky": 300,
+      "cocktail": 300,
+      "wine": 200
+    },
+    "staff": {
+      "bartender": 6,
+      "security": 9,
+      "host": 4,
+      "relations": 3,
+      "mc": 1
+    },
+    "permitDays": 60
   }
 }

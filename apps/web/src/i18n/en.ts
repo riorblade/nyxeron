@@ -64,6 +64,7 @@ export const en = {
     zone: ["Veltra City", "Local Time"],
     career: "Career",
     scenario: "Scenario",
+    sandbox: "Sandbox",
     load: "Load",
     settings: "Settings",
     contactNew: "Open the doors",
@@ -837,6 +838,8 @@ export const en = {
   },
 
   tutorial: {
+    sandbox1:
+      "Sandbox: the Premium Venue (Level 5) is yours. 20M Coin, every permit, a full crew and stock. No win, no game over: book a DJ, set the house rules, and try every move.",
     career1:
       "Welcome to your drink booth. Order Beer and Soft drinks in the Stock tab (guests order both), then press OPEN CLUB to start the night.",
     career2:
