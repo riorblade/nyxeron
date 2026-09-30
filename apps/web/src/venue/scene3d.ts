@@ -54,6 +54,7 @@ import {
 import { en } from "@/i18n/en";
 import { art } from "@/art";
 import { StageFx, type FlameSpot } from "./effects";
+import type { PyroCue } from "./pyro";
 import { Videotron, VIDEOTRON_ASPECT, type VideotronData } from "./videotron";
 
 /** World units: 1 floor tile = 1 unit; people ~1.15 tall. */
@@ -251,6 +252,7 @@ export class VenueScene {
   private spent = new Map<number, number>();
   /** Invisible click targets over the cabinet sections and fridge. */
   private cabinetHits: THREE.Mesh[] = [];
+  private pyroAuto = true;
   /** Guest player's cash + units held last frame (a change = a trade), and when they head back from the desk. */
   private playerTrades = -1;
   private playerAtBarUntil = 0;
@@ -1627,6 +1629,18 @@ export class VenueScene {
   // ---------- wall screens ----------
 
   /** Player settings for the wall screens (from VenueView). */
+  /** Auto: pyro follows the DJ's beat. Manual: nothing fires until pyro() is called. */
+  setPyroAuto(on: boolean) {
+    this.pyroAuto = on;
+  }
+
+  /** A manual cue: flame jets, CO₂ fog, or both at once. */
+  pyro(cue: PyroCue) {
+    if (!this.fx) return;
+    if (cue !== "fog") this.fx.burstFire();
+    if (cue !== "fire") this.fx.burstMist();
+  }
+
   setScreenPrefs(prefs: { clips: ClipMode; ads: boolean }) {
     this.prefs = prefs;
     this.applyScreens();
@@ -2920,7 +2934,9 @@ export class VenueScene {
     // Pyro follows the music while the DJ plays: the beat coming back after a break, every drop, and the loud,
     // lifting parts (fire on the kick, mist less often). Quiet stretches stay dark. Peak hours and the anthem add more.
     if (this.fx) {
-      const kick = this.djOn && pulse > 0.85 && this.prevPulse < 0.5;
+      // Manual mode: the beat is still tracked, but only the CEO's buttons fire (see pyro()).
+      const kick =
+        this.pyroAuto && this.djOn && pulse > 0.85 && this.prevPulse < 0.5;
       if (kick) {
         const gap = now - this.lastKick;
         this.lastKick = now;
@@ -2940,7 +2956,12 @@ export class VenueScene {
           if (mistEvery && this.kicks % mistEvery === 0) this.fx.burstMist();
         }
       }
-      if (this.djOn && audio.live && audio.dropAt !== this.dropSeen) {
+      if (
+        this.pyroAuto &&
+        this.djOn &&
+        audio.live &&
+        audio.dropAt !== this.dropSeen
+      ) {
         this.dropSeen = audio.dropAt;
         this.fx.burstFire();
         this.fx.burstMist();

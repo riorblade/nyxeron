@@ -1,4 +1,4 @@
-import { strategy, tokens, type TokenId } from "../data";
+import { tokens, type TokenId } from "../data";
 import { fail, type ActionResult } from "../result";
 import type { GameState, NightState } from "../state";
 import { marketPrice } from "./market";
@@ -6,8 +6,8 @@ import { platformFee } from "./quotes";
 import { coverPrice } from "./strategy";
 
 /**
- * A player who came to party, not to run the club: pays the door, then buys and sells tokens at the desk at the
- * live market price. The club earns on every buy and pays out on every sell (minus the desk spread).
+ * A player who came to party, not to run the club: pays the door, then buys tokens at the desk at the live
+ * market price. Buy-only: what a guest buys is theirs and goes home with them (the club never buys back).
  */
 export interface Visitor {
   name: string;
@@ -20,7 +20,6 @@ export interface Visitor {
   startCash: number;
 }
 
-const V = strategy.visitor;
 const ok = (state: GameState): ActionResult => ({ ok: true, state });
 const withVisitor = (s: GameState, n: NightState, v: Visitor): GameState => ({
   ...s,
@@ -88,43 +87,13 @@ export function visitorBuy(
   });
 }
 
-/** What the desk pays per unit right now (live price minus the spread). */
-export const sellPrice = (s: GameState, t: TokenId) =>
-  Math.floor(marketPrice(s, t) * (1 - V.sellSpread));
-
-/** Sell back to the desk; the units return to the club's stock. */
-export function visitorSell(
-  s: GameState,
-  t: TokenId,
-  qty: number,
-): ActionResult {
-  const n = s.night;
-  const v = n?.visitor;
-  const h = v?.holdings[t];
-  if (!n || !v) return fail("wrongPhase");
-  if (!h || !Number.isInteger(qty) || qty <= 0 || qty > h.qty)
-    return fail("invalidQty");
-  const pay = sellPrice(s, t) * qty;
-  const left = h.qty - qty;
-  const holdings = { ...v.holdings };
-  if (left)
-    holdings[t] = { qty: left, cost: Math.round((h.cost * left) / h.qty) };
-  else delete holdings[t];
-  return ok({
-    ...withVisitor(s, n, { ...v, cash: v.cash + pay, holdings }),
-    stock: { ...s.stock, [t]: s.stock[t] + qty },
-    coin: s.coin - pay,
-    nightRevenue: { ...s.nightRevenue, bar: s.nightRevenue.bar - pay },
-  });
-}
-
-/** Cash plus everything held, sold back at tonight's desk price. */
+/** Cash plus everything held, marked at the club's live price. */
 export function visitorValue(s: GameState): number {
   const v = s.night?.visitor;
   if (!v) return 0;
   let total = v.cash;
   for (const [t, h] of Object.entries(v.holdings))
-    total += sellPrice(s, t as TokenId) * h!.qty;
+    total += marketPrice(s, t as TokenId) * h!.qty;
   return total;
 }
 

@@ -3,13 +3,11 @@ import {
   coverPrice,
   createEvent,
   scenarios,
-  sellPrice,
   marketPrice,
   tickNight,
   visitorBuy,
   visitorJoin,
   visitorPnl,
-  visitorSell,
   visitorValue,
   type ActionResult,
   type GameState,
@@ -55,18 +53,16 @@ describe("guest player", () => {
     expect(visitorBuy(s, "spcx", 1).ok).toBe(false); // Level 5 token
   });
 
-  it("sells back at the desk price and the value tracks the market", () => {
+  it("is buy-only: holdings are valued at the live price and nothing sells back", async () => {
+    const src = await import("../src");
+    expect("visitorSell" in src).toBe(false);
     let s = must(
       visitorBuy(must(visitorJoin(club(), "Kiel", 20_000)), "nvda", 4),
     );
     for (let i = 0; i < 30; i++) s = tickNight(s);
     expect(visitorValue(s)).toBe(
-      s.night!.visitor!.cash + 4 * sellPrice(s, "nvda"),
+      s.night!.visitor!.cash + 4 * marketPrice(s, "nvda"),
     );
-    const r = must(visitorSell(s, "nvda", 4));
-    expect(r.night!.visitor!.holdings.nvda).toBeUndefined();
-    expect(r.night!.visitor!.cash).toBe(visitorValue(s));
-    expect(visitorPnl(r)).toBe(visitorValue(s) - 20_000);
-    expect(visitorSell(r, "nvda", 1).ok).toBe(false);
+    expect(visitorPnl(s)).toBe(visitorValue(s) - 20_000);
   });
 });

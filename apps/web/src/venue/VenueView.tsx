@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { useSettings } from "@/settings";
 import { useGame } from "@/store";
 import { KINDS } from "./furniture";
+import { onPyro } from "./pyro";
 import { VenueScene } from "./scene3d";
 
 export function VenueView({
@@ -32,6 +33,7 @@ export function VenueView({
   const [drink, setDrink] = useState<TokenId | null>(null);
   const clips = useSettings((x) => x.clips);
   const ads = useSettings((x) => x.ads);
+  const pyroMode = useSettings((x) => x.pyro);
 
   useEffect(() => {
     let cancelled = false;
@@ -42,8 +44,9 @@ export function VenueView({
       // StrictMode mounts twice; a renderer torn down before init finished must not become current.
       if (cancelled) return;
       r.current = v;
-      const { clips, ads } = useSettings.getState();
+      const { clips, ads, pyro } = useSettings.getState();
       v.setScreenPrefs({ clips, ads });
+      v.setPyroAuto(pyro === "auto");
       const g = useGame.getState().game;
       if (g) v.update(g);
     });
@@ -72,6 +75,11 @@ export function VenueView({
   useEffect(() => {
     r.current?.setScreenPrefs({ clips, ads });
   }, [clips, ads]);
+
+  useEffect(() => {
+    r.current?.setPyroAuto(pyroMode === "auto");
+  }, [pyroMode]);
+  useEffect(() => onPyro((cue) => r.current?.pyro(cue)), []);
 
   useEffect(() => {
     r.current?.setEditing(editing);

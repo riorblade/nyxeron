@@ -3,6 +3,8 @@ import { persist } from "zustand/middleware";
 
 /** When the venue's wall screens play the dancer / club clips. */
 export type ClipMode = "peak" | "always" | "off";
+/** Stage pyro: fired on the DJ's beat (auto), or only by the CEO's buttons (manual). */
+export type PyroMode = "auto" | "manual";
 
 export interface Settings {
   /** Lounge music on the landing, office, reports. */
@@ -16,6 +18,7 @@ export interface Settings {
   ads: boolean;
   /** The "Open Club" cutscene. */
   intro: boolean;
+  pyro: PyroMode;
   /** The Settings dialog (not persisted). */
   open: boolean;
   setOpen(open: boolean): void;
@@ -31,6 +34,7 @@ export const useSettings = create<Settings>()(
       clips: "peak",
       ads: true,
       intro: true,
+      pyro: "auto",
       open: false,
       setOpen: (open) => set({ open }),
       set: (patch) => set(patch),
@@ -44,6 +48,7 @@ export const useSettings = create<Settings>()(
         clips: s.clips,
         ads: s.ads,
         intro: s.intro,
+        pyro: s.pyro,
       }),
     },
   ),

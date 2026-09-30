@@ -3,16 +3,13 @@ import {
   marketOf,
   marketPrice,
   nightOver,
-  sellPrice,
   tickNight,
   tokens,
   visitorBuy,
   visitorPnl,
-  visitorSell,
   visitorValue,
   type ActionResult,
   type GameState,
-  type TokenId,
 } from "@nyxeron/core";
 import { Clapperboard, DoorOpen, Eye, EyeOff } from "lucide-react";
 import {
@@ -87,7 +84,8 @@ export function GuestNight({ s }: { s: GameState }) {
   }, [setRunning, setSpeed]);
 
   const walkOut = () => {
-    useProfile.getState().settle(value, pnl);
+    // Buy-only: the tokens are the guest's, so they go home to the portfolio with the cash.
+    useProfile.getState().settle(v.cash, v.holdings, pnl);
     go("dashboard");
   };
 
@@ -259,7 +257,7 @@ function Desk({ s }: { s: GameState }) {
           const h = v.holdings[id];
           const price = marketPrice(s, id);
           const change = Math.round((marketOf(s.night, id) - 1) * 1000) / 10;
-          const pl = h ? sellPrice(s, id) * h.qty - h.cost : 0;
+          const pl = h ? price * h.qty - h.cost : 0;
           return (
             <li
               key={id}
@@ -298,7 +296,7 @@ function Desk({ s }: { s: GameState }) {
                 <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-white/60">
                   {h ? `${t.held(h.qty)} · ${signed(pl)}` : ""}
                 </span>
-                {[1, 5].map((q) => (
+                {[1, 5, 10].map((q) => (
                   <DeskBtn
                     key={q}
                     disabled={!s.stock[id] || price * q > v.cash}
@@ -312,33 +310,6 @@ function Desk({ s }: { s: GameState }) {
                     {t.buy(q)}
                   </DeskBtn>
                 ))}
-                <DeskBtn
-                  disabled={!h}
-                  onClick={() =>
-                    run(
-                      (g) => visitorSell(g, id, 1),
-                      () => t.sold(1, tokens[id].ticker),
-                    )
-                  }
-                >
-                  {t.sell}
-                </DeskBtn>
-                <DeskBtn
-                  disabled={!h}
-                  onClick={() =>
-                    run(
-                      (g) =>
-                        visitorSell(
-                          g,
-                          id,
-                          g.night?.visitor?.holdings[id as TokenId]?.qty ?? 0,
-                        ),
-                      () => t.sold(h?.qty ?? 0, tokens[id].ticker),
-                    )
-                  }
-                >
-                  {t.sellAll}
-                </DeskBtn>
               </div>
             </li>
           );
@@ -393,7 +364,8 @@ function Summary({
         )}
         <dl className="mt-4 space-y-1.5 text-sm">
           <Row label={t.broughtIn}>{fmt(v.startCash)} C</Row>
-          <Row label={t.walkOut}>{fmt(visitorValue(s))} C</Row>
+          <Row label={t.cashLeft}>{fmt(v.cash)} C</Row>
+          <Row label={t.tokensHome}>{fmt(visitorValue(s) - v.cash)} C</Row>
           <Row label={t.pnl}>
             <span className="font-semibold">{signed(pnl)}</span>
           </Row>

@@ -41,6 +41,7 @@ import { Button } from "@/components/ui/button";
 import { EventFeed } from "@/hud/EventFeed";
 import { Objectives } from "@/hud/Objectives";
 import { CrowdMoves, EnergyMeter } from "@/hud/CrowdMoves";
+import { PyroPanel } from "@/hud/PyroPanel";
 import { StockBars } from "@/hud/StockBars";
 import { TickerTape } from "@/hud/TickerTape";
 import { TopBar } from "@/hud/TopBar";
@@ -48,6 +49,8 @@ import { clock, duration, en, fmt, genres } from "@/i18n/en";
 import { cn, trapFocus } from "@/lib/utils";
 import { useGame } from "@/store";
 import { VenueView } from "@/venue/VenueView";
+import { firePyro } from "@/venue/pyro";
+import { useSettings } from "@/settings";
 import { art } from "@/art";
 import { Img } from "@/components/Img";
 import { StockTab } from "./office/StockTab";
@@ -335,6 +338,12 @@ export function Night({ s }: { s: GameState }) {
       else if (e.key.toLowerCase() === "m") audio.toggleMute();
       else if (e.key.toLowerCase() === "h") setHud((v) => !v);
       else if (e.key.toLowerCase() === "c") setCinematic((v) => !v);
+      else if (useSettings.getState().pyro === "manual") {
+        const cue = ({ f: "fire", g: "fog", b: "both" } as const)[
+          e.key.toLowerCase() as "f" | "g" | "b"
+        ];
+        if (cue) firePyro(cue);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -478,6 +487,7 @@ export function Night({ s }: { s: GameState }) {
               style={{ "--d": "80ms" } as CSSProperties}
             >
               <CrowdMoves s={s} />
+              {s.level >= 4 && <PyroPanel />}
               <CeoCall s={s} />
               <VideotronPanel />
               <section>

@@ -99,6 +99,9 @@ export const en = {
     nights: "Nights out",
     totalPnl: "Total P&L",
     bestPnl: "Best night",
+    portfolio: "Portfolio",
+    portfolioEmpty: "Nothing yet. Tokens you buy as a guest land here.",
+    paid: (c: string) => `paid ${c} C`,
     club: "Your club",
     noClub: "No club yet. Start one as CEO.",
     clubLine: (name: string, day: number, level: string) =>
@@ -144,27 +147,26 @@ export const en = {
     value: "Value",
     pnl: "Tonight",
     desk: "Token desk",
-    deskNote: "Buy at the live price. The desk buys back at 3% under it.",
+    deskNote:
+      "Buy at the live price. What you buy is yours: it goes home to your portfolio.",
     held: (n: number) => `${n} held`,
     left: (n: number) => `${n} left`,
     buy: (q: number) => `Buy ${q}`,
-    sell: "Sell",
-    sellAll: "Sell all",
     leave: "Leave the club",
     leaveTitle: "Leave the club?",
     leaveWarn:
-      "Everything you still hold is sold back at the desk price, and the rest goes back to your wallet.",
+      "Your tokens go home with you to your portfolio, and your cash back to your wallet.",
     stay: "Stay",
     closing: "04:00 · Lights up",
     summary: "Your night",
-    walkOut: "Walked out with",
+    cashLeft: "Cash to wallet",
+    tokensHome: "Tokens to portfolio (live value)",
     broughtIn: "Brought in",
     toDashboard: "Back to dashboard",
     soldOut: "Sold out",
     you: "YOU",
     bought: (q: number, ticker: string, cost: number) =>
       `Bought ${q} ${ticker} · ${fmt(cost)} C`,
-    sold: (q: number, ticker: string) => `Sold ${q} ${ticker} to the desk`,
   },
 
   intro: {
@@ -514,7 +516,7 @@ export const en = {
     saved: (n: number) => `Saved to slot ${n}`,
     quit: "Quit to Menu",
     controls:
-      "Space pause · 1/2/3 speed · O office · L layout · H hide UI · C cinematic · Tab panel · Q CEO Call · M mute · drag rotate · right-drag / arrows pan · wheel zoom · Esc menu",
+      "Space pause · 1/2/3 speed · F/G/B pyro (manual) · O office · L layout · H hide UI · C cinematic · Tab panel · Q CEO Call · M mute · drag rotate · right-drag / arrows pan · wheel zoom · Esc menu",
   },
 
   /** What each token tracks. Baskets use Portir's curated weights. */
@@ -627,6 +629,14 @@ export const en = {
     build: (c: string) => `Build · ${c} C`,
     built: "Built",
     notBuilt: "Not built",
+  },
+
+  pyro: {
+    title: "Pyro",
+    modes: { auto: "Auto", manual: "Manual" },
+    cues: { fire: "Fire", fog: "Fog", both: "Both" },
+    autoHint: "Flames and fog fire on the DJ's beat and every drop.",
+    manualHint: "You call it: F fire · G fog · B both.",
   },
 
   moves: {

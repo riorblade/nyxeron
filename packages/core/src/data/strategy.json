@@ -193,8 +193,7 @@
     "spotFactorRange": [0.2, 5]
   },
   "visitor": {
-    "startWallet": 20000,
-    "sellSpread": 0.03
+    "startWallet": 20000
   },
   "autoRefill": {
     "threshold": 15,

@@ -160,6 +160,8 @@ function ProfileCard() {
         </Stat>
       </dl>
 
+      <Portfolio />
+
       <div className="mt-auto border-t border-white/10 pt-4">
         <div className="flex items-center gap-2 text-[10px] tracking-[0.2em] text-white/55 uppercase">
           <Crown className="size-3.5" /> {t.club}
@@ -218,6 +220,47 @@ function AvatarPicker() {
       </div>
       {group(t.men, 1)}
       {group(t.women, 6)}
+    </div>
+  );
+}
+
+/** Tokens the player bought on nights out (buy-only, so they keep them). On-chain delivery comes later. */
+function Portfolio() {
+  const portfolio = useProfile((p) => p.portfolio);
+  const rows = ids(tokens).filter((x) => portfolio[x]?.qty);
+  return (
+    <div>
+      <div className="mb-2 text-[10px] tracking-[0.2em] text-white/50 uppercase">
+        {t.portfolio}
+      </div>
+      {rows.length ? (
+        <ul className="space-y-1">
+          {rows.map((x) => (
+            <li
+              key={x}
+              className="flex items-center gap-2 rounded-md bg-white/[0.03] px-2 py-1.5 text-xs"
+            >
+              <Img
+                src={art.token(x)}
+                alt=""
+                className="size-5 rounded-full object-cover"
+                fallback={<span className="size-5" />}
+              />
+              <span className="font-mono font-semibold">
+                {tokens[x].ticker}
+              </span>
+              <span className="ml-auto font-mono tabular-nums">
+                ×{portfolio[x]!.qty}
+              </span>
+              <span className="w-24 text-right text-white/50">
+                {t.paid(fmt(portfolio[x]!.cost))}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-xs text-white/50">{t.portfolioEmpty}</p>
+      )}
     </div>
   );
 }
