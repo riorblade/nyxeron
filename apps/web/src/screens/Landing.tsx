@@ -288,6 +288,8 @@ export function Landing() {
     };
 
     const measure = () => {
+      // fonts.ready can resolve after the landing page is gone (straight to the dashboard).
+      if (!r1.current) return;
       el.style.setProperty("--shrink", "1");
       all.forEach((c) => {
         latin(c);

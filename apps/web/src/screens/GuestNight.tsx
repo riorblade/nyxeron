@@ -164,6 +164,7 @@ export function GuestNight({ s }: { s: GameState }) {
           </div>
         </header>
         <TickerTape s={s} />
+        {/* pointer-events-none! lets the 3D canvas behind get orbit/zoom; the desk turns clicks back on for itself. */}
         <div className="flex min-h-0 flex-1 justify-end pointer-events-none!">
           <Desk s={s} />
         </div>
@@ -228,19 +229,23 @@ function Desk({ s }: { s: GameState }) {
   const { set, notify } = useGame();
   const v = s.night!.visitor!;
   const menu = ids(tokens).filter((x) => tokens[x].minLevel <= s.level);
-  const run = (fn: (g: GameState) => ActionResult) => {
+  /** Runs a desk trade; `msg` is the confirmation toast, built from the state after the trade. */
+  const run = (
+    fn: (g: GameState) => ActionResult,
+    msg: (after: GameState) => string,
+  ) => {
     // Always act on the latest state: the clock may have ticked since this render.
     const g = useGame.getState().game;
     if (!g) return;
     const r = fn(g);
-    if (r.ok) {
-      set(r.state);
-      audio.cash();
-    } else notify(reasonText(r.reason, r.short), true);
+    if (!r.ok) return notify(reasonText(r.reason, r.short), true);
+    set(r.state);
+    audio.cash();
+    notify(msg(r.state));
   };
   return (
     <aside
-      className="glass enter flex max-h-full w-full flex-col rounded-xl sm:w-[26rem]"
+      className="glass enter pointer-events-auto flex max-h-full w-full flex-col rounded-xl sm:w-[26rem]"
       style={{ "--d": "100ms" } as CSSProperties}
     >
       <header className="border-b border-white/10 px-4 py-3">
@@ -297,26 +302,38 @@ function Desk({ s }: { s: GameState }) {
                   <DeskBtn
                     key={q}
                     disabled={!s.stock[id] || price * q > v.cash}
-                    onClick={() => run((g) => visitorBuy(g, id, q))}
+                    onClick={() =>
+                      run(
+                        (g) => visitorBuy(g, id, q),
+                        () => t.bought(q, tokens[id].ticker, price * q),
+                      )
+                    }
                   >
                     {t.buy(q)}
                   </DeskBtn>
                 ))}
                 <DeskBtn
                   disabled={!h}
-                  onClick={() => run((g) => visitorSell(g, id, 1))}
+                  onClick={() =>
+                    run(
+                      (g) => visitorSell(g, id, 1),
+                      () => t.sold(1, tokens[id].ticker),
+                    )
+                  }
                 >
                   {t.sell}
                 </DeskBtn>
                 <DeskBtn
                   disabled={!h}
                   onClick={() =>
-                    run((g) =>
-                      visitorSell(
-                        g,
-                        id,
-                        g.night?.visitor?.holdings[id as TokenId]?.qty ?? 0,
-                      ),
+                    run(
+                      (g) =>
+                        visitorSell(
+                          g,
+                          id,
+                          g.night?.visitor?.holdings[id as TokenId]?.qty ?? 0,
+                        ),
+                      () => t.sold(h?.qty ?? 0, tokens[id].ticker),
                     )
                   }
                 >

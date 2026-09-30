@@ -162,6 +162,9 @@ export const en = {
     toDashboard: "Back to dashboard",
     soldOut: "Sold out",
     you: "YOU",
+    bought: (q: number, ticker: string, cost: number) =>
+      `Bought ${q} ${ticker} · ${fmt(cost)} C`,
+    sold: (q: number, ticker: string) => `Sold ${q} ${ticker} to the desk`,
   },
 
   intro: {
