@@ -1,5 +1,6 @@
 import { bandPlaying, night, type GameState } from "@nyxeron/core";
 import { useEffect } from "react";
+import { playPad, type PadId } from "./dj/sampler";
 import { useSettings } from "./settings";
 
 /**
@@ -196,6 +197,8 @@ class ClubAudio {
   private prevBass = 0;
   private fluxAvg = 0;
   private kickAt = 0;
+  /** Smoothed seconds between kicks (≈ one beat); starts at 124 BPM. */
+  private kickGap = 60 / 124;
   private loudShort = 0;
   private loudLong = 0;
   private quietAt = -99;
@@ -491,11 +494,27 @@ class ClubAudio {
       const flux = Math.max(0, bass - this.prevBass);
       this.prevBass = bass;
       // 0.33 s refractory gap: blocks off-beat bass stabs at club tempos, still allows up to ~180 BPM.
-      if (flux > Math.max(8, this.fluxAvg * 2.5) && now - this.kickAt > 0.33)
+      if (flux > Math.max(8, this.fluxAvg * 2.5) && now - this.kickAt > 0.33) {
+        // Kick-to-kick gaps at club tempos (75–180 BPM) track the tempo for the CEO's sampler.
+        const gap = now - this.kickAt;
+        if (gap > 0.33 && gap < 0.8) this.kickGap += (gap - this.kickGap) * 0.1;
         this.kickAt = now;
+      }
       this.fluxAvg += (flux - this.fluxAvg) * 0.05;
     }
     return Math.pow(Math.max(0, 1 - (now - this.kickAt) / 0.35), 3);
+  }
+
+  /** Rough tempo of whatever the club is playing (from the detected kicks). */
+  get bpm() {
+    return Math.round(60 / this.kickGap);
+  }
+
+  /** A sampler pad over the club's music (the CEO's sampler, or the DJ's): through the room, so the venue reacts. */
+  pad(id: PadId, bpm = this.bpm) {
+    if (!this.ctx) this.create();
+    void this.ctx!.resume();
+    playPad(this.ctx!, this.muffle, id, bpm);
   }
 
   /** Cash register "ka-ching" for bar sales (two quick bell partials). */

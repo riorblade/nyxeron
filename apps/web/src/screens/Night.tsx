@@ -46,6 +46,7 @@ import { startAuto, stopAuto } from "@/dj/session";
 import { useSets } from "@/dj/sets";
 import { DjStudio } from "@/dj/Studio";
 import { PyroPanel } from "@/hud/PyroPanel";
+import { padForKey, SamplerPanel } from "@/hud/SamplerPanel";
 import { StockBars } from "@/hud/StockBars";
 import { TickerTape } from "@/hud/TickerTape";
 import { TopBar } from "@/hud/TopBar";
@@ -348,6 +349,8 @@ export function Night({ s }: { s: GameState }) {
         v !== "venue"
       )
         return;
+      const pad = padForKey(e);
+      if (pad) return audio.pad(pad);
       if (e.key.toLowerCase() === "o") return setView("office");
       if (e.key.toLowerCase() === "l") return setView("edit");
       if (e.key === " ") {
@@ -520,6 +523,7 @@ export function Night({ s }: { s: GameState }) {
             >
               <CrowdMoves s={s} />
               {s.level >= 4 && <PyroPanel />}
+              {s.level >= 4 && <SamplerPanel />}
               <CeoCall s={s} />
               <VideotronPanel />
               <section>

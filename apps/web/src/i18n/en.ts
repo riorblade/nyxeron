@@ -546,7 +546,7 @@ export const en = {
     saved: (n: number) => `Saved to slot ${n}`,
     quit: "Quit to Menu",
     controls:
-      "Space pause · 1/2/3 speed · F/G/B pyro (manual) · O office · L layout · H hide UI · C cinematic · Tab panel · Q CEO Call · M mute · drag rotate · right-drag / arrows pan · wheel zoom · Esc menu",
+      "Space pause · 1/2/3 speed · F/G/B pyro (manual) · Shift+1–8 sampler · O office · L layout · H hide UI · C cinematic · Tab panel · Q CEO Call · M mute · drag rotate · right-drag / arrows pan · wheel zoom · Esc menu",
   },
 
   /** What each token tracks. Baskets use Portir's curated weights. */
@@ -701,6 +701,8 @@ export const en = {
     upload: "Bring your own track (mp3, wav…)",
     loadError: "Couldn't load that track.",
     sampler: "Sampler",
+    ceoSamplerHint:
+      "Fire them over the resident DJ's set. Riser and snare roll last a bar at the club's tempo.",
     pads: {
       horn: "Air horn",
       siren: "Siren",
