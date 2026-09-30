@@ -63,6 +63,8 @@ const PERSON_H = 1.15;
  * drawn so that a full venue shows about CROWD_SPRITES; the hard cap is a safety net.
  */
 const CROWD_SPRITES = 150;
+/** Guest id reserved for the player's own avatar (sim guests are ≥ 0). */
+const PLAYER = -1;
 interface TokenTile {
   id: TokenId;
   ctx: CanvasRenderingContext2D;
@@ -249,6 +251,9 @@ export class VenueScene {
   private spent = new Map<number, number>();
   /** Invisible click targets over the cabinet sections and fridge. */
   private cabinetHits: THREE.Mesh[] = [];
+  /** Guest player's cash + units held last frame (a change = a trade), and when they head back from the desk. */
+  private playerTrades = -1;
+  private playerAtBarUntil = 0;
   private tokenTiles: TokenTile[] = [];
   private tileMinute = -1;
   private tileState: GameState | null = null;
@@ -392,6 +397,7 @@ export class VenueScene {
         this.float(p, `+${prev - g.budget}`);
       this.budgets.set(g.id, g.budget);
     }
+    this.syncPlayer(s, fresh);
 
     const dj = s.bookedTalent[0];
     const n = s.night;
@@ -1827,6 +1833,56 @@ export class VenueScene {
     );
     this.guests.set(id, p);
     return p;
+  }
+
+  /**
+   * The guest player (multiplayer guest role): their chosen sprite with a name tag and a white ring, dancing on the
+   * floor and walking to the token desk for a few seconds after each trade.
+   */
+  private syncPlayer(s: GameState, fresh: boolean) {
+    const v = s.night?.visitor;
+    if (!v || !this.assets) return;
+    let p = this.guests.get(PLAYER);
+    if (!p) {
+      const tex = this.assets.guests[v.avatar - 1];
+      const at = fresh ? this.spot("dance", 7) : this.entrance();
+      p = this.addPerson(tex, PERSON_H, at[0], at[1], "dance", 7);
+      const tag = textTexture(`${en.guest.you} · ${v.name}`, {
+        size: 40,
+        weight: "800",
+        stroke: true,
+      });
+      const label = new THREE.Sprite(
+        new THREE.SpriteMaterial({
+          map: tag.tex,
+          depthTest: false,
+          transparent: true,
+        }),
+      );
+      label.center.set(0.5, 0);
+      label.scale.set(0.3 * tag.aspect, 0.3, 1);
+      label.position.y = PERSON_H + 0.12;
+      label.renderOrder = 10;
+      const ring = new THREE.Mesh(
+        this.ringGeo,
+        new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0.85,
+        }),
+      );
+      ring.position.y = 0.03;
+      p.g.add(label, ring);
+      this.guests.set(PLAYER, p);
+    }
+    const trades =
+      Object.values(v.holdings).reduce((a, h) => a + h!.qty, 0) + v.cash;
+    if (this.playerTrades >= 0 && trades !== this.playerTrades)
+      this.playerAtBarUntil = performance.now() + 4000;
+    this.playerTrades = trades;
+    const atBar = performance.now() < this.playerAtBarUntil;
+    [p.tx, p.tz] = this.spot(atBar ? zoneFor.bar : "dance", 7);
+    p.mode = atBar ? "idle" : "dance";
   }
 
   /** The "!" and red ring over a tilt guest, created only when someone actually gets tilt. */

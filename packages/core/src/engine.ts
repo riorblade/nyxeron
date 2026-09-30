@@ -1,7 +1,6 @@
 import {
   bands,
   channels,
-  defaultPrice,
   djs,
   tokens,
   ids,
@@ -35,6 +34,7 @@ import {
   recordBuy,
   tickMarket,
 } from "./rules/market";
+import { standardPrice } from "./rules/quotes";
 import { inspect, permitActive, r06_inspectionChance } from "./rules/legal";
 import { r14_checkVictory } from "./rules/progression";
 import { r11_reputationDelta } from "./rules/reputation";
@@ -515,7 +515,7 @@ export function tickNight(s: GameState): GameState {
     const barChance =
       barBoost *
       night.barChancePerMinute *
-      Math.min(1.5, defaultPrice(drink, st.level) / list) *
+      Math.min(1.5, standardPrice(st, drink) / list) *
       fomoFactor(n, drink) *
       Math.max(0.2, 1 - g.tilt / night.tiltSlowdown);
     const r = rng.next();

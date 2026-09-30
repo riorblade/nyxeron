@@ -1,5 +1,8 @@
 import {
-  defaultPrice,
+  spotFactor,
+  spotUnitCost,
+  standardPrice,
+  strategy,
   tokens,
   ids,
   orderCost,
@@ -27,6 +30,7 @@ import { useState } from "react";
 import { art } from "@/art";
 import { Img } from "@/components/Img";
 import { LivePrice, TokenLink } from "@/hud/TokenDetail";
+import { useQuotes } from "@/quotes";
 import { en, fmt } from "@/i18n/en";
 import { cn } from "@/lib/utils";
 import { useGame } from "@/store";
@@ -111,6 +115,7 @@ export function StockTab({ s, compact }: { s: GameState; compact?: boolean }) {
     // Container query: the table drops columns as the panel narrows (need, cost, then the stock bar).
     <div className="space-y-5 @container">
       <StorageMeter s={s} />
+      <SpotSource />
       <div className="grid grid-cols-1 gap-2.5 @xl:grid-cols-[repeat(3,1fr)_auto]">
         {ids(suppliers).map((id) => {
           const sp = suppliers[id];
@@ -225,7 +230,7 @@ export function StockTab({ s, compact }: { s: GameState; compact?: boolean }) {
                   ))}
               </span>
               <span className="hidden font-mono text-sm text-white/70 tabular-nums @3xl:block">
-                {fmt(orderCost(d, 1, supplier, s.level))}
+                {fmt(orderCost(d, 1, supplier, s.level, spotFactor(s, d)))}
               </span>
               {/* Phones: the price stepper gets its own row under the token. */}
               <span className="order-last col-span-2 flex items-center gap-1 @xl:order-none @xl:col-span-1">
@@ -317,10 +322,11 @@ function StockCount({ have, need }: { have: number; need: number }) {
   );
 }
 
-/** Drag to set a drink's price: 50%–300% of this venue's standard price. */
+/** Drag to set a token's sale price (50%–300% of the standard, which follows spot); shows the markup over spot. */
 function PriceSlider({ s, d }: { s: GameState; d: TokenId }) {
   const act = useGame((x) => x.act);
-  const std = defaultPrice(d, s.level);
+  const std = standardPrice(s, d);
+  const markup = Math.round((s.prices[d] / spotUnitCost(s, d) - 1) * 100);
   const min = Math.max(1, Math.round(std * 0.5));
   const max = Math.round(std * 3);
   const price = s.prices[d];
@@ -328,8 +334,8 @@ function PriceSlider({ s, d }: { s: GameState; d: TokenId }) {
     <span className="flex w-full flex-col gap-1">
       <span className="flex items-baseline justify-between font-mono text-xs tabular-nums">
         <span>{fmt(price)}</span>
-        <span className="text-white/50">
-          {Math.round((price / std) * 100)}%
+        <span className="text-white/50" title={en.spot.markupHint}>
+          {en.spot.markup(markup)}
         </span>
       </span>
       <input
@@ -343,5 +349,26 @@ function PriceSlider({ s, d }: { s: GameState; d: TokenId }) {
         className="w-full accent-white"
       />
     </span>
+  );
+}
+
+/** Where the CEO's costs come from: live spot (Binance RWA) or the game's own numbers, and the platform's cut. */
+function SpotSource() {
+  const { live, at } = useQuotes();
+  return (
+    <p className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/65">
+      <span className="flex items-center gap-1.5">
+        <span
+          className={cn(
+            "size-1.5 rounded-full",
+            live ? "animate-pulse bg-white" : "bg-white/30",
+          )}
+        />
+        {live ? en.spot.live(new Date(at)) : en.spot.offline}
+      </span>
+      <span className="text-white/50">
+        {en.spot.fee(Math.round(strategy.platform.feeShare * 100))}
+      </span>
+    </p>
   );
 }

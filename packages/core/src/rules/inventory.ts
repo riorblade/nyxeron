@@ -9,6 +9,7 @@ import {
 } from "../data";
 import { fail, type ActionResult } from "../result";
 import type { GameState } from "../state";
+import { platformFee, spotFactor } from "./quotes";
 import { stockHeld, storageOf } from "./strategy";
 
 export function orderCost(
@@ -16,10 +17,13 @@ export function orderCost(
   qty: number,
   supplier: SupplierId,
   level: Level = 1,
+  /** Real-market move since the club started (spotFactor); 1 offline. */
+  spot = 1,
 ): number {
   return Math.round(
     tokens[drink].buyCost *
       priceScale(level) *
+      spot *
       qty *
       suppliers[supplier].costMultiplier,
   );
@@ -41,7 +45,7 @@ export function r01_orderStock(
   // The stock room only holds so much (stock on hand + already on the way).
   const room = storageOf(s) - stockHeld(s);
   if (qty > room) return fail("storageFull", Math.max(0, room));
-  const cost = orderCost(drink, qty, supplier, s.level);
+  const cost = orderCost(drink, qty, supplier, s.level, spotFactor(s, drink));
   if (s.coin < cost) return fail("notEnoughCoin", cost - s.coin);
 
   const arrivesDay = s.day + suppliers[supplier].leadDays + s.supplierDelay;
@@ -94,12 +98,17 @@ export function r02_sellToken(
       satisfactionDelta: -economy.outOfStockSatisfactionPenalty,
       outOfStock: true,
     };
+  const fee = platformFee(s, drink, price);
   return {
     state: {
       ...s,
       stock: { ...s.stock, [drink]: s.stock[drink] - 1 },
-      coin: s.coin + price,
-      nightRevenue: { ...s.nightRevenue, bar: s.nightRevenue.bar + price },
+      coin: s.coin + price - fee,
+      nightRevenue: {
+        ...s.nightRevenue,
+        bar: s.nightRevenue.bar + price,
+        platformFee: (s.nightRevenue.platformFee ?? 0) + fee,
+      },
     },
     satisfactionDelta: 0,
     outOfStock: false,

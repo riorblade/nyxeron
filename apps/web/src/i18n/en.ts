@@ -89,6 +89,10 @@ export const en = {
     anon: "Guest",
     namePlaceholder: "Your name",
     nameLabel: "Player name",
+    avatar: "Your look",
+    men: "Men",
+    women: "Women",
+    avatarPick: (n: number) => `Avatar ${n}`,
     wallet: "Guest wallet",
     walletNote: "Play money for now. On-chain (BNB Chain) later.",
     refill: "Claim starter wallet",
@@ -157,6 +161,7 @@ export const en = {
     broughtIn: "Brought in",
     toDashboard: "Back to dashboard",
     soldOut: "Sold out",
+    you: "YOU",
   },
 
   intro: {
@@ -477,6 +482,7 @@ export const en = {
     rejectedDress: "Turned away (dress code)",
     guestList: "Guest list guests",
     commission: "Promoter commission",
+    platformFee: "Platform share (spread over spot)",
     bottles: "Block buys from sparkler parades",
     factorEnergyHigh: (avg: number) =>
       `The room was buzzing (energy ${avg}): more dancing, more spending`,
@@ -513,65 +519,34 @@ export const en = {
     tsla: {
       about:
         "Electric cars, batteries and robotaxis. The crowd's favourite meme-stock: when the room is loud, TSLA moves.",
-      legs: [],
     },
     us500: {
       about:
         "The whole US market in three ETFs. Low drama, low FOMO: the safe first buy of the night.",
-      legs: [
-        ["SPY", 50],
-        ["QQQ", 30],
-        ["IWM", 20],
-      ],
     },
     nvda: {
       about:
         "The chips behind the AI boom. Big swings, bigger FOMO when the drop hits.",
-      legs: [],
     },
     bigtech: {
       about: "The five platforms most of the internet runs on.",
-      legs: [
-        ["AAPL", 20],
-        ["MSFT", 20],
-        ["GOOGL", 20],
-        ["AMZN", 20],
-        ["META", 20],
-      ],
     },
     aisemis: {
       about: "The chips, fabs and clouds behind AI.",
-      legs: [
-        ["NVDA", 30],
-        ["AMD", 15],
-        ["AVGO", 15],
-        ["TSM", 15],
-        ["MSFT", 15],
-        ["GOOGL", 10],
-      ],
     },
     dividend: {
       about:
         "Household names that have paid dividends for decades. Guests hold it through a red candle.",
-      legs: [
-        ["JNJ", 20],
-        ["PG", 20],
-        ["KO", 20],
-        ["PEP", 20],
-        ["MCD", 20],
-      ],
     },
     skhy: {
       about:
         "Korean memory giant feeding the AI data centres. Moves hard on every chip headline.",
-      legs: [],
     },
     spcx: {
       about:
         "Rockets and satellites. The most volatile token on the floor: whales love it.",
-      legs: [],
     },
-  } as Record<string, { about: string; legs: [string, number][] }>,
+  } as Record<string, { about: string }>,
   rules: {
     ladies: "Ladies' night",
     ladiesDesc:
@@ -719,6 +694,19 @@ export const en = {
     unlock: (lv: number) => `Unlocks at Lv ${lv}`,
     close: "Close",
     open: "Show token details",
+  },
+
+  spot: {
+    live: (at: Date) =>
+      `Spot prices live from Binance (RWA, BNB Chain) · ${at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`,
+    offline: "Spot feed offline: using the game's own prices",
+    fee: (pct: number) =>
+      `The platform takes ${pct}% of your spread over spot on every sale`,
+    markup: (pct: number) => `spot ${pct >= 0 ? "+" : ""}${pct}%`,
+    markupHint:
+      "Your sale price over what one lot costs at spot. The spread is your income; the platform takes its share of it.",
+    spotLot: "Spot cost / lot",
+    underlying: "Real price (per share)",
   },
 
   ticker: {

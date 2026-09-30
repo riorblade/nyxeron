@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   orderCost,
+  platformFee,
   createGameState,
   r01_orderStock,
   r02_sellToken,
@@ -59,15 +60,18 @@ describe("R1 orderStock", () => {
 });
 
 describe("R2 serveDrink", () => {
-  it("in stock: stock −1, coin + price, bar revenue tracked", () => {
+  it("in stock: stock −1, coin + price minus the platform's share, bar revenue tracked", () => {
     const s0 = {
       ...createGameState(1),
       stock: { ...createGameState(1).stock, tsla: 2 },
     };
     const { state, satisfactionDelta } = r02_sellToken(s0, "tsla");
     expect(state.stock.tsla).toBe(1);
-    expect(state.coin).toBe(s0.coin + s0.prices.tsla);
+    const fee = platformFee(s0, "tsla", s0.prices.tsla);
+    expect(fee).toBeGreaterThan(0);
+    expect(state.coin).toBe(s0.coin + s0.prices.tsla - fee);
     expect(state.nightRevenue.bar).toBe(s0.prices.tsla);
+    expect(state.nightRevenue.platformFee).toBe(fee);
     expect(satisfactionDelta).toBe(0);
   });
 

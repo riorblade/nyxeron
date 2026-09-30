@@ -117,6 +117,8 @@ export interface NightRevenue {
   bar: number;
   cover: number;
   table: number;
+  /** The platform's share of the spread over spot on token sales (already out of the club's coin). */
+  platformFee?: number;
 }
 
 export type GuestState =
@@ -235,6 +237,9 @@ export interface NightReport {
 }
 
 export interface GameState {
+  /** Live spot prices (USD per share, by underlying ticker) and the first ones seen (see rules/quotes.ts). */
+  quotes?: Record<string, number>;
+  quoteRef?: Record<string, number>;
   mode: Mode;
   clubName: string;
   day: number;

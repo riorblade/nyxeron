@@ -1,6 +1,5 @@
 import {
   channels,
-  defaultPrice,
   djs,
   ids,
   levels,
@@ -15,6 +14,7 @@ import type { ActionResult } from "../result";
 import { createSandbox } from "../scenario";
 import type { GameState } from "../state";
 import { r01_orderStock } from "./inventory";
+import { setQuotes, standardPrice } from "./quotes";
 import { r05_promote } from "./marketing";
 import { hireStaff } from "./security";
 import { applyPermit, permitActive } from "./legal";
@@ -92,11 +92,16 @@ export function aiPrepare(s: GameState, grow = true): GameState {
 export type EventSpec = (typeof scenarios.events)[number];
 
 /** Tonight's club night run by an AI CEO, doors open, for a guest player to walk into. */
-export function createEvent(spec: EventSpec, seed: number): GameState {
+export function createEvent(
+  spec: EventSpec,
+  seed: number,
+  quotes: Record<string, number> = {},
+): GameState {
   const base = createSandbox(seed);
   const level = spec.level as Level;
+  const q = setQuotes(base, quotes);
   const s: GameState = {
-    ...base,
+    ...q,
     coin: spec.coin,
     mode: "sandbox",
     clubName: spec.clubName,
@@ -109,7 +114,7 @@ export function createEvent(spec: EventSpec, seed: number): GameState {
     ) as GameState["stock"],
     staff: { bartender: 0, security: 0, host: 0, relations: 0, mc: 0 },
     prices: Object.fromEntries(
-      ids(tokens).map((t) => [t, defaultPrice(t, level)]),
+      ids(tokens).map((t) => [t, standardPrice({ ...q, level }, t)]),
     ) as GameState["prices"],
   };
   return startNight(aiPrepare(s, false));

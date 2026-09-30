@@ -5,3 +5,8 @@ dist
 
 # Source footage (ProRes originals); the web-ready versions live in apps/web/public
 apps/web/assets-src/
+
+# Local secrets (API keys)
+.env
+.env.*.local
+.env.local

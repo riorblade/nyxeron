@@ -109,8 +109,12 @@ function ProfileCard() {
       style={{ "--d": "60ms" } as CSSProperties}
     >
       <div className="flex items-center gap-3">
-        <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/[0.06] text-lg font-semibold uppercase">
-          {(p.name || t.anon)[0]}
+        <span className="flex size-12 shrink-0 items-start justify-center overflow-hidden rounded-full border border-white/20 bg-white/[0.06]">
+          <img
+            src={`/sprites/guest-${p.avatar}.webp`}
+            alt=""
+            className="mt-1 h-[250%] w-auto max-w-none object-contain object-top"
+          />
         </span>
         <label className="min-w-0 flex-1 text-[10px] tracking-[0.2em] text-white/50 uppercase">
           {t.nameLabel}
@@ -123,6 +127,8 @@ function ProfileCard() {
           />
         </label>
       </div>
+
+      <AvatarPicker />
 
       <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
         <div className="flex items-center gap-2 text-[10px] tracking-[0.2em] text-white/55 uppercase">
@@ -169,6 +175,50 @@ function ProfileCard() {
         </p>
       </div>
     </aside>
+  );
+}
+
+/** Pick a look from the club's guest sprites (1–5 men, 6–10 women); it walks the floor on guest nights. */
+function AvatarPicker() {
+  const { avatar, setAvatar } = useProfile();
+  const group = (label: string, from: number) => (
+    <div>
+      <div className="mb-1 text-[10px] text-white/45">{label}</div>
+      <div className="grid grid-cols-5 gap-1.5">
+        {[0, 1, 2, 3, 4].map((i) => {
+          const n = from + i;
+          return (
+            <button
+              key={n}
+              onClick={() => setAvatar(n)}
+              aria-pressed={avatar === n}
+              aria-label={t.avatarPick(n)}
+              className={cn(
+                "flex aspect-[3/4] items-end justify-center overflow-hidden rounded-md border bg-white/[0.03] transition",
+                avatar === n
+                  ? "border-white shadow-[0_0_14px_rgba(255,255,255,.35)]"
+                  : "border-white/10 opacity-70 hover:opacity-100",
+              )}
+            >
+              <img
+                src={`/sprites/guest-${n}.webp`}
+                alt=""
+                className="h-[92%] w-auto object-contain"
+              />
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+  return (
+    <div className="space-y-2">
+      <div className="text-[10px] tracking-[0.2em] text-white/50 uppercase">
+        {t.avatar}
+      </div>
+      {group(t.men, 1)}
+      {group(t.women, 6)}
+    </div>
   );
 }
 
@@ -390,7 +440,7 @@ function EventList() {
                   <button
                     className="h-9 rounded-lg bg-white px-4 text-xs font-semibold tracking-[0.14em] text-black uppercase disabled:opacity-40"
                     disabled={wallet < cover}
-                    onClick={() => join(e)}
+                    onClick={() => void join(e)}
                   >
                     {t.join}
                   </button>

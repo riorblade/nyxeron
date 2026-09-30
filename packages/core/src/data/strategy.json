@@ -188,6 +188,10 @@
       "walkIn": 0.3
     }
   },
+  "platform": {
+    "feeShare": 0.05,
+    "spotFactorRange": [0.2, 5]
+  },
   "visitor": {
     "startWallet": 20000,
     "sellSpread": 0.03

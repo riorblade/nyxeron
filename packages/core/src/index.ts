@@ -17,4 +17,5 @@ export * from "./scenario";
 export * from "./rules/strategy";
 export * from "./rules/market";
 export * from "./rules/visitor";
+export * from "./rules/quotes";
 export * from "./rules/autoCeo";

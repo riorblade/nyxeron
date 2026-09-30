@@ -134,6 +134,11 @@ export function NightReport({ s }: { s: GameState }) {
             <Row label={en.report.cover}>{fmt(r.revenue.cover)}</Row>
             <Row label={en.report.table}>{fmt(r.revenue.table)}</Row>
             <Row label={en.report.tax}>{signed(-r.tax)}</Row>
+            {!!r.revenue.platformFee && (
+              <Row label={en.report.platformFee}>
+                {signed(-r.revenue.platformFee)}
+              </Row>
+            )}
             <Row label={en.report.fines}>{signed(-r.fines)}</Row>
             <Row label={en.report.profit} strong>
               {signed(r.profit)}

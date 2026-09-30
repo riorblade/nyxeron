@@ -1,6 +1,8 @@
 import {
+  legsOf,
   marketOf,
   marketPrice,
+  spotFactor,
   orderCost,
   tokens,
   type GameState,
@@ -27,7 +29,8 @@ export function TokenDetail({
   const info = en.tokenInfo[id]!;
   const t = en.tokenDetail;
   const tk = tokens[id];
-  const cost = orderCost(id, 1, "corner", s.level);
+  const cost = orderCost(id, 1, "corner", s.level, spotFactor(s, id));
+  const legs = legsOf(id).filter(([x]) => s.quotes?.[x]);
   const list = s.prices[id];
   const live = marketPrice(s, id);
   const change = Math.round((marketOf(s.night, id) - 1) * 1000) / 10;
@@ -98,6 +101,11 @@ export function TokenDetail({
             </Stat>
             {!guest && <Stat label={t.margin}>{margin}%</Stat>}
             <Stat label={t.fomo}>+{tk.fomo}</Stat>
+            {legs.length === 1 && tk.kind === "stock" && (
+              <Stat label={en.spot.underlying}>
+                ${s.quotes![legs[0]![0]]!.toFixed(2)}
+              </Stat>
+            )}
           </dl>
         </aside>
 
@@ -121,16 +129,16 @@ export function TokenDetail({
             ) : (
               <p className="text-sm text-white/60">{t.chartIdle}</p>
             )}
-            {info.legs.length > 0 && (
+            {tk.kind === "basket" && (
               <div>
                 <h4 className="mb-2 text-[10px] tracking-[0.3em] text-white/55 uppercase">
                   {t.legs}
                 </h4>
                 <ul className="space-y-1.5">
-                  {info.legs.map(([ticker, w]) => (
+                  {legsOf(id).map(([ticker, w]) => (
                     <li
                       key={ticker}
-                      className="grid grid-cols-[4rem_1fr_2.5rem] items-center gap-3 text-sm"
+                      className="grid grid-cols-[4rem_1fr_2.5rem_4.5rem] items-center gap-3 text-sm"
                     >
                       <span className="font-mono">{ticker}</span>
                       <span className="h-1.5 overflow-hidden rounded-full bg-white/10">
@@ -141,6 +149,11 @@ export function TokenDetail({
                       </span>
                       <span className="text-right font-mono text-xs text-white/60">
                         {w}%
+                      </span>
+                      <span className="text-right font-mono text-xs text-white/60">
+                        {s.quotes?.[ticker]
+                          ? `$${s.quotes[ticker]!.toFixed(2)}`
+                          : "—"}
                       </span>
                     </li>
                   ))}

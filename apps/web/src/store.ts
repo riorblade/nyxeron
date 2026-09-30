@@ -12,6 +12,7 @@ import {
 import { create } from "zustand";
 import { en, reasonText } from "./i18n/en";
 import { useProfile } from "./profile";
+import { fetchQuotes } from "./quotes";
 import { writeSave } from "./save";
 
 /** menu = landing page, dashboard = the player's hub (pick a role), guest = partying at an AI-hosted event. */
@@ -42,7 +43,7 @@ interface Store {
   setIntro(on: boolean): void;
   start(g: NewGame): void;
   /** Walk into an event as a guest, bringing the whole wallet. */
-  joinEvent(spec: EventSpec): void;
+  joinEvent(spec: EventSpec): Promise<void>;
   load(state: GameState): void;
   set(game: GameState): void;
   /** Runs a player action; on failure shows the reason ("Not enough Coin: 1,200 short"). */
@@ -91,12 +92,15 @@ export const useGame = create<Store>((set, get) => ({
                 difficulty: g.difficulty,
               }),
     }),
-  joinEvent: (spec) => {
-    const { name, wallet } = useProfile.getState();
+  joinEvent: async (spec) => {
+    // The AI CEO stocks up at tonight's real spot prices.
+    const quotes = await fetchQuotes();
+    const { name, wallet, avatar } = useProfile.getState();
     const r = visitorJoin(
-      createEvent(spec, newSeed()),
+      createEvent(spec, newSeed(), quotes),
       name || en.dashboard.anon,
       wallet,
+      avatar,
     );
     if (!r.ok) return get().notify(reasonText(r.reason, r.short), true);
     set({

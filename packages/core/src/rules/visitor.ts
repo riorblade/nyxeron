@@ -2,6 +2,7 @@ import { strategy, tokens, type TokenId } from "../data";
 import { fail, type ActionResult } from "../result";
 import type { GameState, NightState } from "../state";
 import { marketPrice } from "./market";
+import { platformFee } from "./quotes";
 import { coverPrice } from "./strategy";
 
 /**
@@ -10,6 +11,8 @@ import { coverPrice } from "./strategy";
  */
 export interface Visitor {
   name: string;
+  /** Guest sprite 1–10 (1–5 men, 6–10 women), picked on the dashboard. Cosmetic. */
+  avatar: number;
   cash: number;
   /** Units held and what was paid for them in total. */
   holdings: Partial<Record<TokenId, { qty: number; cost: number }>>;
@@ -30,6 +33,7 @@ export function visitorJoin(
   s: GameState,
   name: string,
   cash: number,
+  avatar = 1,
 ): ActionResult {
   const n = s.night;
   if (s.phase !== "night" || !n || n.visitor) return fail("wrongPhase");
@@ -37,12 +41,14 @@ export function visitorJoin(
   if (cash < cover) return fail("notEnoughCoin", cover - cash);
   const v: Visitor = {
     name,
+    avatar: Math.min(10, Math.max(1, Math.round(avatar))),
     cash: cash - cover,
     holdings: {},
     startCash: cash,
   };
   return ok({
     ...withVisitor(s, n, v),
+    coin: s.coin + cover,
     nightRevenue: { ...s.nightRevenue, cover: s.nightRevenue.cover + cover },
   });
 }
@@ -62,6 +68,7 @@ export function visitorBuy(
   const cost = marketPrice(s, t) * qty;
   if (cost > v.cash) return fail("notEnoughCoin", cost - v.cash);
   const h = v.holdings[t] ?? { qty: 0, cost: 0 };
+  const fee = platformFee(s, t, marketPrice(s, t)) * qty;
   return ok({
     ...withVisitor(s, n, {
       ...v,
@@ -72,7 +79,12 @@ export function visitorBuy(
       },
     }),
     stock: { ...s.stock, [t]: s.stock[t] - qty },
-    nightRevenue: { ...s.nightRevenue, bar: s.nightRevenue.bar + cost },
+    coin: s.coin + cost - fee,
+    nightRevenue: {
+      ...s.nightRevenue,
+      bar: s.nightRevenue.bar + cost,
+      platformFee: (s.nightRevenue.platformFee ?? 0) + fee,
+    },
   });
 }
 
@@ -101,6 +113,7 @@ export function visitorSell(
   return ok({
     ...withVisitor(s, n, { ...v, cash: v.cash + pay, holdings }),
     stock: { ...s.stock, [t]: s.stock[t] + qty },
+    coin: s.coin - pay,
     nightRevenue: { ...s.nightRevenue, bar: s.nightRevenue.bar - pay },
   });
 }

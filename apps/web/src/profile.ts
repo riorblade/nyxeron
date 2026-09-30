@@ -8,11 +8,14 @@ import { persist } from "zustand/middleware";
  */
 export interface Profile {
   name: string;
+  /** Guest sprite 1–10 (1–5 men, 6–10 women). */
+  avatar: number;
   wallet: number;
   nights: number;
   totalPnl: number;
   bestPnl: number;
   setName(name: string): void;
+  setAvatar(avatar: number): void;
   /** Back from a night out: the wallet becomes what the player walked out with. */
   settle(value: number, pnl: number): void;
   /** A broke guest can claim the starter wallet again. */
@@ -26,11 +29,13 @@ export const useProfile = create<Profile>()(
   persist(
     (set) => ({
       name: "",
+      avatar: 1,
       wallet: START,
       nights: 0,
       totalPnl: 0,
       bestPnl: 0,
       setName: (name) => set({ name: name.slice(0, 20) }),
+      setAvatar: (avatar) => set({ avatar }),
       settle: (value, pnl) =>
         set((p) => ({
           wallet: value,

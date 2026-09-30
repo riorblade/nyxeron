@@ -10,6 +10,7 @@ import {
   startNight,
   type GameState,
   capacityOf,
+  setQuotes,
 } from "@nyxeron/core";
 import { Building2, DoorOpen, Lock, Moon, Target } from "lucide-react";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
@@ -21,6 +22,7 @@ import { Objectives } from "@/hud/Objectives";
 import { TopBar } from "@/hud/TopBar";
 import { clock, en, genres } from "@/i18n/en";
 import { cn } from "@/lib/utils";
+import { fetchQuotes } from "@/quotes";
 import { useGame } from "@/store";
 import { introEnabled } from "./IntroVideo";
 import { BuildTab } from "./office/BuildTab";
@@ -103,6 +105,15 @@ export function Office({ s }: { s: GameState }) {
   useMusic(atNight ? nightTrack(s) : LOUNGE, true, atNight ? "venue" : "menu");
   const { set, setIntro, setView } = useGame();
   const [tab, setTab] = useState<TabId>("stock");
+  // Each morning the CEO restocks at today's real spot prices (Binance RWA via /api/quotes).
+  useEffect(() => {
+    if (atNight) return;
+    void fetchQuotes().then((q) => {
+      const g = useGame.getState().game;
+      if (g && g.phase === "day" && Object.keys(q).length)
+        useGame.getState().set(setQuotes(g, q));
+    });
+  }, [s.day, atNight]);
   const expected = expectedGuests(s);
   const dj = s.bookedTalent[0];
   const hint = atNight ? null : tutorial(s);
