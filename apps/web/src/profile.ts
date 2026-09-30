@@ -14,6 +14,8 @@ export interface Profile {
   /** Tokens bought on nights out (guests only buy, so they keep them): units and total paid. */
   portfolio: Partial<Record<TokenId, { qty: number; cost: number }>>;
   nights: number;
+  /** DJ gigs played to the end. */
+  gigs: number;
   totalPnl: number;
   bestPnl: number;
   setName(name: string): void;
@@ -24,6 +26,8 @@ export interface Profile {
     bought: Partial<Record<TokenId, { qty: number; cost: number }>>,
     pnl: number,
   ): void;
+  /** A finished DJ gig: the fee goes into the wallet. */
+  payGig(fee: number): void;
   /** A broke guest can claim the starter wallet again. */
   refill(): void;
 }
@@ -39,6 +43,7 @@ export const useProfile = create<Profile>()(
       wallet: START,
       portfolio: {},
       nights: 0,
+      gigs: 0,
       totalPnl: 0,
       bestPnl: 0,
       setName: (name) => set({ name: name.slice(0, 20) }),
@@ -61,6 +66,8 @@ export const useProfile = create<Profile>()(
             bestPnl: p.nights ? Math.max(p.bestPnl, pnl) : pnl,
           };
         }),
+      payGig: (fee) =>
+        set((p) => ({ wallet: p.wallet + fee, gigs: (p.gigs ?? 0) + 1 })),
       refill: () => set((p) => (canRefill(p.wallet) ? { wallet: START } : {})),
     }),
     { name: "nyxeron:profile" },

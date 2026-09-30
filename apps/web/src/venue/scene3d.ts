@@ -418,7 +418,13 @@ export class VenueScene {
               : null;
     this.tron = {
       callout,
-      dj: this.djOn && dj ? djs[dj].name : null,
+      dj: this.djOn
+        ? this.guestDj
+          ? `DJ ${this.guestDj.name}`
+          : dj
+            ? djs[dj].name
+            : null
+        : null,
       top: [...this.spent]
         .sort((a, b) => b[1] - a[1])
         .slice(0, 3)
@@ -1629,6 +1635,13 @@ export class VenueScene {
   // ---------- wall screens ----------
 
   /** Player settings for the wall screens (from VenueView). */
+  /** A player booked as the DJ (gig mode): shown at the decks instead of the club's booked DJ. */
+  private guestDj: { name: string; avatar: number } | null = null;
+  setGuestDj(g: { name: string; avatar: number } | null) {
+    this.guestDj = g;
+    this.stageKey = "";
+  }
+
   /** Auto: pyro follows the DJ's beat. Manual: nothing fires until pyro() is called. */
   setPyroAuto(on: boolean) {
     this.pyroAuto = on;
@@ -1996,7 +2009,8 @@ export class VenueScene {
           : "mc"
       : "none";
     if (this.bandKit) this.bandKit.visible = stageAct === "band";
-    const key = `${this.djOn ? dj : ""}|${stageAct}|${band ?? ""}`;
+    const g = this.guestDj;
+    const key = `${this.djOn ? dj : ""}|${stageAct}|${band ?? ""}|${g ? `${g.avatar}:${g.name}` : ""}`;
     if (key === this.stageKey) return;
     this.stageKey = key;
     this.stage.forEach((p) => this.remove(p));
@@ -2016,7 +2030,37 @@ export class VenueScene {
       p.lift = BLOCK_H; // standing on the booth / stage
       this.stage.push(p);
     };
-    if (this.djOn && dj)
+    if (this.djOn && g) {
+      // A guest DJ (the player): their own avatar behind the decks, with a name tag.
+      add(
+        a.guests[g.avatar - 1] ?? a.dj,
+        "dj",
+        0.5,
+        "perform",
+        990,
+        PERSON_H * 1.25,
+      );
+      const p = this.stage[this.stage.length - 1];
+      if (p) {
+        const tag = textTexture(`DJ ${g.name}`, {
+          size: 40,
+          weight: "800",
+          stroke: true,
+        });
+        const label = new THREE.Sprite(
+          new THREE.SpriteMaterial({
+            map: tag.tex,
+            depthTest: false,
+            transparent: true,
+          }),
+        );
+        label.center.set(0.5, 0);
+        label.scale.set(0.34 * tag.aspect, 0.34, 1);
+        label.position.y = p.h + 0.12;
+        label.renderOrder = 10;
+        p.g.add(label);
+      }
+    } else if (this.djOn && dj)
       add(a.decks[dj] ?? a.dj, "dj", 0.5, "perform", 990, PERSON_H * 1.55);
     if (stageAct === "dancers") {
       add(a.dancers[0], "stage", 0.3, "dance", 991);
@@ -2036,7 +2080,8 @@ export class VenueScene {
   private syncScreen(s: GameState) {
     if (!this.screen) return;
     const band = bandPlaying(s) ? s.bookedBand : null;
-    const dj = this.djOn ? (s.bookedTalent[0] ?? "") : "";
+    // A guest DJ has no video loop: the screen shows the club's idle visuals.
+    const dj = this.djOn && !this.guestDj ? (s.bookedTalent[0] ?? "") : "";
     const key = dj || (band ? `band:${band}` : "");
     if (key === this.screenDj) return;
     this.screenDj = key;

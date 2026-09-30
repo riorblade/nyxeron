@@ -1,6 +1,7 @@
 import {
   createBasement,
   createEvent,
+  createGig,
   visitorJoin,
   type EventSpec,
   createSandbox,
@@ -17,7 +18,7 @@ import { writeSave } from "./save";
 
 /** menu = landing page, dashboard = the player's hub (pick a role), guest = partying at an AI-hosted event. */
 export type Screen =
-  "menu" | "dashboard" | "setup" | "game" | "over" | "guest" | "studio";
+  "menu" | "dashboard" | "setup" | "game" | "over" | "guest" | "studio" | "gig";
 type NewGame =
   | { mode: "basement" }
   | { mode: "sandbox" }
@@ -43,6 +44,10 @@ interface Store {
   intro: boolean;
   setIntro(on: boolean): void;
   start(g: NewGame): void;
+  /** The DJ gig being played (fee paid at 04:00). */
+  gig: { fee: number } | null;
+  /** Accept a DJ invite: the club's night opens at the DJ slot with the player on the decks. */
+  joinGig(spec: EventSpec): void;
   /** Walk into an event as a guest, bringing the whole wallet. */
   joinEvent(spec: EventSpec): Promise<void>;
   load(state: GameState): void;
@@ -92,6 +97,19 @@ export const useGame = create<Store>((set, get) => ({
                 clubName: g.name,
                 difficulty: g.difficulty,
               }),
+    }),
+  gig: null,
+  joinGig: (spec) =>
+    set({
+      game: createGig(spec, newSeed()),
+      gig: { fee: ("djFee" in spec && spec.djFee) || 0 },
+      origin: null,
+      screen: "gig",
+      paused: false,
+      running: true,
+      speed: 1,
+      intro: false,
+      view: "venue",
     }),
   joinEvent: async (spec) => {
     // The AI CEO stocks up at tonight's real spot prices.

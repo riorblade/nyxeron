@@ -3,13 +3,19 @@ import {
   djs,
   ids,
   levels,
+  night,
   permits,
   requiredPermits,
   scenarios,
   tokens,
   type Level,
 } from "../data";
-import { expectedGuests, genreForecast, startNight } from "../engine";
+import {
+  expectedGuests,
+  genreForecast,
+  startNight,
+  tickNight,
+} from "../engine";
 import type { ActionResult } from "../result";
 import { createSandbox } from "../scenario";
 import type { GameState } from "../state";
@@ -118,4 +124,14 @@ export function createEvent(
     ) as GameState["prices"],
   };
   return startNight(aiPrepare(s, false));
+}
+
+/**
+ * A DJ gig: the AI CEO's event, fast-forwarded to the DJ slot, for a player booked to play it live. The sim keeps
+ * its booked DJ for the crowd maths; the player's decks replace the music.
+ */
+export function createGig(spec: EventSpec, seed: number): GameState {
+  let s = createEvent(spec, seed);
+  while (s.night && s.night.minute < night.djSetStartMinute) s = tickNight(s);
+  return s;
 }

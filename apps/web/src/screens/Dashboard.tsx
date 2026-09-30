@@ -1,6 +1,7 @@
 import {
   ids,
   levels,
+  night,
   scenarios,
   tokens,
   type EventSpec,
@@ -26,18 +27,19 @@ import { Brand } from "@/components/Brand";
 import { Cta } from "@/components/Cta";
 import { Img } from "@/components/Img";
 import { Input } from "@/components/ui/input";
-import { en, fmt, genres } from "@/i18n/en";
+import { clock, en, fmt, genres } from "@/i18n/en";
 import { cn } from "@/lib/utils";
 import { canRefill, useProfile } from "@/profile";
 import { readSave, type Slot } from "@/save";
 import { useSettings } from "@/settings";
 import { useGame } from "@/store";
 
-type Step = "home" | "role" | "ceo" | "guest";
+type Step = "home" | "role" | "ceo" | "guest" | "dj";
 const t = en.dashboard;
 const SLOTS: Slot[] = ["auto", 1, 2, 3];
 /** One step back: a role's panel → the role picker → the dashboard home. */
-const up = (s: Step): Step => (s === "ceo" || s === "guest" ? "role" : "home");
+const up = (s: Step): Step =>
+  s === "ceo" || s === "guest" || s === "dj" ? "role" : "home";
 const signed = (n: number) =>
   `${n > 0 ? "+" : n < 0 ? "−" : ""}${fmt(Math.abs(n))} C`;
 
@@ -94,6 +96,7 @@ export function Dashboard() {
             {step === "role" && <RolePicker onPick={setStep} />}
             {step === "ceo" && <CeoPanel />}
             {step === "guest" && <EventList />}
+            {step === "dj" && <GigList />}
           </section>
         </div>
       </div>
@@ -307,7 +310,6 @@ function Home({ onEnter }: { onEnter: () => void }) {
 }
 
 function RolePicker({ onPick }: { onPick: (s: Step) => void }) {
-  const go = useGame((x) => x.go);
   const roles = [
     { id: "ceo" as const, Icon: Briefcase, ...t.roles.ceo },
     { id: "dj" as const, Icon: Disc3, ...t.roles.dj },
@@ -323,7 +325,7 @@ function RolePicker({ onPick }: { onPick: (s: Step) => void }) {
           <button
             key={id}
             autoFocus={i === 0}
-            onClick={() => (id === "dj" ? go("studio") : onPick(id))}
+            onClick={() => onPick(id)}
             className="enter group flex flex-col justify-between gap-8 rounded-2xl border border-white/12 bg-white/[0.03] p-6 text-left transition hover:border-white/40 hover:bg-white/[0.07] hover:shadow-[0_0_30px_rgba(255,255,255,.12)]"
             style={{ "--d": `${i * 80}ms` } as CSSProperties}
           >
@@ -495,6 +497,84 @@ function EventList() {
             </li>
           );
         })}
+      </ul>
+    </div>
+  );
+}
+
+/** The DJ's side: practise in the studio, or take a gig at one of tonight's clubs. */
+function GigList() {
+  const { go, joinGig } = useGame();
+  const gigs = useProfile((p) => p.gigs ?? 0);
+  const g = en.gig;
+  return (
+    <div className="flex flex-col gap-4">
+      <button
+        className="flex items-center justify-between gap-4 rounded-xl border border-white/15 bg-white/[0.04] px-4 py-3.5 text-left hover:border-white/40 hover:bg-white/[0.08]"
+        onClick={() => go("studio")}
+      >
+        <span className="flex items-center gap-3">
+          <Disc3 className="size-5" />
+          <span>
+            <span className="block font-medium">{g.studio}</span>
+            <span className="block text-xs text-white/60">{g.studioDesc}</span>
+          </span>
+        </span>
+        <span aria-hidden>→</span>
+      </button>
+      <div>
+        <h2 className="text-2xl font-medium tracking-[-0.02em]">{g.invites}</h2>
+        <p className="mt-1 text-sm text-white/55">
+          {g.invitesNote} · {g.gigs(gigs)}
+        </p>
+      </div>
+      <ul className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {scenarios.events
+          .filter((e) => "djFee" in e && e.djFee)
+          .map((e, i) => {
+            const lv = e.level as Level;
+            return (
+              <li
+                key={e.id}
+                className="enter flex flex-col overflow-hidden rounded-2xl border border-white/12 bg-white/[0.03]"
+                style={{ "--d": `${i * 70}ms` } as CSSProperties}
+              >
+                <div className="relative aspect-video">
+                  <Img
+                    src={art.venue(lv)}
+                    alt=""
+                    className="size-full object-cover"
+                    fallback={<span className="block size-full bg-white/5" />}
+                  />
+                  <span className="absolute top-2 left-2 rounded-full bg-black/70 px-2 py-0.5 text-[10px] tracking-[0.2em] uppercase">
+                    {g.slot(clock(night.djSetStartMinute))}
+                  </span>
+                </div>
+                <div className="flex flex-1 flex-col gap-3 p-4">
+                  <div>
+                    <div className="text-lg font-medium">{e.clubName}</div>
+                    <div className="text-xs text-white/55">
+                      {levels[lv].name} · {genres[e.genre] ?? e.genre}
+                    </div>
+                    <div className="mt-1 text-[11px] text-white/45">
+                      {t.hostedBy}
+                    </div>
+                  </div>
+                  <div className="mt-auto flex items-center justify-between gap-2">
+                    <span className="font-mono text-sm">
+                      {fmt(("djFee" in e && e.djFee) || 0)} C
+                    </span>
+                    <button
+                      className="h-9 rounded-lg bg-white px-4 text-xs font-semibold tracking-[0.14em] text-black uppercase"
+                      onClick={() => joinGig(e)}
+                    >
+                      {g.accept}
+                    </button>
+                  </div>
+                </div>
+              </li>
+            );
+          })}
       </ul>
     </div>
   );

@@ -146,6 +146,31 @@ export const en = {
     menu: (n: number) => `${n} tokens on the desk`,
   },
 
+  gig: {
+    left: (d: string) => `${d} of your set left`,
+    crowd: "Crowd",
+    fee: "Fee",
+    pause: "Pause the night",
+    resume: "Resume",
+    leave: "Leave the gig",
+    stay: "Keep playing",
+    showDecks: "Show the decks",
+    leaveTitle: "Walk off the decks?",
+    leaveText: "Leave before 04:00 and the club doesn't pay the fee.",
+    doneTitle: "04:00 · Lights up",
+    doneText: "That's your set. The club pays your fee.",
+    peak: "Peak energy",
+    collect: "Collect fee",
+    invites: "Gig invites",
+    invitesNote:
+      "Clubs hosted by AI CEOs for now. With multiplayer, real CEOs send these.",
+    slot: (from: string) => `Your set: ${from}–04:00`,
+    accept: "Accept & play",
+    studio: "Practice in the studio",
+    studioDesc: "Two decks, the mixer, pads and your planned sets",
+    gigs: (n: number) => `${n} gig${n === 1 ? "" : "s"} played`,
+  },
+
   guest: {
     cash: "Cash",
     holdings: "Holdings",

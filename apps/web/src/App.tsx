@@ -25,6 +25,9 @@ const StudioScreen = lazy(() =>
     default: m.StudioScreen,
   })),
 );
+const GigNight = lazy(() =>
+  import("@/screens/GigNight").then((m) => ({ default: m.GigNight })),
+);
 const blank = <div className="fixed inset-0 bg-black" />;
 
 export function App() {
@@ -56,6 +59,12 @@ export function App() {
       </Suspense>
     );
   else if (screen === "menu" || !game) view = <Landing />;
+  else if (screen === "gig")
+    view = (
+      <Suspense fallback={blank}>
+        <GigNight s={game} />
+      </Suspense>
+    );
   else if (screen === "guest")
     view = (
       <Suspense fallback={blank}>

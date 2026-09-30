@@ -77,7 +77,8 @@
       "level": 4,
       "hype": 65,
       "reputation": 65,
-      "coin": 1500000
+      "coin": 1500000,
+      "djFee": 4000
     },
     {
       "id": "nyxeron",
@@ -86,7 +87,8 @@
       "level": 5,
       "hype": 75,
       "reputation": 75,
-      "coin": 8000000
+      "coin": 8000000,
+      "djFee": 12000
     }
   ]
 }

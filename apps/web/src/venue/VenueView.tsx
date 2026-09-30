@@ -17,8 +17,11 @@ export function VenueView({
   cinematic = false,
   onCinematicEnd,
   onDone,
+  guestDj,
 }: {
   s: GameState;
+  /** Gig mode: the player at the decks (their avatar and name). */
+  guestDj?: { name: string; avatar: number };
   editing?: boolean;
   /** false while another screen covers the venue: rendering pauses. */
   active?: boolean;
@@ -30,6 +33,8 @@ export function VenueView({
   const el = useRef<HTMLDivElement>(null);
   const r = useRef<VenueScene | null>(null);
   const [selected, setSelected] = useState(-1);
+  // The scene loads async (after the first effects ran), so init reads the latest guest DJ from here.
+  const guestRef = useRef<{ name: string; avatar: number } | null>(null);
   const [drink, setDrink] = useState<TokenId | null>(null);
   const clips = useSettings((x) => x.clips);
   const ads = useSettings((x) => x.ads);
@@ -47,6 +52,7 @@ export function VenueView({
       const { clips, ads, pyro } = useSettings.getState();
       v.setScreenPrefs({ clips, ads });
       v.setPyroAuto(pyro === "auto");
+      v.setGuestDj(guestRef.current ?? null);
       const g = useGame.getState().game;
       if (g) v.update(g);
     });
@@ -79,6 +85,12 @@ export function VenueView({
   useEffect(() => {
     r.current?.setPyroAuto(pyroMode === "auto");
   }, [pyroMode]);
+  const gName = guestDj?.name;
+  const gAvatar = guestDj?.avatar;
+  useEffect(() => {
+    guestRef.current = gName ? { name: gName, avatar: gAvatar ?? 1 } : null;
+    r.current?.setGuestDj(guestRef.current);
+  }, [gName, gAvatar]);
   useEffect(() => onPyro((cue) => r.current?.pyro(cue)), []);
 
   useEffect(() => {

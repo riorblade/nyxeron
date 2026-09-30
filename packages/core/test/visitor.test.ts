@@ -66,3 +66,13 @@ describe("guest player", () => {
     expect(visitorPnl(s)).toBe(visitorValue(s) - 20_000);
   });
 });
+
+describe("DJ gig", () => {
+  it("opens the AI-run night at the DJ slot, crowd already in", async () => {
+    const { createGig, night, isInside } = await import("../src");
+    const s = createGig(scenarios.events[1]!, 5);
+    expect(s.night!.minute).toBe(night.djSetStartMinute);
+    expect(s.night!.guests.filter(isInside).length).toBeGreaterThan(0);
+    expect(s.bookedTalent.length).toBe(1);
+  });
+});
