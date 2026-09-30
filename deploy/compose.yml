@@ -18,7 +18,7 @@ services:
     ports: ["80:80", "443:443", "443:443/udp"]
     cap_add: [NET_BIND_SERVICE]
     environment:
-      DOMAIN: ${DOMAIN:-localhost}
+      SITE_ADDRESS: ${DOMAIN:-localhost}
       # Caddy is Go too: keep its heap under the cap.
       GOMEMLIMIT: 48MiB
     volumes:

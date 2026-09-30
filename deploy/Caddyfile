@@ -5,7 +5,9 @@
 	admin off
 }
 
-{$DOMAIN:localhost} {
+# SITE_ADDRESS: the domain (this Caddy is the public door, gets the certificate) or ":80" (behind another proxy
+# that already holds 80/443 and terminates TLS; see compose.behind-proxy.yml).
+{$SITE_ADDRESS:localhost} {
 	encode zstd gzip
 
 	# Multiplayer relay (WebSocket). Caddy upgrades and proxies it as-is.

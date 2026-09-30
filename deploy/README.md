@@ -19,6 +19,23 @@ Three containers, only `edge` is public:
    ```
    Caddy gets the certificate by itself on the first request.
 
+## Behind a proxy that already owns 80/443
+
+If another project's Caddy already holds ports 80/443 on the VPS, NYXERON runs behind it instead: the edge publishes
+no ports and joins that proxy's Docker network as `nyxeron-edge` (set `GATEWAY_NETWORK`, default `deploy_default`).
+
+```sh
+docker compose -f deploy/compose.yml -f deploy/compose.behind-proxy.yml up -d --build
+```
+
+Then add to that proxy's Caddyfile and reload it (`caddy reload`, no downtime for its other sites):
+
+```
+nyxeron.xyz {
+	reverse_proxy nyxeron-edge:80
+}
+```
+
 ## Update
 
 ```sh
