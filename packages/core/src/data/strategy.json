@@ -188,6 +188,10 @@
       "walkIn": 0.3
     }
   },
+  "visitor": {
+    "startWallet": 20000,
+    "sellSpread": 0.03
+  },
   "autoRefill": {
     "threshold": 15,
     "batch": 50,

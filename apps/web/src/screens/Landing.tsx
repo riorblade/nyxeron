@@ -156,7 +156,7 @@ function SoundToggle() {
 
 export function Landing() {
   useMusic(LOUNGE);
-  const { go, start, load } = useGame();
+  const { go, load } = useGame();
   const [loading, setLoading] = useState(false);
   const [ctaLive, setCtaLive] = useState(false);
   const auto = readSave("auto");
@@ -349,7 +349,7 @@ export function Landing() {
   }, []);
 
   const L = en.landing;
-  const contact = () => (auto ? load(auto.state) : go("setup"));
+  const contact = () => (auto ? load(auto.state) : go("dashboard"));
   const bottomWords = L.bottom.flatMap((l) => l.split(" "));
   let bw = 0;
 
@@ -450,9 +450,7 @@ export function Landing() {
           </div>
           <nav className="nav" aria-label="Primary">
             {[
-              [L.career, () => go("setup")],
-              [L.scenario, () => start({ mode: "basement" })],
-              [L.sandbox, () => start({ mode: "sandbox" })],
+              [L.enter, () => go("dashboard")],
               [L.load, () => setLoading(true)],
               [L.settings, () => useSettings.getState().setOpen(true)],
             ].map(([label, fn], i) => (
@@ -492,15 +490,9 @@ export function Landing() {
       </div>
 
       <div className="nx-cta" data-live={ctaLive || undefined}>
-        <Cta className="w-52" onClick={() => go("setup")}>
+        <Cta className="w-52" onClick={() => go("dashboard")}>
           {L.newCareer}
         </Cta>
-        <button
-          className="glass h-12 rounded-lg px-5 text-sm tracking-[0.14em] uppercase"
-          onClick={() => start({ mode: "basement" })}
-        >
-          {L.basement}
-        </button>
         {auto && (
           <button
             className="glass h-12 rounded-lg px-5 text-sm tracking-[0.14em] uppercase"

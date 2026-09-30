@@ -33,6 +33,8 @@ export function TokenDetail({
   const change = Math.round((marketOf(s.night, id) - 1) * 1000) / 10;
   const margin = live > 0 ? Math.round(((live - cost) / live) * 100) : 0;
   const hist = s.night?.marketHist?.[id] ?? [];
+  // A guest sees the desk, not the club's books.
+  const guest = !!s.night?.visitor;
 
   useEffect(() => {
     // Capture phase, so Esc closes the card instead of opening the pause menu.
@@ -87,14 +89,14 @@ export function TokenDetail({
             <Stat label={t.inStock}>
               {tk.minLevel > s.level ? t.unlock(tk.minLevel) : s.stock[id]}
             </Stat>
-            <Stat label={t.cost}>{fmt(cost)} C</Stat>
+            {!guest && <Stat label={t.cost}>{fmt(cost)} C</Stat>}
             <Stat label={t.list}>{fmt(list)} C</Stat>
             <Stat label={t.live}>{fmt(live)} C</Stat>
             <Stat label={t.change}>
               {change > 0 ? "▲ +" : change < 0 ? "▼ " : ""}
               {change}%
             </Stat>
-            <Stat label={t.margin}>{margin}%</Stat>
+            {!guest && <Stat label={t.margin}>{margin}%</Stat>}
             <Stat label={t.fomo}>+{tk.fomo}</Stat>
           </dl>
         </aside>

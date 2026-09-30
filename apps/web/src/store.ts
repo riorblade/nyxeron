@@ -1,5 +1,8 @@
 import {
   createBasement,
+  createEvent,
+  visitorJoin,
+  type EventSpec,
   createSandbox,
   createGameState,
   type ActionResult,
@@ -8,9 +11,11 @@ import {
 } from "@nyxeron/core";
 import { create } from "zustand";
 import { en, reasonText } from "./i18n/en";
+import { useProfile } from "./profile";
 import { writeSave } from "./save";
 
-export type Screen = "menu" | "setup" | "game" | "over";
+/** menu = landing page, dashboard = the player's hub (pick a role), guest = partying at an AI-hosted event. */
+export type Screen = "menu" | "dashboard" | "setup" | "game" | "over" | "guest";
 type NewGame =
   | { mode: "basement" }
   | { mode: "sandbox" }
@@ -36,6 +41,8 @@ interface Store {
   intro: boolean;
   setIntro(on: boolean): void;
   start(g: NewGame): void;
+  /** Walk into an event as a guest, bringing the whole wallet. */
+  joinEvent(spec: EventSpec): void;
   load(state: GameState): void;
   set(game: GameState): void;
   /** Runs a player action; on failure shows the reason ("Not enough Coin: 1,200 short"). */
@@ -64,7 +71,7 @@ export const useGame = create<Store>((set, get) => ({
     const { game, screen } = get();
     if (game && screen === "game" && !game.outcome && writeSave("auto", game))
       get().notify(en.nav.saved);
-    set({ screen: "menu", paused: false, intro: false });
+    set({ screen: "dashboard", paused: false, intro: false });
   },
   intro: false,
   setIntro: (intro) => set({ intro }),
@@ -84,6 +91,25 @@ export const useGame = create<Store>((set, get) => ({
                 difficulty: g.difficulty,
               }),
     }),
+  joinEvent: (spec) => {
+    const { name, wallet } = useProfile.getState();
+    const r = visitorJoin(
+      createEvent(spec, newSeed()),
+      name || en.dashboard.anon,
+      wallet,
+    );
+    if (!r.ok) return get().notify(reasonText(r.reason, r.short), true);
+    set({
+      game: r.state,
+      origin: null,
+      screen: "guest",
+      paused: false,
+      running: true,
+      speed: 1,
+      intro: false,
+      view: "venue",
+    });
+  },
   load: (state) =>
     set({
       game: state,

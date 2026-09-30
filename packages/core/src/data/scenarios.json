@@ -59,5 +59,34 @@
       "mc": 1
     },
     "permitDays": 60
-  }
+  },
+  "events": [
+    {
+      "id": "neon",
+      "clubName": "Neon Tap",
+      "genre": "hiphop",
+      "level": 3,
+      "hype": 55,
+      "reputation": 60,
+      "coin": 400000
+    },
+    {
+      "id": "basement",
+      "clubName": "The Basement",
+      "genre": "techno",
+      "level": 4,
+      "hype": 65,
+      "reputation": 65,
+      "coin": 1500000
+    },
+    {
+      "id": "nyxeron",
+      "clubName": "Nyxeron Premium",
+      "genre": "house",
+      "level": 5,
+      "hype": 75,
+      "reputation": 75,
+      "coin": 8000000
+    }
+  ]
 }

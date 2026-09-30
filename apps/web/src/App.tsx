@@ -2,6 +2,7 @@ import { SettingsDialog } from "@/components/SettingsDialog";
 import { lazy, Suspense, useEffect } from "react";
 import { Toast } from "@/hud/Toast";
 import { ClubSetup } from "@/screens/ClubSetup";
+import { Dashboard } from "@/screens/Dashboard";
 import { GameOver } from "@/screens/GameOver";
 import { IntroVideo } from "@/screens/IntroVideo";
 import { Landing } from "@/screens/Landing";
@@ -16,6 +17,10 @@ import { useGame } from "@/store";
  */
 const loadNight = () => import("@/screens/Night");
 const Night = lazy(() => loadNight().then((m) => ({ default: m.Night })));
+const GuestNight = lazy(() =>
+  import("@/screens/GuestNight").then((m) => ({ default: m.GuestNight })),
+);
+const blank = <div className="fixed inset-0 bg-black" />;
 
 export function App() {
   const { screen, game, paused, setPaused, intro } = useGame();
@@ -37,16 +42,22 @@ export function App() {
   let view;
   // Key per screen/phase so every navigation fades in instead of snapping.
   let key: string = screen;
-  if (screen === "menu" || !game)
-    view = screen === "setup" ? <ClubSetup /> : <Landing />;
-  else if (screen === "setup") view = <ClubSetup />;
+  if (screen === "setup") view = <ClubSetup />;
+  else if (screen === "dashboard") view = <Dashboard />;
+  else if (screen === "menu" || !game) view = <Landing />;
+  else if (screen === "guest")
+    view = (
+      <Suspense fallback={blank}>
+        <GuestNight s={game} />
+      </Suspense>
+    );
   else if (screen === "over") view = <GameOver s={game} />;
   else {
     key = `${game.phase}-${game.day}`;
     if (game.phase === "day") view = <Office s={game} />;
     else if (game.phase === "night")
       view = (
-        <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
+        <Suspense fallback={blank}>
           <Night s={game} />
         </Suspense>
       );

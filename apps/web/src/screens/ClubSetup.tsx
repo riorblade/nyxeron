@@ -16,7 +16,7 @@ export function ClubSetup() {
   const [genre, setGenre] = useState("edm");
   const [difficulty, setDifficulty] = useState<Difficulty>("normal");
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && go("menu");
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && go("dashboard");
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [go]);
@@ -91,7 +91,7 @@ export function ClubSetup() {
             type="button"
             size="lg"
             variant="ghost"
-            onClick={() => go("menu")}
+            onClick={() => go("dashboard")}
           >
             {en.menu.back}
           </Button>

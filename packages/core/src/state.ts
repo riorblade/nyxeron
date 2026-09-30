@@ -1,3 +1,4 @@
+import type { Visitor } from "./rules/visitor";
 import {
   tokens,
   economy,
@@ -157,6 +158,8 @@ export interface NightState {
   marketEma: Partial<Record<TokenId, number>>;
   /** The market multiplier at the end of every minute so far tonight (for the charts). */
   marketHist: Partial<Record<TokenId, number[]>>;
+  /** A player who joined tonight as a guest (multiplayer guest role). */
+  visitor?: Visitor;
   /** Live band's dance multiplier while its set runs (null = not playing). */
   bandMultiplier: number | null;
   inspectionMinute: number | null;
