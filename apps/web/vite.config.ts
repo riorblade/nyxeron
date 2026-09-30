@@ -1,34 +1,18 @@
 import { fileURLToPath, URL } from "node:url";
-import { defineConfig, loadEnv, type Connect, type Plugin } from "vite";
+import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import { getQuotes } from "./server/quotes";
 
-/** GET /api/quotes: Binance RWA spot prices, signed server-side (keys from .env.local, never sent to the browser). */
-function quotesApi(env: Record<string, string>): Plugin {
-  const handler: Connect.NextHandleFunction = (req, res, next) => {
-    if (req.url?.split("?")[0] !== "/api/quotes") return next();
-    getQuotes({
-      key: env.BINANCE_WEB3_API_KEY,
-      secret: env.BINANCE_WEB3_SECRET_KEY,
-    }).then((q) => {
-      res.setHeader("content-type", "application/json");
-      res.end(JSON.stringify(q));
-    }, next);
-  };
-  return {
-    name: "nyxeron-quotes",
-    configureServer: (s) => void s.middlewares.use(handler),
-    configurePreviewServer: (s) => void s.middlewares.use(handler),
-  };
-}
-
-export default defineConfig(({ mode }) => ({
-  // "" prefix: server-only vars too. Only VITE_* ever reach client code.
-  plugins: [
-    react(),
-    tailwindcss(),
-    quotesApi(loadEnv(mode, process.cwd(), "")),
-  ],
+// Dev mirrors production's edge proxy (deploy/Caddyfile): /api → the api service, /ws → the multiplayer relay.
+// Run them with `pnpm dev:api` and `pnpm dev:relay`; without them the game falls back to offline prices and
+// single player.
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
-}));
+  server: {
+    proxy: {
+      "/api": "http://127.0.0.1:8788",
+      "/ws": { target: "ws://127.0.0.1:8787", ws: true },
+    },
+  },
+});

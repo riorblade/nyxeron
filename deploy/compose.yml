@@ -1,0 +1,61 @@
+# NYXERON on one VPS: `docker compose -f deploy/compose.yml up -d --build`
+# Three separate services; only the edge publishes ports. Each has a hard memory cap and a read-only filesystem.
+name: nyxeron
+
+x-hardened: &hardened
+  restart: unless-stopped
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  logging:
+    driver: json-file
+    options: { max-size: "5m", max-file: "2" }
+
+services:
+  edge:
+    <<: *hardened
+    build: { context: .., dockerfile: deploy/web.Dockerfile }
+    ports: ["80:80", "443:443", "443:443/udp"]
+    cap_add: [NET_BIND_SERVICE]
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+      # Caddy is Go too: keep its heap under the cap.
+      GOMEMLIMIT: 48MiB
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    tmpfs: [/tmp]
+    mem_limit: 64m
+    depends_on: [relay, api]
+
+  # Multiplayer relay: connects players, nothing else (no game logic, no database).
+  relay:
+    <<: *hardened
+    build: ../services/relay
+    environment:
+      ORIGINS: ${DOMAIN:-localhost}
+      MAX_ROOMS: "2000"
+      MAX_PEERS: "64"
+      GRACE_SEC: "60"
+      # Keep the Go heap well under the container cap: collect at +50% heap growth (default 100%), and hard at
+      # the soft limit before an OOM kill.
+      GOGC: "50"
+      GOMEMLIMIT: 40MiB
+    expose: ["8787"]
+    mem_limit: 48m
+
+  # Game API (spot quotes): separate from the relay, restarts and scales on its own.
+  api:
+    <<: *hardened
+    build: ../services/api
+    environment:
+      BINANCE_WEB3_API_KEY: ${BINANCE_WEB3_API_KEY:-}
+      BINANCE_WEB3_SECRET_KEY: ${BINANCE_WEB3_SECRET_KEY:-}
+      GOGC: "50"
+      GOMEMLIMIT: 24MiB
+    expose: ["8788"]
+    mem_limit: 32m
+
+volumes:
+  caddy_data:
+  caddy_config:

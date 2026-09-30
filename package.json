@@ -8,7 +8,10 @@
     "test": "vitest run",
     "lint": "tsc -p packages/core && tsc -p apps/web && eslint . && prettier --check .",
     "format": "prettier --write .",
-    "balance": "tsx packages/core/scripts/balance.ts"
+    "balance": "tsx packages/core/scripts/balance.ts",
+    "dev:api": "cd services/api && go run .",
+    "dev:relay": "cd services/relay && go run .",
+    "test:go": "cd services/relay && go test -race ./... && cd ../api && go test -race ./..."
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -20,5 +23,6 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.71.0",
     "vitest": "^5.0.2"
-  }
+  },
+  "packageManager": "pnpm@10.33.2"
 }

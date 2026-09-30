@@ -1,0 +1,7 @@
+**/node_modules
+**/dist
+.git
+apps/web/assets-src
+deploy/.env
+**/.env*
+!deploy/.env.example

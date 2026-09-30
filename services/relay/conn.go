@@ -1,0 +1,312 @@
+package main
+
+import (
+	"context"
+	"encoding/binary"
+	"encoding/json"
+	"sync"
+	"sync/atomic"
+	"time"
+	"unicode/utf8"
+
+	"github.com/coder/websocket"
+)
+
+const (
+	writeTimeout = 5 * time.Second
+	pingEvery    = 25 * time.Second
+	// Reliable frames waiting for a slow client. Control messages past this drop the client (a stuck client must
+	// not grow memory); peer input past this is refused with "host_busy" instead (the host is never dropped for
+	// being popular). 64 slice headers ≈ 1.5 KB per connection.
+	queueLen = 64
+)
+
+// limits per role: biggest frame accepted and a token bucket for message rate.
+type limits struct {
+	maxFrame int64
+	rate     float64 // messages per second
+	burst    float64
+}
+
+var (
+	hostLimits = limits{maxFrame: 256 << 10, rate: 60, burst: 120}
+	peerLimits = limits{maxFrame: 8 << 10, rate: 20, burst: 40}
+	// Before a create/join the client is nobody: tiny frames only.
+	lobbyLimits = limits{maxFrame: 1 << 10, rate: 5, burst: 10}
+)
+
+type conn struct {
+	ws   *websocket.Conn
+	hub  *hub
+	room *room
+	host bool
+	id   uint16
+	name string
+	role string
+
+	queue  chan []byte // reliable frames (control JSON is tagged by a leading '{')
+	latest atomic.Pointer[[]byte]
+	wake   chan struct{} // a new latest snapshot is waiting
+	done   chan struct{}
+	cancel context.CancelFunc
+	// Closed when the write loop has finished (after flushing), so the socket is only closed after that.
+	flushed chan struct{}
+	once    sync.Once
+	reason  atomic.Value
+
+	tokens float64
+	last   time.Time
+}
+
+func newConn(ws *websocket.Conn, h *hub) *conn {
+	return &conn{
+		ws: ws, hub: h,
+		queue:   make(chan []byte, queueLen),
+		wake:    make(chan struct{}, 1),
+		done:    make(chan struct{}),
+		flushed: make(chan struct{}),
+		last:    time.Now(),
+		// Start with a full bucket, so the first create/join isn't throttled.
+		tokens: lobbyLimits.burst,
+	}
+}
+
+func (c *conn) closeWith(reason string) {
+	c.once.Do(func() {
+		c.reason.Store(reason)
+		close(c.done)
+	})
+}
+
+// offer queues a frame if there is room; false = the receiver is backed up.
+func (c *conn) offer(b []byte) bool {
+	select {
+	case c.queue <- b:
+		return true
+	default:
+		return false
+	}
+}
+
+// enqueue a reliable frame; a client too slow to drain its queue is disconnected.
+func (c *conn) enqueue(b []byte) {
+	select {
+	case c.queue <- b:
+	case <-c.done:
+	default:
+		c.closeWith("too slow")
+	}
+}
+
+func (c *conn) control(m control) {
+	b, _ := json.Marshal(m)
+	c.enqueue(b)
+}
+
+// setLatest replaces any unsent snapshot (latest wins).
+func (c *conn) setLatest(b []byte) {
+	c.latest.Store(&b)
+	select {
+	case c.wake <- struct{}{}:
+	default:
+	}
+}
+
+// allow is a token bucket: `rate` messages a second, bursts up to `burst`.
+func (c *conn) allow(l limits) bool {
+	now := time.Now()
+	c.tokens = min(l.burst, c.tokens+now.Sub(c.last).Seconds()*l.rate)
+	c.last = now
+	if c.tokens < 1 {
+		return false
+	}
+	c.tokens--
+	return true
+}
+
+func (c *conn) limits() limits {
+	switch {
+	case c.room == nil:
+		return lobbyLimits
+	case c.host:
+		return hostLimits
+	default:
+		return peerLimits
+	}
+}
+
+// typeOf: control JSON goes out as text, frames as binary (frame kinds are 1–4, never '{').
+func typeOf(b []byte) websocket.MessageType {
+	if len(b) > 0 && b[0] == '{' {
+		return websocket.MessageText
+	}
+	return websocket.MessageBinary
+}
+
+// writeLoop is the only writer on the socket: reliable queue first, then the latest snapshot, plus pings.
+func (c *conn) writeLoop(ctx context.Context) {
+	defer close(c.flushed)
+	// Cancelling the read context closes the socket (coder/websocket), so only do it after the flush below:
+	// it unblocks the reader and ends the request.
+	defer c.cancel()
+	ping := time.NewTicker(pingEvery)
+	defer ping.Stop()
+	write := func(b []byte) error {
+		wctx, cancel := context.WithTimeout(ctx, writeTimeout)
+		defer cancel()
+		return c.ws.Write(wctx, typeOf(b), b)
+	}
+	for {
+		select {
+		case <-c.done:
+			// Best effort: send what is queued (e.g. "closed", "error") before the socket goes.
+			fctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			for {
+				select {
+				case b := <-c.queue:
+					if c.ws.Write(fctx, typeOf(b), b) != nil {
+						return
+					}
+				default:
+					return
+				}
+			}
+		case b := <-c.queue:
+			if write(b) != nil {
+				c.closeWith("write failed")
+				return
+			}
+		case <-c.wake:
+			if p := c.latest.Swap(nil); p != nil && write(*p) != nil {
+				c.closeWith("write failed")
+				return
+			}
+		case <-ping.C:
+			pctx, cancel := context.WithTimeout(ctx, writeTimeout)
+			err := c.ws.Ping(pctx)
+			cancel()
+			if err != nil {
+				c.closeWith("no pong")
+				return
+			}
+		}
+	}
+}
+
+// readLoop handles everything the client sends until it goes away.
+func (c *conn) readLoop(ctx context.Context) {
+	defer c.closeWith("read ended")
+	for {
+		c.ws.SetReadLimit(c.limits().maxFrame)
+		t, b, err := c.ws.Read(ctx)
+		if err != nil {
+			return
+		}
+		if !c.allow(c.limits()) {
+			c.control(control{T: "error", Code: "rate_limited"})
+			continue
+		}
+		if t == websocket.MessageText {
+			if !c.handleControl(b) {
+				return
+			}
+			continue
+		}
+		c.route(b)
+	}
+}
+
+func cleanName(s string) string {
+	if !utf8.ValidString(s) {
+		return ""
+	}
+	if r := []rune(s); len(r) > 24 {
+		s = string(r[:24])
+	}
+	return s
+}
+
+// handleControl runs a JSON control message; false = drop the client.
+func (c *conn) handleControl(b []byte) bool {
+	var m control
+	if json.Unmarshal(b, &m) != nil {
+		c.control(control{T: "error", Code: "bad_request"})
+		return false
+	}
+	if c.room != nil && m.T != "kick" {
+		c.control(control{T: "error", Code: "already_in_room"})
+		return true
+	}
+	switch m.T {
+	case "create":
+		c.name = cleanName(m.Name)
+		r, code := c.hub.create(c)
+		if r == nil {
+			c.control(control{T: "error", Code: code})
+			return true
+		}
+		c.control(control{T: "created", Room: r.code, Token: r.token})
+	case "resume":
+		r, code := c.hub.resume(c, m.Room, m.Token)
+		if r == nil {
+			c.control(control{T: "error", Code: code})
+			return true
+		}
+		c.control(control{T: "created", Room: r.code, Token: r.token})
+	case "join":
+		if m.Role != "guest" && m.Role != "dj" {
+			c.control(control{T: "error", Code: "bad_request"})
+			return true
+		}
+		c.name, c.role = cleanName(m.Name), m.Role
+		r, code := c.hub.join(c, m.Room)
+		if r == nil {
+			c.control(control{T: "error", Code: code})
+			return true
+		}
+		c.control(control{T: "joined", Room: r.code, ID: c.id})
+	case "kick":
+		if c.host {
+			c.hub.kick(c, m.ID)
+		}
+	default:
+		c.control(control{T: "error", Code: "bad_request"})
+	}
+	return true
+}
+
+// route forwards a binary frame by its header, without looking at the payload.
+func (c *conn) route(b []byte) {
+	if c.room == nil || len(b) < headerLen {
+		return
+	}
+	kind := b[0]
+	if c.host {
+		switch kind {
+		case kindState:
+			for _, p := range c.hub.peersOf(c.room) {
+				p.setLatest(b)
+			}
+		case kindEvent:
+			for _, p := range c.hub.peersOf(c.room) {
+				p.enqueue(b)
+			}
+		case kindTo:
+			if p := c.hub.peer(c.room, binary.BigEndian.Uint16(b[1:3])); p != nil {
+				p.enqueue(b)
+			}
+		}
+		return
+	}
+	if kind != kindFrom {
+		return
+	}
+	// Stamp the real sender id; the host sees who sent it, peers can't pretend to be someone else.
+	out := make([]byte, len(b))
+	copy(out, b)
+	binary.BigEndian.PutUint16(out[1:3], c.id)
+	if h := c.hub.hostOf(c.room); h != nil && !h.offer(out) {
+		c.control(control{T: "error", Code: "host_busy"})
+	}
+}
