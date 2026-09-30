@@ -1,11 +1,15 @@
 import { Backdrop } from "@/components/Backdrop";
 import { Brand } from "@/components/Brand";
+import { useEffect } from "react";
+import { stopAuto } from "@/dj/session";
 import { DjStudio } from "@/dj/Studio";
 import { useGame } from "@/store";
 
 /** The DJ role from the dashboard: a practice room with the full studio. */
 export function StudioScreen() {
   const go = useGame((x) => x.go);
+  // Leaving the practice room ends a set being previewed (at the club it keeps playing).
+  useEffect(() => stopAuto, []);
   return (
     <main className="fixed inset-0 overflow-y-auto">
       <Backdrop />

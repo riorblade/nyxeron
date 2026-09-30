@@ -4,14 +4,16 @@ import {
   djs,
   genreForecast,
   ids,
+  night,
   r03_bookDj,
   type GameState,
 } from "@nyxeron/core";
-import { Check, Headphones, Lock, Music2, Users } from "lucide-react";
+import { Check, Disc3, Headphones, Lock, Music2, Users } from "lucide-react";
 import { art } from "@/art";
 import { Img } from "@/components/Img";
 import { TiltCard } from "@/components/TiltCard";
-import { en, fmt, genres } from "@/i18n/en";
+import { useSets } from "@/dj/sets";
+import { clock, en, fmt, genres } from "@/i18n/en";
 import { cn } from "@/lib/utils";
 import { useGame } from "@/store";
 
@@ -23,6 +25,7 @@ export function TalentTab({ s }: { s: GameState }) {
   return (
     <div className="grid gap-6 xl:grid-cols-[1fr_15rem]">
       <div className="space-y-8">
+        <MySet />
         <ul className="grid grid-cols-[repeat(auto-fill,minmax(11.5rem,1fr))] gap-4">
           {ids(djs).map((id) => {
             const d = djs[id];
@@ -210,6 +213,36 @@ function Bands({ s, top }: { s: GameState; top?: string }) {
           );
         })}
       </ul>
+    </section>
+  );
+}
+
+/** The CEO's own planned set (DJ Studio → Sets): it plays from the DJ slot instead of the booked DJ's music. */
+function MySet() {
+  const { sets, tonight, setTonight } = useSets();
+  const t = en.dj.mySet;
+  return (
+    <section className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+      <Disc3 className="size-5 shrink-0" />
+      <div className="min-w-0 flex-1">
+        <h3 className="font-medium">{t.title}</h3>
+        <p className="mt-0.5 text-xs text-white/60">
+          {t.desc(clock(night.djSetStartMinute))}
+        </p>
+      </div>
+      <select
+        className="h-9 rounded-md border border-white/15 bg-black/50 px-2 text-sm"
+        value={tonight ?? ""}
+        onChange={(e) => setTonight(e.target.value || null)}
+        aria-label={t.title}
+      >
+        <option value="">{t.none}</option>
+        {sets.map((x) => (
+          <option key={x.id} value={x.id}>
+            {x.name} · {x.items.length}
+          </option>
+        ))}
+      </select>
     </section>
   );
 }

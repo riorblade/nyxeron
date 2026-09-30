@@ -67,6 +67,28 @@ export function syncSpeed(targetBpm: number, bpm: number): number {
   )[0]!;
 }
 
+export interface Mix {
+  trim: number;
+  high: number;
+  mid: number;
+  low: number;
+  /** −1 low-pass … 0 off … 1 high-pass. */
+  filter: number;
+  echo: number;
+  reverb: number;
+  fader: number;
+}
+export const FLAT: Mix = {
+  trim: 1,
+  high: 0,
+  mid: 0,
+  low: 0,
+  filter: 0,
+  echo: 0,
+  reverb: 0,
+  fader: 1,
+};
+
 /** 3-band EQ range in dB (full kill at the bottom). */
 export const EQ_MIN = -26;
 export const EQ_MAX = 6;
@@ -431,6 +453,27 @@ export class Deck {
   scaleBpm(k: 2 | 0.5) {
     if (!this.track) return;
     this.track.bpm = Math.round(this.track.bpm * k * 10) / 10;
+  }
+
+  /** The channel's knob and fader positions (what the mixer shows; automation and the DJ both set them). */
+  mix: Mix = { ...FLAT };
+
+  setMix(k: keyof Mix, x: number) {
+    this.mix = { ...this.mix, [k]: x };
+    const now = this.ctx.currentTime;
+    if (k === "trim") this.trim.gain.setTargetAtTime(x, now, 0.02);
+    else if (k === "high" || k === "mid" || k === "low") this.setEq(k, x);
+    else if (k === "filter") this.setFilter(x);
+    else if (k === "echo") this.echoSend.gain.setTargetAtTime(x, now, 0.02);
+    else if (k === "reverb")
+      this.reverbSend.gain.setTargetAtTime(x * 0.8, now, 0.02);
+    // Squared: the fader's travel feels even to the ear.
+    else this.fader.gain.setTargetAtTime(x * x, now, 0.01);
+  }
+
+  /** Back to a flat channel: fader up, EQ and filter centred, no sends. */
+  resetMix() {
+    for (const k of Object.keys(FLAT) as (keyof Mix)[]) this.setMix(k, FLAT[k]);
   }
 
   setEq(band: "low" | "mid" | "high", db: number) {

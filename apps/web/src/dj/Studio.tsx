@@ -20,9 +20,12 @@ import {
 import { CRATE_TRACKS } from "@/audio";
 import { en } from "@/i18n/en";
 import { cn } from "@/lib/utils";
-import { EQ_MAX, EQ_MIN, type Deck } from "./deck";
-import { DjEngine } from "./engine";
+import { EQ_MAX, EQ_MIN, type Deck, type Mix } from "./deck";
+import type { DjEngine } from "./engine";
+import { acquireEngine, getEngine, releaseEngine } from "./session";
 import { PADS } from "./sampler";
+import { AutoStatus, SetPlanner } from "./SetPlanner";
+import { useSets } from "./sets";
 
 const t = en.dj;
 /** Seconds of audio per platter turn (a 33⅓ rpm record). */
@@ -33,26 +36,17 @@ const SPAN = 6;
 const mmss = (s: number) =>
   `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
-/** The studio's engine: opened on mount (it takes the room), closed on unmount; re-renders on its changes. */
+/** The shared studio engine, held while the studio is open; re-renders on its changes. */
 function useEngine() {
-  const [engine] = useState(() => new DjEngine());
+  const [engine] = useState(getEngine);
   useSyncExternalStore(
     (cb) => engine.subscribe(cb),
     () => engine.version,
   );
   useEffect(() => {
-    engine.open();
-    let raf = 0;
-    const loop = () => {
-      engine.tick();
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => {
-      cancelAnimationFrame(raf);
-      engine.close();
-    };
-  }, [engine]);
+    acquireEngine();
+    return releaseEngine;
+  }, []);
   return engine.ready ? engine : null;
 }
 
@@ -68,6 +62,7 @@ export function DjStudio({
   onClose: () => void;
 }) {
   const engine = useEngine();
+  const [tab, setTab] = useState<"crate" | "sets">("crate");
 
   useEffect(() => {
     // Capture phase: the studio's keys win over the night screen's (1–3 speed, Esc menu…).
@@ -121,6 +116,7 @@ export function DjStudio({
       </header>
       {engine ? (
         <>
+          <AutoStatus engine={engine} />
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1fr_17rem_1fr]">
             <DeckPanel
               engine={engine}
@@ -137,7 +133,31 @@ export function DjStudio({
             />
           </div>
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_1fr]">
-            <Browser engine={engine} />
+            <div className="rounded-xl border border-white/10 bg-black/30 p-3">
+              <div className="mb-2 flex gap-1" role="tablist">
+                {(["crate", "sets"] as const).map((k) => (
+                  <button
+                    key={k}
+                    role="tab"
+                    aria-selected={tab === k}
+                    onClick={() => setTab(k)}
+                    className={cn(
+                      "rounded-md px-2.5 py-1 text-[10px] tracking-[0.25em] uppercase",
+                      tab === k
+                        ? "bg-white text-black"
+                        : "text-white/60 hover:bg-white/10",
+                    )}
+                  >
+                    {t.tabs[k]}
+                  </button>
+                ))}
+              </div>
+              {tab === "crate" ? (
+                <Browser engine={engine} />
+              ) : (
+                <SetPlanner engine={engine} />
+              )}
+            </div>
             <Pads engine={engine} />
           </div>
         </>
@@ -181,12 +201,22 @@ function DeckPanel({
             </span>
             <Btn
               small
-              onClick={act(() => deck.scaleBpm(0.5))}
+              onClick={act(() => {
+                deck.scaleBpm(0.5);
+                useSets.getState().fixBpm(tr.id, 0.5);
+              })}
               title={t.bpmHint}
             >
               ÷2
             </Btn>
-            <Btn small onClick={act(() => deck.scaleBpm(2))} title={t.bpmHint}>
+            <Btn
+              small
+              onClick={act(() => {
+                deck.scaleBpm(2);
+                useSets.getState().fixBpm(tr.id, 2);
+              })}
+              title={t.bpmHint}
+            >
               ×2
             </Btn>
           </>
@@ -565,32 +595,14 @@ function Channel({
   deck: Deck;
   name: string;
 }) {
-  // Knob values live in the audio graph; keep a local copy for the controls.
-  const [v, setV] = useState({
-    trim: 1,
-    high: 0,
-    mid: 0,
-    low: 0,
-    filter: 0,
-    echo: 0,
-    reverb: 0,
-    fader: 1,
-  });
-  const now = () => engine.ctx.currentTime;
-  const set = (k: keyof typeof v, x: number) => {
-    setV((o) => ({ ...o, [k]: x }));
-    if (k === "trim") deck.trim.gain.setTargetAtTime(x, now(), 0.02);
-    else if (k === "high" || k === "mid" || k === "low") deck.setEq(k, x);
-    else if (k === "filter") deck.setFilter(x);
-    else if (k === "echo") {
-      engine.syncEcho();
-      deck.echoSend.gain.setTargetAtTime(x, now(), 0.02);
-    } else if (k === "reverb")
-      deck.reverbSend.gain.setTargetAtTime(x * 0.8, now(), 0.02);
-    else deck.fader.gain.setTargetAtTime(x * x, now(), 0.01);
+  const v = deck.mix;
+  const set = (k: keyof Mix, x: number) => {
+    deck.setMix(k, x);
+    if (k === "echo") engine.syncEcho();
+    engine.emit();
   };
   const row = (
-    k: keyof typeof v,
+    k: keyof Mix,
     label: string,
     min: number,
     max: number,
@@ -681,10 +693,7 @@ function Browser({ engine }: { engine: DjEngine }) {
     }
   };
   return (
-    <div className="rounded-xl border border-white/10 bg-black/30 p-3">
-      <h3 className="mb-2 text-[10px] tracking-[0.3em] text-white/60 uppercase">
-        {t.crate}
-      </h3>
+    <div>
       <ul className="space-y-1">
         {CRATE_TRACKS.map(({ file, title }) => (
           <li

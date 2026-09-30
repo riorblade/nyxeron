@@ -1,6 +1,7 @@
 import { audio } from "@/audio";
 import { Deck, loadTrack, type Track } from "./deck";
 import { playPad, type PadId } from "./sampler";
+import { useSets } from "./sets";
 
 /**
  * The DJ studio's sound engine: two decks into a mixer (crossfader, per-channel EQ/filter/FX sends), an echo and a
@@ -96,7 +97,8 @@ export class DjEngine {
   }
 
   /** Load a club track from /public/audio, or any file the DJ brings. */
-  async load(deck: Deck, id: string, title: string, file?: File) {
+  /** Decode and analyse a track once (cached): a club track from /public/audio, or a file the DJ brings. */
+  track(id: string, title: string, file?: File): Promise<Track> {
     let p = this.cache.get(id);
     if (!p) {
       p = (
@@ -106,11 +108,21 @@ export class DjEngine {
               if (!r.ok) throw new Error(`${r.status}`);
               return r.arrayBuffer();
             })
-      ).then((data) => loadTrack(this.ctx, id, title, data));
+      )
+        .then((data) => loadTrack(this.ctx, id, title, data))
+        .then((tr) => {
+          // The DJ's own tempo correction for this track (×2 / ÷2), if any.
+          tr.bpm *= useSets.getState().bpmFix[id] ?? 1;
+          return tr;
+        });
       this.cache.set(id, p);
       p.catch(() => this.cache.delete(id));
     }
-    deck.load(await p);
+    return p;
+  }
+
+  async load(deck: Deck, id: string, title: string, file?: File) {
+    deck.load(await this.track(id, title, file));
     this.syncEcho();
     this.emit();
   }

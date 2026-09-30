@@ -439,6 +439,12 @@ class ClubAudio {
     return { ctx: this.ctx!, input: this.muffle };
   }
 
+  /** The DJ studio's auto set names the track it is playing (Now Playing). */
+  setNowPlaying(title: string) {
+    this.nowPlaying = title;
+    this.listeners.forEach((f) => f());
+  }
+
   /** The studio hands the room back: whatever should be playing now starts again. */
   release() {
     this.decks = null;

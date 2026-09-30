@@ -42,6 +42,8 @@ import { Button } from "@/components/ui/button";
 import { EventFeed } from "@/hud/EventFeed";
 import { Objectives } from "@/hud/Objectives";
 import { CrowdMoves, EnergyMeter } from "@/hud/CrowdMoves";
+import { startAuto, stopAuto } from "@/dj/session";
+import { useSets } from "@/dj/sets";
 import { DjStudio } from "@/dj/Studio";
 import { PyroPanel } from "@/hud/PyroPanel";
 import { StockBars } from "@/hud/StockBars";
@@ -258,6 +260,22 @@ function VideotronPanel() {
   );
 }
 
+/**
+ * The CEO's own planned set (Office → Talent): from the DJ slot until the night ends it plays on the studio's
+ * decks instead of the club's music. Taking the decks shows it running and lets the CEO ride it live.
+ */
+function usePlayerSet(s: GameState) {
+  const set = useSets((x) => x.sets.find((y) => y.id === x.tonight));
+  const djTime = s.night!.minute >= nightData.djSetStartMinute;
+  const id = set?.id;
+  useEffect(() => {
+    if (!id || !djTime) return;
+    const plan = useSets.getState().sets.find((y) => y.id === id);
+    if (plan) startAuto(plan);
+    return stopAuto;
+  }, [id, djTime]);
+}
+
 /** Night soundtrack + alert tones. */
 function useNightAudio(s: GameState, intro: boolean, paused: boolean) {
   // House warm-up until the set starts, then the booked DJ (the landing track never plays inside). The cutscene and the pause menu
@@ -318,6 +336,7 @@ export function Night({ s }: { s: GameState }) {
   const [confirmSkip, setConfirmSkip] = useState(false);
   useNightLoop();
   useNightAudio(s, intro, paused);
+  usePlayerSet(s);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
