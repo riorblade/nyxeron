@@ -178,6 +178,12 @@ export const en = {
     waiting: "waiting",
     kick: "Kick",
     none: "No one yet. Share the code.",
+    djTaken: "This club already has a DJ on the decks.",
+    djJoinTitle: "Play a live club",
+    djJoinHint:
+      "A CEO invited you to DJ? Enter their room code: your decks become the club's music, everyone hears your mix.",
+    djJoin: "Take the decks",
+    djLive: (name: string) => `DJ ${name} is on the decks`,
   },
 
   gig: {
@@ -735,6 +741,8 @@ export const en = {
     loading: "loading…",
     loadTo: (d: string) => `→ ${d}`,
     upload: "Bring your own track (mp3, wav…)",
+    crateOnly:
+      "Live in another club: crate tracks only (the other players can't hear a file from your computer).",
     loadError: "Couldn't load that track.",
     sampler: "Sampler",
     ceoSamplerHint:

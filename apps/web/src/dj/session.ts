@@ -50,3 +50,9 @@ export function stopAuto() {
   auto = null;
   releaseEngine();
 }
+
+// Dev-only handle for automated browser checks (reads the app's own engine); stripped from production builds.
+if (import.meta.env.DEV && typeof window !== "undefined")
+  (window as unknown as { __dj: { getEngine: typeof getEngine } }).__dj = {
+    getEngine,
+  };

@@ -47,6 +47,7 @@ import { useSets } from "@/dj/sets";
 import { DjStudio } from "@/dj/Studio";
 import { PyroPanel } from "@/hud/PyroPanel";
 import { RoomPanel } from "@/hud/RoomPanel";
+import { useNet } from "@/net/session";
 import { padForKey, SamplerPanel } from "@/hud/SamplerPanel";
 import { StockBars } from "@/hud/StockBars";
 import { TickerTape } from "@/hud/TickerTape";
@@ -268,7 +269,9 @@ function VideotronPanel() {
  */
 function usePlayerSet(s: GameState) {
   const set = useSets((x) => x.sets.find((y) => y.id === x.tonight));
-  const djTime = s.night!.minute >= nightData.djSetStartMinute;
+  // A live player DJ has the decks: the CEO's planned set steps aside.
+  const liveDj = useNet((x) => !!x.dj);
+  const djTime = s.night!.minute >= nightData.djSetStartMinute && !liveDj;
   const id = set?.id;
   useEffect(() => {
     if (!id || !djTime) return;
@@ -333,6 +336,8 @@ export function Night({ s }: { s: GameState }) {
   const [ceoOpen, setCeoOpen] = useState(false);
   // Live DJ studio over the club: the CEO takes the decks and the crowd hears the mix.
   const [decks, setDecks] = useState(false);
+  // A player DJ live in this club (multiplayer): their avatar at the booth, their mix is the music.
+  const liveDj = useNet((x) => x.dj);
   const closeDecks = useCallback(() => setDecks(false), []);
   // Skipping ends the night in one go, so it asks first (easy to hit by mistake).
   const [confirmSkip, setConfirmSkip] = useState(false);
@@ -406,6 +411,7 @@ export function Night({ s }: { s: GameState }) {
     <div className="fixed inset-0 overflow-hidden bg-black">
       <VenueView
         s={s}
+        guestDj={liveDj ?? undefined}
         editing={view === "edit"}
         active={view !== "office"}
         cinematic={cinematic && view === "venue"}
@@ -456,14 +462,17 @@ export function Night({ s }: { s: GameState }) {
                 </button>
                 <MuteButton className={seg(false)} />
               </div>
-              <button
-                className="flex size-10 items-center justify-center rounded-lg border border-white/25 bg-black/30 hover:bg-white/10"
-                onClick={() => setDecks(true)}
-                aria-label={en.dj.takeDecks}
-                title={en.dj.takeDecks}
-              >
-                <Disc3 className="size-4" />
-              </button>
+              {/* A live player DJ has the decks; the CEO doesn't take them over. */}
+              {!liveDj && (
+                <button
+                  className="flex size-10 items-center justify-center rounded-lg border border-white/25 bg-black/30 hover:bg-white/10"
+                  onClick={() => setDecks(true)}
+                  aria-label={en.dj.takeDecks}
+                  title={en.dj.takeDecks}
+                >
+                  <Disc3 className="size-4" />
+                </button>
+              )}
               <button
                 className="flex size-10 items-center justify-center rounded-lg border border-white/25 bg-black/30 hover:bg-white/10"
                 onClick={() => setCinematic(true)}

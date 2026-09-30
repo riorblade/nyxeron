@@ -56,9 +56,12 @@ function useEngine() {
  */
 export function DjStudio({
   live,
+  crateOnly,
   onClose,
 }: {
   live?: boolean;
+  /** Live DJ in someone else's club: only crate tracks (the other players can't play a file from this computer). */
+  crateOnly?: boolean;
   onClose: () => void;
 }) {
   const engine = useEngine();
@@ -153,7 +156,7 @@ export function DjStudio({
                 ))}
               </div>
               {tab === "crate" ? (
-                <Browser engine={engine} />
+                <Browser engine={engine} crateOnly={crateOnly} />
               ) : (
                 <SetPlanner engine={engine} />
               )}
@@ -307,14 +310,14 @@ function DeckPanel({
               4<ChevronsRight className="size-4" />
             </Btn>
             <Btn
-              onClick={act(() => deck.brake())}
+              onClick={act(() => engine.brake(deck))}
               disabled={!deck.playing}
               title={t.brakeHint}
             >
               {t.brake}
             </Btn>
             <Btn
-              onClick={act(() => deck.backspin())}
+              onClick={act(() => engine.backspin(deck))}
               disabled={!tr}
               title={t.spinHint}
             >
@@ -678,7 +681,13 @@ function Meter({ deck }: { deck: Deck }) {
 
 // ---------- browser & pads ----------
 
-function Browser({ engine }: { engine: DjEngine }) {
+function Browser({
+  engine,
+  crateOnly,
+}: {
+  engine: DjEngine;
+  crateOnly?: boolean;
+}) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const load = async (deck: Deck, id: string, title: string, file?: File) => {
@@ -718,28 +727,32 @@ function Browser({ engine }: { engine: DjEngine }) {
           </li>
         ))}
       </ul>
-      <label className="mt-2 flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-white/20 px-2 py-2 text-xs text-white/65 hover:bg-white/[0.04]">
-        <Upload className="size-4" />
-        {t.upload}
-        <input
-          type="file"
-          accept="audio/*"
-          className="sr-only"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (!f) return;
-            const deck =
-              engine.a.track && !engine.b.track ? engine.b : engine.a;
-            void load(
-              deck,
-              `file:${f.name}:${f.size}`,
-              f.name.replace(/\.[^.]+$/, ""),
-              f,
-            );
-            e.target.value = "";
-          }}
-        />
-      </label>
+      {crateOnly ? (
+        <p className="mt-2 text-[11px] text-white/50">{t.crateOnly}</p>
+      ) : (
+        <label className="mt-2 flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-white/20 px-2 py-2 text-xs text-white/65 hover:bg-white/[0.04]">
+          <Upload className="size-4" />
+          {t.upload}
+          <input
+            type="file"
+            accept="audio/*"
+            className="sr-only"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (!f) return;
+              const deck =
+                engine.a.track && !engine.b.track ? engine.b : engine.a;
+              void load(
+                deck,
+                `file:${f.name}:${f.size}`,
+                f.name.replace(/\.[^.]+$/, ""),
+                f,
+              );
+              e.target.value = "";
+            }}
+          />
+        </label>
+      )}
       {error && <p className="mt-1 text-xs">{t.loadError}</p>}
     </div>
   );

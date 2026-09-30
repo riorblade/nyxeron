@@ -10,9 +10,12 @@ import {
   type TokenId,
 } from "@nyxeron/core";
 import { create } from "zustand";
-import { reasonText } from "@/i18n/en";
+import { en, reasonText } from "@/i18n/en";
 import { useGame } from "@/store";
 import { packState, unpackState } from "./codec";
+import { acquireEngine, getEngine, releaseEngine } from "@/dj/session";
+import type { DjAct } from "@/dj/engine";
+import { applyMix, mixSnapshot, type MixSync } from "@/dj/mixsync";
 import { KIND, pack, Relay, unpack, type Frame } from "./relay";
 
 /**
@@ -20,15 +23,28 @@ import { KIND, pack, Relay, unpack, type Frame } from "./relay";
  * broadcasts gzipped snapshots. Guests render those snapshots and send what they want to do.
  *
  * Player → host: {t:"hello",name,avatar,cash} · {t:"buy",token,qty} · {t:"bye"}
- * Host → player: {t:"welcome",ok,reason?,short?} · {t:"result",ok,reason?,short?,token,qty,cost}
- * Host → all:    state frames (gzipped GameState)
+ * DJ → host:     {t:"djhello",name,avatar} · {t:"mix",m} (4×/s) · {t:"act",a} (pads, brake, backspin)
+ * Host → player: {t:"welcome",ok,reason?,short?} · {t:"result",ok,reason?,short?,token,qty,cost} · {t:"dj",…}
+ * Host → all:    state frames (gzipped GameState); events {t:"dj",on,name,avatar} · {t:"mix",m} · {t:"act",a}
+ *
+ * A live DJ's music isn't streamed: every player's browser plays the same crate tracks and follows the DJ's mix
+ * state (dj/mixsync.ts), so the relay carries a few hundred bytes a second.
  */
 type Hello = { name: string; avatar: number; cash: number };
+type DjHello = { name: string; avatar: number };
 type Input =
   | ({ t: "hello" } & Hello)
   | { t: "buy"; token: TokenId; qty: number }
-  | { t: "bye" };
+  | { t: "bye" }
+  | ({ t: "djhello" } & DjHello)
+  | { t: "mix"; m: MixSync }
+  | { t: "act"; a: DjAct };
+type Live =
+  | { t: "dj"; on: boolean; name?: string; avatar?: number }
+  | { t: "mix"; m: MixSync }
+  | { t: "act"; a: DjAct };
 type Reply =
+  | Live
   | { t: "welcome"; ok: boolean; reason?: string; short?: number }
   | {
       t: "result";
@@ -49,7 +65,9 @@ export interface Player {
 }
 
 interface Net {
-  role: "off" | "host" | "guest";
+  role: "off" | "host" | "guest" | "dj";
+  /** The player DJ live in this club (everyone knows, for the booth and the videotron). */
+  dj: DjHello | null;
   room: string;
   status: "connecting" | "live" | "host-away" | "closed" | "error";
   error: string;
@@ -68,6 +86,7 @@ interface Net {
 
 export const useNet = create<Net>(() => ({
   role: "off",
+  dj: null,
   room: "",
   status: "connecting",
   error: "",
@@ -83,10 +102,49 @@ const set = useNet.setState;
 let relay: Relay | null = null;
 
 /** A reason code from the host, as a sentence. */
-const why = (reason?: string, short?: number) =>
-  reason ? reasonText(reason as Parameters<typeof reasonText>[0], short) : "";
+const why = (reason?: string, short?: number) => {
+  if (!reason) return "";
+  if (reason === "dj_taken") return en.live.djTaken;
+  try {
+    return reasonText(reason as Parameters<typeof reasonText>[0], short);
+  } catch {
+    return reason;
+  }
+};
+
+// ---------------- following a live DJ (host and guests) ----------------
+
+let following = false;
+
+/** Play along with the DJ's mix on this browser's own engine (it takes the room from the club's music). */
+function follow(m: Live) {
+  if (m.t === "dj") {
+    set({ dj: m.on ? { name: m.name ?? "DJ", avatar: m.avatar ?? 1 } : null });
+    if (!m.on) unfollow();
+    return;
+  }
+  if (!following) {
+    following = true;
+    acquireEngine();
+  }
+  const e = getEngine();
+  if (!e.ready) return;
+  if (m.t === "mix") void applyMix(e, m.m);
+  else if (m.a.t === "pad") e.pad(m.a.id);
+  else if (m.a.t === "brake") (m.a.deck === "a" ? e.a : e.b).brake();
+  else (m.a.deck === "a" ? e.a : e.b).backspin();
+}
+
+function unfollow() {
+  if (!following) return;
+  following = false;
+  releaseEngine();
+}
 
 // ---------------- host (the CEO) ----------------
+
+/** The player DJ's relay id (one DJ at a time). */
+let djPeer = 0;
 
 const hellos = new Map<number, Hello>();
 let unsubscribe: (() => void) | null = null;
@@ -183,6 +241,27 @@ function onHostFrame(f: Frame) {
       qty,
       cost: before - after,
     });
+  } else if (m.t === "djhello") {
+    if (djPeer && djPeer !== f.peer) {
+      reply(f.peer, { t: "welcome", ok: false, reason: "dj_taken" });
+      return;
+    }
+    djPeer = f.peer;
+    const dj: Live = {
+      t: "dj",
+      on: true,
+      name: String(m.name ?? "").slice(0, 24) || "DJ",
+      avatar: Number(m.avatar) || 1,
+    };
+    relay?.event(pack(dj));
+    follow(dj);
+    reply(f.peer, { t: "welcome", ok: true });
+    markInside(f.peer, true);
+  } else if ((m.t === "mix" || m.t === "act") && f.peer === djPeer) {
+    // Pass the DJ's mix to every player and play along here.
+    relay?.event(pack(m));
+    follow(m);
+    return;
   } else if (m.t === "bye") {
     hellos.delete(f.peer);
     const g = useGame.getState().game;
@@ -210,7 +289,14 @@ export async function hostOpen(clubName: string) {
         inside: false,
       };
       broadcastSoon(); // the newcomer needs a first snapshot
+      const dj = useNet.getState().dj;
+      if (dj) relay?.to(c.id, pack({ t: "dj", on: true, ...dj }));
     } else {
+      if (c.id === djPeer) {
+        djPeer = 0;
+        relay?.event(pack({ t: "dj", on: false }));
+        follow({ t: "dj", on: false });
+      }
       delete players[c.id];
       hellos.delete(c.id);
       const g = useGame.getState().game;
@@ -244,19 +330,25 @@ export function hostClose() {
   hellos.clear();
   relay?.close();
   relay = null;
-  set({ role: "off", room: "", players: {}, status: "closed" });
+  djPeer = 0;
+  unfollow();
+  set({ role: "off", room: "", players: {}, status: "closed", dj: null });
 }
 
 export const kick = (id: number) => relay?.kick(id);
 
 // ---------------- guest ----------------
 
-/** Join a CEO's live club with a room code (as a guest, bringing the wallet). */
-export async function guestJoin(code: string, hello: Hello) {
+/** Join a CEO's live club with a room code: as a guest (bringing the wallet) or as its DJ. */
+export async function guestJoin(
+  code: string,
+  hello: Hello,
+  as: "guest" | "dj" = "guest",
+) {
   guestLeave();
   relay = new Relay();
   set({
-    role: "guest",
+    role: as,
     room: code,
     status: "connecting",
     error: "",
@@ -296,6 +388,11 @@ export async function guestJoin(code: string, hello: Hello) {
       return;
     }
     const m = unpack<Reply>(f.payload);
+    if (m.t === "dj" || m.t === "mix" || m.t === "act") {
+      // The DJ doesn't follow their own mix.
+      if (useNet.getState().role === "guest" || m.t === "dj") follow(m);
+      return;
+    }
     if (m.t === "welcome") set({ refused: m.ok ? "" : why(m.reason, m.short) });
     if (m.t === "result")
       useGame
@@ -306,9 +403,15 @@ export async function guestJoin(code: string, hello: Hello) {
         );
   };
   try {
-    const id = await relay.join(code.trim().toUpperCase(), hello.name, "guest");
+    const id = await relay.join(code.trim().toUpperCase(), hello.name, as);
     set({ me: String(id), status: "live" });
-    relay.input(pack({ t: "hello", ...hello }));
+    relay.input(
+      pack(
+        as === "dj"
+          ? { t: "djhello", name: hello.name, avatar: hello.avatar }
+          : { t: "hello", ...hello },
+      ),
+    );
   } catch (e) {
     set({ status: "error", error: (e as Error).message });
     relay?.close();
@@ -322,9 +425,46 @@ export function guestBuy(token: TokenId, qty: number) {
 }
 
 export function guestLeave() {
-  if (useNet.getState().role !== "guest") return;
+  const { role } = useNet.getState();
+  if (role !== "guest" && role !== "dj") return;
   relay?.input(pack({ t: "bye" }));
   relay?.close();
   relay = null;
-  set({ role: "off", room: "", remote: null, me: "", status: "closed" });
+  unfollow();
+  stopMixing();
+  set({
+    role: "off",
+    room: "",
+    remote: null,
+    me: "",
+    status: "closed",
+    dj: null,
+  });
 }
+
+// ---------------- the live DJ ----------------
+
+let mixTimer = 0;
+
+/**
+ * The DJ's decks go live: the mix state 4× a second, one-shot moves as they happen. The studio's engine must be
+ * open (the DJ screen holds it).
+ */
+export function startMixing() {
+  stopMixing();
+  const e = getEngine();
+  e.onAct = (a) => relay?.input(pack({ t: "act", a }));
+  mixTimer = window.setInterval(() => {
+    if (e.ready) relay?.input(pack({ t: "mix", m: mixSnapshot(e) }));
+  }, 250);
+}
+
+export function stopMixing() {
+  clearInterval(mixTimer);
+  mixTimer = 0;
+  getEngine().onAct = undefined;
+}
+
+// Dev-only handle for automated browser checks; stripped from production builds.
+if (import.meta.env.DEV && typeof window !== "undefined")
+  (window as unknown as { __net: typeof useNet }).__net = useNet;

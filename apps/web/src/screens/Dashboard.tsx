@@ -443,7 +443,13 @@ function CeoPanel() {
 }
 
 /** Walk into a real CEO's live club with the room code they shared. */
-function LiveJoin({ initial }: { initial: string }) {
+function LiveJoin({
+  initial,
+  as = "guest",
+}: {
+  initial: string;
+  as?: "guest" | "dj";
+}) {
   const go = useGame((x) => x.go);
   const [code, setCode] = useState(initial);
   const [busy, setBusy] = useState(false);
@@ -454,8 +460,8 @@ function LiveJoin({ initial }: { initial: string }) {
     setBusy(true);
     setError("");
     try {
-      await guestJoin(code, { name: name || t.anon, avatar, cash: wallet });
-      go("live");
+      await guestJoin(code, { name: name || t.anon, avatar, cash: wallet }, as);
+      go(as === "dj" ? "livedj" : "live");
     } catch (e) {
       setError(l.error((e as Error).message));
     } finally {
@@ -471,8 +477,12 @@ function LiveJoin({ initial }: { initial: string }) {
       }}
     >
       <div>
-        <h2 className="text-lg font-medium">{l.joinTitle}</h2>
-        <p className="text-sm text-white/55">{l.joinHint}</p>
+        <h2 className="text-lg font-medium">
+          {as === "dj" ? l.djJoinTitle : l.joinTitle}
+        </h2>
+        <p className="text-sm text-white/55">
+          {as === "dj" ? l.djJoinHint : l.joinHint}
+        </p>
       </div>
       <div className="flex gap-2">
         <Input
@@ -495,7 +505,7 @@ function LiveJoin({ initial }: { initial: string }) {
           disabled={code.length !== 6 || busy}
           className="h-10 rounded-lg bg-white px-4 text-xs font-semibold tracking-[0.14em] text-black uppercase disabled:opacity-40"
         >
-          {busy ? "…" : l.join}
+          {busy ? "…" : as === "dj" ? l.djJoin : l.join}
         </button>
       </div>
       {error && <p className="text-sm text-white/80">{error}</p>}
@@ -598,6 +608,7 @@ function GigList() {
         </span>
         <span aria-hidden>→</span>
       </button>
+      <LiveJoin initial="" as="dj" />
       <div>
         <h2 className="text-2xl font-medium tracking-[-0.02em]">{g.invites}</h2>
         <p className="mt-1 text-sm text-white/55">

@@ -26,7 +26,8 @@ export type Screen =
   | "guest"
   | "studio"
   | "gig"
-  | "live";
+  | "live"
+  | "livedj";
 type NewGame =
   | { mode: "basement" }
   | { mode: "sandbox" }

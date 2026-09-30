@@ -3,6 +3,9 @@ import { Deck, loadTrack, type Track } from "./deck";
 import { playPad, type PadId } from "./sampler";
 import { useSets } from "./sets";
 
+export type DjAct =
+  { t: "pad"; id: PadId } | { t: "brake" | "spin"; deck: "a" | "b" };
+
 /**
  * The DJ studio's sound engine: two decks into a mixer (crossfader, per-channel EQ/filter/FX sends), an echo and a
  * reverb return, and the sampler, all feeding the club's audio chain (so the venue lights and pyro follow the mix).
@@ -129,6 +132,20 @@ export class DjEngine {
 
   pad(id: PadId) {
     playPad(this.ctx, this.bus, id, this.louder().liveBpm || 124);
+    this.onAct?.({ t: "pad", id });
+  }
+
+  /** One-shot moves that a follower can't infer from positions alone (live DJ → the club's other players). */
+  onAct?: (a: DjAct) => void;
+
+  /** A deck's vinyl brake or backspin, told to followers too. */
+  brake(deck: Deck) {
+    deck.brake();
+    this.onAct?.({ t: "brake", deck: deck === this.a ? "a" : "b" });
+  }
+  backspin(deck: Deck) {
+    deck.backspin();
+    this.onAct?.({ t: "spin", deck: deck === this.a ? "a" : "b" });
   }
 
   tick() {

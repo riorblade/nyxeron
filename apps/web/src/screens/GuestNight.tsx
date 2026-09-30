@@ -33,6 +33,7 @@ import { cn, trapFocus } from "@/lib/utils";
 import { useProfile } from "@/profile";
 import { useGame } from "@/store";
 import { VenueView } from "@/venue/VenueView";
+import { useNet } from "@/net/session";
 
 const t = en.guest;
 const signed = (n: number) =>
@@ -81,6 +82,7 @@ export function GuestNight({
   const [cinematic, setCinematic] = useState(false);
   const endCinematic = useCallback(() => setCinematic(false), []);
   const over = online ? online.ended : nightOver(s);
+  const liveDj = useNet((x) => (online ? x.dj : null));
   const done = over || leaving;
   useGuestLoop(done || !!online);
   useMusic(nightTrack(s), leaving, "venue");
@@ -126,6 +128,7 @@ export function GuestNight({
       <VenueView
         s={s}
         me={me}
+        guestDj={liveDj ?? undefined}
         cinematic={cinematic}
         onCinematicEnd={endCinematic}
         active={!done}

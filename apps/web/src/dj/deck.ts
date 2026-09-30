@@ -111,6 +111,10 @@ export class Deck {
   loop: { start: number; end: number; beats: number } | null = null;
   /** A backspin / brake in progress (the deck stops when it ends). */
   private stopAt = 0;
+  /** True during a brake or backspin (followers leave the deck alone until it ends). */
+  get winding() {
+    return this.stopAt > 0;
+  }
 
   private src: AudioBufferSourceNode | null = null;
   private seg: Segment = { t0: 0, p0: 0, r0: 0, r1: 0, T: 0, dir: 1 };

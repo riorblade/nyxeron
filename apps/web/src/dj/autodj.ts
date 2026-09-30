@@ -148,6 +148,7 @@ export class AutoDj {
     const old = this.cur;
     if (k === "spin") {
       old.backspin(SPIN_SEC);
+      this.e.onAct?.({ t: "spin", deck: old === this.e.a ? "a" : "b" });
       this.loadAfter = this.e.ctx.currentTime + SPIN_SEC + 0.2;
     } else {
       // Echo out: stopping the deck leaves its echoes ringing in the return.

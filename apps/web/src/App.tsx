@@ -32,6 +32,9 @@ const GigNight = lazy(() =>
 const LiveGuest = lazy(() =>
   import("@/screens/LiveGuest").then((m) => ({ default: m.LiveGuest })),
 );
+const LiveDj = lazy(() =>
+  import("@/screens/LiveDj").then((m) => ({ default: m.LiveDj })),
+);
 const blank = <div className="fixed inset-0 bg-black" />;
 
 export function App() {
@@ -71,6 +74,12 @@ export function App() {
     view = (
       <Suspense fallback={blank}>
         <LiveGuest />
+      </Suspense>
+    );
+  else if (screen === "livedj")
+    view = (
+      <Suspense fallback={blank}>
+        <LiveDj />
       </Suspense>
     );
   else if (screen === "menu" || !game) view = <Landing />;

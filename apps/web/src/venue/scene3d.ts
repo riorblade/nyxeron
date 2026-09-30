@@ -419,13 +419,11 @@ export class VenueScene {
               : null;
     this.tron = {
       callout,
-      dj: this.djOn
-        ? this.guestDj
-          ? `DJ ${this.guestDj.name}`
-          : dj
-            ? djs[dj].name
-            : null
-        : null,
+      dj: this.guestDj
+        ? `DJ ${this.guestDj.name}`
+        : this.djOn && dj
+          ? djs[dj].name
+          : null,
       top: [...this.spent]
         .sort((a, b) => b[1] - a[1])
         .slice(0, 3)
@@ -2064,7 +2062,7 @@ export class VenueScene {
       p.lift = BLOCK_H; // standing on the booth / stage
       this.stage.push(p);
     };
-    if (this.djOn && g) {
+    if (g) {
       // A guest DJ (the player): their own avatar behind the decks, with a name tag.
       add(
         a.guests[g.avatar - 1] ?? a.dj,
