@@ -23,10 +23,11 @@ func main() {
 	secs := flag.Int("secs", 15, "duration")
 	size := flag.Int("size", 2048, "snapshot bytes")
 	hz := flag.Int("hz", 10, "snapshots per second")
+	origin := flag.String("origin", "https://localhost", "Origin header (the relay only accepts its own site)")
 	flag.Parse()
 	opts := &websocket.DialOptions{
 		HTTPClient: &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}},
-		HTTPHeader: http.Header{"Origin": {"https://localhost"}},
+		HTTPHeader: http.Header{"Origin": {*origin}},
 	}
 	ctx := context.Background()
 	dial := func() *websocket.Conn {
