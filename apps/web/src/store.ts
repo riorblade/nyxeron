@@ -18,7 +18,15 @@ import { writeSave } from "./save";
 
 /** menu = landing page, dashboard = the player's hub (pick a role), guest = partying at an AI-hosted event. */
 export type Screen =
-  "menu" | "dashboard" | "setup" | "game" | "over" | "guest" | "studio" | "gig";
+  | "menu"
+  | "dashboard"
+  | "setup"
+  | "game"
+  | "over"
+  | "guest"
+  | "studio"
+  | "gig"
+  | "live";
 type NewGame =
   | { mode: "basement" }
   | { mode: "sandbox" }
@@ -63,7 +71,12 @@ interface Store {
 const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
 
 export const useGame = create<Store>((set, get) => ({
-  screen: "menu",
+  // An invite link (…/?join=CODE) skips the landing page: straight to the dashboard's join form.
+  screen:
+    typeof location !== "undefined" &&
+    new URLSearchParams(location.search).has("join")
+      ? "dashboard"
+      : "menu",
   game: null,
   origin: null,
   paused: false,
@@ -117,6 +130,7 @@ export const useGame = create<Store>((set, get) => ({
     const { name, wallet, avatar } = useProfile.getState();
     const r = visitorJoin(
       createEvent(spec, newSeed(), quotes),
+      "me",
       name || en.dashboard.anon,
       wallet,
       avatar,

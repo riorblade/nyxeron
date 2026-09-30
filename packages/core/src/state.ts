@@ -160,8 +160,8 @@ export interface NightState {
   marketEma: Partial<Record<TokenId, number>>;
   /** The market multiplier at the end of every minute so far tonight (for the charts). */
   marketHist: Partial<Record<TokenId, number[]>>;
-  /** A player who joined tonight as a guest (multiplayer guest role). */
-  visitor?: Visitor;
+  /** Players who came to party tonight (guest role), by player id: "me" offline, the relay peer id online. */
+  visitors?: Record<string, Visitor>;
   /** Live band's dance multiplier while its set runs (null = not playing). */
   bandMultiplier: number | null;
   inspectionMinute: number | null;

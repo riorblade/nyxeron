@@ -37,7 +37,7 @@ export function TokenDetail({
   const margin = live > 0 ? Math.round(((live - cost) / live) * 100) : 0;
   const hist = s.night?.marketHist?.[id] ?? [];
   // A guest sees the desk, not the club's books.
-  const guest = !!s.night?.visitor;
+  const guest = !!s.night?.visitors && Object.keys(s.night.visitors).length > 0;
 
   useEffect(() => {
     // Capture phase, so Esc closes the card instead of opening the pause menu.

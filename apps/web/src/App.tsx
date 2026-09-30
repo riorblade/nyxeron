@@ -9,6 +9,7 @@ import { Landing } from "@/screens/Landing";
 import { NightReport } from "@/screens/NightReport";
 import { Office } from "@/screens/Office";
 import { PauseMenu } from "@/screens/PauseMenu";
+import { hostClose, useNet } from "@/net/session";
 import { useGame } from "@/store";
 
 /**
@@ -28,10 +29,18 @@ const StudioScreen = lazy(() =>
 const GigNight = lazy(() =>
   import("@/screens/GigNight").then((m) => ({ default: m.GigNight })),
 );
+const LiveGuest = lazy(() =>
+  import("@/screens/LiveGuest").then((m) => ({ default: m.LiveGuest })),
+);
 const blank = <div className="fixed inset-0 bg-black" />;
 
 export function App() {
   const { screen, game, paused, setPaused, intro } = useGame();
+
+  // Leaving the CEO's game (home, game over) closes the live room; players are told the club closed.
+  useEffect(() => {
+    if (screen !== "game" && useNet.getState().role === "host") hostClose();
+  }, [screen]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -56,6 +65,12 @@ export function App() {
     view = (
       <Suspense fallback={blank}>
         <StudioScreen />
+      </Suspense>
+    );
+  else if (screen === "live")
+    view = (
+      <Suspense fallback={blank}>
+        <LiveGuest />
       </Suspense>
     );
   else if (screen === "menu" || !game) view = <Landing />;

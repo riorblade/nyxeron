@@ -21,32 +21,42 @@ export interface Visitor {
 }
 
 const ok = (state: GameState): ActionResult => ({ ok: true, state });
-const withVisitor = (s: GameState, n: NightState, v: Visitor): GameState => ({
+const withVisitor = (
+  s: GameState,
+  n: NightState,
+  id: string,
+  v: Visitor,
+): GameState => ({
   ...s,
-  night: { ...n, visitor: v },
+  night: { ...n, visitors: { ...n.visitors, [id]: v } },
 });
+
+/** The player `id` if they are in tonight's club. */
+export const visitorOf = (s: GameState, id: string) => s.night?.visitors?.[id];
 const onMenu = (s: GameState, t: TokenId) => tokens[t].minLevel <= s.level;
 
-/** Walk in: pay the club's cover from the wallet. */
+/** Walk in: pay the club's cover from the wallet. `id` names the player (multiplayer: their relay id). */
 export function visitorJoin(
   s: GameState,
+  id: string,
   name: string,
   cash: number,
   avatar = 1,
 ): ActionResult {
   const n = s.night;
-  if (s.phase !== "night" || !n || n.visitor) return fail("wrongPhase");
+  if (s.phase !== "night" || !n || n.visitors?.[id]) return fail("wrongPhase");
+  if (!Number.isFinite(cash) || cash < 0) return fail("invalidQty");
   const cover = coverPrice(s);
   if (cash < cover) return fail("notEnoughCoin", cover - cash);
   const v: Visitor = {
-    name,
+    name: name.slice(0, 24),
     avatar: Math.min(10, Math.max(1, Math.round(avatar))),
     cash: cash - cover,
     holdings: {},
     startCash: cash,
   };
   return ok({
-    ...withVisitor(s, n, v),
+    ...withVisitor(s, n, id, v),
     coin: s.coin + cover,
     nightRevenue: { ...s.nightRevenue, cover: s.nightRevenue.cover + cover },
   });
@@ -55,12 +65,14 @@ export function visitorJoin(
 /** Buy at the live price; the club's stock goes down and its takings up. */
 export function visitorBuy(
   s: GameState,
+  id: string,
   t: TokenId,
   qty: number,
 ): ActionResult {
   const n = s.night;
-  const v = n?.visitor;
+  const v = n?.visitors?.[id];
   if (!n || !v) return fail("wrongPhase");
+  if (!tokens[t]) return fail("invalidTarget");
   if (!onMenu(s, t)) return fail("levelLocked");
   if (!Number.isInteger(qty) || qty <= 0 || qty > s.stock[t])
     return fail("invalidQty");
@@ -69,7 +81,7 @@ export function visitorBuy(
   const h = v.holdings[t] ?? { qty: 0, cost: 0 };
   const fee = platformFee(s, t, marketPrice(s, t)) * qty;
   return ok({
-    ...withVisitor(s, n, {
+    ...withVisitor(s, n, id, {
       ...v,
       cash: v.cash - cost,
       holdings: {
@@ -88,8 +100,8 @@ export function visitorBuy(
 }
 
 /** Cash plus everything held, marked at the club's live price. */
-export function visitorValue(s: GameState): number {
-  const v = s.night?.visitor;
+export function visitorValue(s: GameState, id: string): number {
+  const v = visitorOf(s, id);
   if (!v) return 0;
   let total = v.cash;
   for (const [t, h] of Object.entries(v.holdings))
@@ -98,5 +110,16 @@ export function visitorValue(s: GameState): number {
 }
 
 /** Tonight's result so far (door included). */
-export const visitorPnl = (s: GameState) =>
-  s.night?.visitor ? visitorValue(s) - s.night.visitor.startCash : 0;
+export function visitorPnl(s: GameState, id: string) {
+  const v = visitorOf(s, id);
+  return v ? visitorValue(s, id) - v.startCash : 0;
+}
+
+/** The player goes home (their tokens go with them; the club keeps what they paid). */
+export function visitorLeave(s: GameState, id: string): GameState {
+  const n = s.night;
+  if (!n?.visitors?.[id]) return s;
+  const visitors = { ...n.visitors };
+  delete visitors[id];
+  return { ...s, night: { ...n, visitors } };
+}

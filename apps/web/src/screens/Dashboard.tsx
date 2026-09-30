@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { canRefill, useProfile } from "@/profile";
 import { readSave, type Slot } from "@/save";
 import { useSettings } from "@/settings";
+import { guestJoin } from "@/net/session";
 import { useGame } from "@/store";
 
 type Step = "home" | "role" | "ceo" | "guest" | "dj";
@@ -46,7 +47,16 @@ const signed = (n: number) =>
 /** The player's hub between the landing page and the game: profile, wallet, then pick a role (CEO or guest). */
 export function Dashboard() {
   useMusic(LOUNGE);
-  const [step, setStep] = useState<Step>("home");
+  // A shared invite link (…/?join=CODE) opens straight on the guest step with the code filled in.
+  const [invite] = useState(() => {
+    const code = new URLSearchParams(location.search).get("join") ?? "";
+    if (code) history.replaceState(null, "", location.pathname);
+    return code
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "")
+      .slice(0, 6);
+  });
+  const [step, setStep] = useState<Step>(invite ? "guest" : "home");
   const go = useGame((x) => x.go);
   const back = () => setStep(up);
 
@@ -95,7 +105,12 @@ export function Dashboard() {
             {step === "home" && <Home onEnter={() => setStep("role")} />}
             {step === "role" && <RolePicker onPick={setStep} />}
             {step === "ceo" && <CeoPanel />}
-            {step === "guest" && <EventList />}
+            {step === "guest" && (
+              <>
+                <LiveJoin initial={invite} />
+                <EventList />
+              </>
+            )}
             {step === "dj" && <GigList />}
           </section>
         </div>
@@ -424,6 +439,67 @@ function CeoPanel() {
           );
         })}
     </div>
+  );
+}
+
+/** Walk into a real CEO's live club with the room code they shared. */
+function LiveJoin({ initial }: { initial: string }) {
+  const go = useGame((x) => x.go);
+  const [code, setCode] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const l = en.live;
+  const join = async () => {
+    const { name, avatar, wallet } = useProfile.getState();
+    setBusy(true);
+    setError("");
+    try {
+      await guestJoin(code, { name: name || t.anon, avatar, cash: wallet });
+      go("live");
+    } catch (e) {
+      setError(l.error((e as Error).message));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form
+      className="mb-6 flex flex-col gap-2 rounded-2xl border border-white/20 bg-white/[0.04] p-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void join();
+      }}
+    >
+      <div>
+        <h2 className="text-lg font-medium">{l.joinTitle}</h2>
+        <p className="text-sm text-white/55">{l.joinHint}</p>
+      </div>
+      <div className="flex gap-2">
+        <Input
+          value={code}
+          onChange={(e) =>
+            setCode(
+              e.target.value
+                .toUpperCase()
+                .replace(/[^A-Z0-9]/g, "")
+                .slice(0, 6),
+            )
+          }
+          placeholder="K7QX9P"
+          aria-label={l.code}
+          autoFocus={!!initial}
+          className="h-10 max-w-40 font-mono text-lg tracking-[0.3em] uppercase"
+        />
+        <button
+          type="submit"
+          disabled={code.length !== 6 || busy}
+          className="h-10 rounded-lg bg-white px-4 text-xs font-semibold tracking-[0.14em] text-black uppercase disabled:opacity-40"
+        >
+          {busy ? "…" : l.join}
+        </button>
+      </div>
+      {error && <p className="text-sm text-white/80">{error}</p>}
+    </form>
   );
 }
 

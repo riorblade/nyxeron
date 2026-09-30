@@ -146,6 +146,40 @@ export const en = {
     menu: (n: number) => `${n} tokens on the desk`,
   },
 
+  live: {
+    room: (code: string) => `Room ${code}`,
+    connecting: "Connecting to the club…",
+    closed: "The club has closed.",
+    error: (code: string) =>
+      code === "room_not_found"
+        ? "No club with that code (it may have closed)."
+        : code === "room_full"
+          ? "The club is full."
+          : `Couldn't join (${code}).`,
+    hostAway: "The CEO lost connection. Hang on, the club is still here…",
+    refused: (why: string) => `The door said no: ${why}`,
+    doorsClosed:
+      "Doors open at 22:00. You're on the list: you walk in the moment the CEO opens the club.",
+    atTheDoor: "At the door…",
+    joinTitle: "Join a live club",
+    joinHint: "Got a code from a CEO? Enter it to walk into their club.",
+    code: "Room code",
+    join: "Walk in",
+    openTitle: "Open to players",
+    openHint:
+      "Players join with this code (or the link) and party in your club: their buys are your revenue.",
+    open: "Open club to players",
+    opening: "Opening…",
+    copyLink: "Copy link",
+    copied: "Link copied",
+    close: "Close room",
+    players: (n: number) => `${n} player${n === 1 ? "" : "s"} connected`,
+    inside: "inside",
+    waiting: "waiting",
+    kick: "Kick",
+    none: "No one yet. Share the code.",
+  },
+
   gig: {
     left: (d: string) => `${d} of your set left`,
     crowd: "Crowd",
@@ -172,6 +206,8 @@ export const en = {
   },
 
   guest: {
+    doorsClosed: "Doors closed",
+    live: "LIVE",
     cash: "Cash",
     holdings: "Holdings",
     value: "Value",

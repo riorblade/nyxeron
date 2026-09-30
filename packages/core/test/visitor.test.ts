@@ -33,37 +33,60 @@ describe("AI-run event", () => {
 describe("guest player", () => {
   it("pays the cover to get in", () => {
     const s = club();
-    const r = must(visitorJoin(s, "Kiel", 20_000));
-    expect(r.night!.visitor!.cash).toBe(20_000 - coverPrice(s));
+    const r = must(visitorJoin(s, "me", "Kiel", 20_000));
+    expect(r.night!.visitors!.me!.cash).toBe(20_000 - coverPrice(s));
     expect(r.nightRevenue.cover).toBe(s.nightRevenue.cover + coverPrice(s));
-    expect(visitorJoin(s, "Broke", 0).ok).toBe(false);
+    expect(visitorJoin(s, "b", "Broke", 0).ok).toBe(false);
   });
 
   it("buys at the live price: stock down, club takings up", () => {
-    const s = must(visitorJoin(club(), "Kiel", 20_000));
+    const s = must(visitorJoin(club(), "me", "Kiel", 20_000));
     const price = marketPrice(s, "tsla");
-    const r = must(visitorBuy(s, "tsla", 3));
+    const r = must(visitorBuy(s, "me", "tsla", 3));
     expect(r.stock.tsla).toBe(s.stock.tsla - 3);
     expect(r.nightRevenue.bar).toBe(s.nightRevenue.bar + 3 * price);
-    expect(r.night!.visitor!.holdings.tsla).toEqual({
+    expect(r.night!.visitors!.me!.holdings.tsla).toEqual({
       qty: 3,
       cost: 3 * price,
     });
-    expect(visitorBuy(s, "tsla", 10_000).ok).toBe(false);
-    expect(visitorBuy(s, "spcx", 1).ok).toBe(false); // Level 5 token
+    expect(visitorBuy(s, "me", "tsla", 10_000).ok).toBe(false);
+    expect(visitorBuy(s, "me", "spcx", 1).ok).toBe(false); // Level 5 token
   });
 
   it("is buy-only: holdings are valued at the live price and nothing sells back", async () => {
     const src = await import("../src");
     expect("visitorSell" in src).toBe(false);
     let s = must(
-      visitorBuy(must(visitorJoin(club(), "Kiel", 20_000)), "nvda", 4),
+      visitorBuy(
+        must(visitorJoin(club(), "me", "Kiel", 20_000)),
+        "me",
+        "nvda",
+        4,
+      ),
     );
     for (let i = 0; i < 30; i++) s = tickNight(s);
-    expect(visitorValue(s)).toBe(
-      s.night!.visitor!.cash + 4 * marketPrice(s, "nvda"),
+    expect(visitorValue(s, "me")).toBe(
+      s.night!.visitors!.me!.cash + 4 * marketPrice(s, "nvda"),
     );
-    expect(visitorPnl(s)).toBe(visitorValue(s) - 20_000);
+    expect(visitorPnl(s, "me")).toBe(visitorValue(s, "me") - 20_000);
+  });
+});
+
+describe("several players at once", () => {
+  it("each guest has their own wallet; leaving takes them out, the club keeps the takings", async () => {
+    const { visitorLeave } = await import("../src");
+    let s = must(visitorJoin(club(), "1", "Ana", 20_000, 7));
+    s = must(visitorJoin(s, "2", "Budi", 5_000, 2));
+    expect(visitorJoin(s, "1", "Ana again", 20_000).ok).toBe(false);
+    s = must(visitorBuy(s, "2", "tsla", 1));
+    expect(s.night!.visitors!["1"]!.holdings).toEqual({});
+    expect(s.night!.visitors!["2"]!.holdings.tsla!.qty).toBe(1);
+    const coin = s.coin;
+    s = visitorLeave(s, "2");
+    expect(s.night!.visitors!["2"]).toBeUndefined();
+    expect(s.coin).toBe(coin);
+    expect(visitorBuy(s, "2", "tsla", 1).ok).toBe(false);
+    expect(visitorBuy(s, "1", "nope" as never, 1).ok).toBe(false);
   });
 });
 

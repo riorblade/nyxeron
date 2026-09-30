@@ -64,8 +64,6 @@ const PERSON_H = 1.15;
  * drawn so that a full venue shows about CROWD_SPRITES; the hard cap is a safety net.
  */
 const CROWD_SPRITES = 150;
-/** Guest id reserved for the player's own avatar (sim guests are ≥ 0). */
-const PLAYER = -1;
 interface TokenTile {
   id: TokenId;
   ctx: CanvasRenderingContext2D;
@@ -253,9 +251,12 @@ export class VenueScene {
   /** Invisible click targets over the cabinet sections and fridge. */
   private cabinetHits: THREE.Mesh[] = [];
   private pyroAuto = true;
-  /** Guest player's cash + units held last frame (a change = a trade), and when they head back from the desk. */
-  private playerTrades = -1;
-  private playerAtBarUntil = 0;
+  /** Players in the club (visitors): their scene guest ids (negative, never clash with sim guests), and each one's
+   * last cash + units (a change = a trade) and when they head back from the desk. */
+  private playerIds = new Map<string, number>();
+  private playerSeq = 0;
+  private playerMoves = new Map<string, { trades: number; until: number }>();
+  private me = "me";
   private tokenTiles: TokenTile[] = [];
   private tileMinute = -1;
   private tileState: GameState | null = null;
@@ -488,6 +489,8 @@ export class VenueScene {
     this.selected = -1;
     this.sparks = [];
     this.guests.clear();
+    this.playerIds.clear();
+    this.playerMoves.clear();
     this.staff = [];
     this.stage = [];
     this.hosts = [];
@@ -1867,49 +1870,80 @@ export class VenueScene {
    * floor and walking to the token desk for a few seconds after each trade.
    */
   private syncPlayer(s: GameState, fresh: boolean) {
-    const v = s.night?.visitor;
-    if (!v || !this.assets) return;
-    let p = this.guests.get(PLAYER);
-    if (!p) {
-      const tex = this.assets.guests[v.avatar - 1];
-      const at = fresh ? this.spot("dance", 7) : this.entrance();
-      p = this.addPerson(tex, PERSON_H, at[0], at[1], "dance", 7);
-      const tag = textTexture(`${en.guest.you} · ${v.name}`, {
-        size: 40,
-        weight: "800",
-        stroke: true,
-      });
-      const label = new THREE.Sprite(
-        new THREE.SpriteMaterial({
-          map: tag.tex,
-          depthTest: false,
-          transparent: true,
-        }),
-      );
-      label.center.set(0.5, 0);
-      label.scale.set(0.3 * tag.aspect, 0.3, 1);
-      label.position.y = PERSON_H + 0.12;
-      label.renderOrder = 10;
-      const ring = new THREE.Mesh(
-        this.ringGeo,
-        new THREE.MeshBasicMaterial({
-          color: 0xffffff,
-          transparent: true,
-          opacity: 0.85,
-        }),
-      );
-      ring.position.y = 0.03;
-      p.g.add(label, ring);
-      this.guests.set(PLAYER, p);
+    const visitors = s.night?.visitors ?? {};
+    if (!this.assets) return;
+    // Players who went home fade out like any guest.
+    for (const [key, sid] of this.playerIds)
+      if (!visitors[key]) {
+        const p = this.guests.get(sid);
+        if (p) p.leaving = true;
+        this.playerIds.delete(key);
+        this.playerMoves.delete(key);
+      }
+    for (const [key, v] of Object.entries(visitors)) {
+      let sid = this.playerIds.get(key);
+      if (sid === undefined)
+        this.playerIds.set(
+          key,
+          (sid = -1 - this.playerIds.size - this.playerSeq++),
+        );
+      let p = this.guests.get(sid);
+      const mine = key === this.me;
+      const seed = 7 + (-sid % 50);
+      if (!p) {
+        const tex = this.assets.guests[v.avatar - 1];
+        const at = fresh ? this.spot("dance", seed) : this.entrance();
+        p = this.addPerson(tex, PERSON_H, at[0], at[1], "dance", seed);
+        const tag = textTexture(mine ? `${en.guest.you} · ${v.name}` : v.name, {
+          size: 40,
+          weight: "800",
+          stroke: true,
+        });
+        const label = new THREE.Sprite(
+          new THREE.SpriteMaterial({
+            map: tag.tex,
+            depthTest: false,
+            transparent: true,
+          }),
+        );
+        label.center.set(0.5, 0);
+        label.scale.set((mine ? 0.3 : 0.24) * tag.aspect, mine ? 0.3 : 0.24, 1);
+        label.position.y = PERSON_H + 0.12;
+        label.renderOrder = 10;
+        p.g.add(label);
+        if (mine) {
+          // Only your own avatar gets the white ring.
+          const ring = new THREE.Mesh(
+            this.ringGeo,
+            new THREE.MeshBasicMaterial({
+              color: 0xffffff,
+              transparent: true,
+              opacity: 0.85,
+            }),
+          );
+          ring.position.y = 0.03;
+          p.g.add(ring);
+        }
+        this.guests.set(sid, p);
+      }
+      // A trade (cash or units changed) sends them to the token desk for a few seconds.
+      const trades =
+        Object.values(v.holdings).reduce((a, h) => a + (h?.qty ?? 0), 0) +
+        v.cash;
+      const m = this.playerMoves.get(key);
+      const now = performance.now();
+      const atBarUntil =
+        m && m.trades !== trades ? now + 4000 : (m?.until ?? 0);
+      this.playerMoves.set(key, { trades, until: atBarUntil });
+      const atBar = now < atBarUntil;
+      [p.tx, p.tz] = this.spot(atBar ? zoneFor.bar : "dance", seed);
+      p.mode = atBar ? "idle" : "dance";
     }
-    const trades =
-      Object.values(v.holdings).reduce((a, h) => a + h!.qty, 0) + v.cash;
-    if (this.playerTrades >= 0 && trades !== this.playerTrades)
-      this.playerAtBarUntil = performance.now() + 4000;
-    this.playerTrades = trades;
-    const atBar = performance.now() < this.playerAtBarUntil;
-    [p.tx, p.tz] = this.spot(atBar ? zoneFor.bar : "dance", 7);
-    p.mode = atBar ? "idle" : "dance";
+  }
+
+  /** Which visitor is this browser's player (their avatar gets "YOU" and a ring). */
+  setMe(id: string) {
+    this.me = id;
   }
 
   /** The "!" and red ring over a tilt guest, created only when someone actually gets tilt. */

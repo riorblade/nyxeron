@@ -46,6 +46,7 @@ import { startAuto, stopAuto } from "@/dj/session";
 import { useSets } from "@/dj/sets";
 import { DjStudio } from "@/dj/Studio";
 import { PyroPanel } from "@/hud/PyroPanel";
+import { RoomPanel } from "@/hud/RoomPanel";
 import { padForKey, SamplerPanel } from "@/hud/SamplerPanel";
 import { StockBars } from "@/hud/StockBars";
 import { TickerTape } from "@/hud/TickerTape";
@@ -521,6 +522,7 @@ export function Night({ s }: { s: GameState }) {
               className="glass enter shrink-0 space-y-6 rounded-xl p-4 lg:max-h-full lg:w-80 lg:self-start lg:overflow-y-auto"
               style={{ "--d": "80ms" } as CSSProperties}
             >
+              {s.mode !== "basement" && <RoomPanel clubName={s.clubName} />}
               <CrowdMoves s={s} />
               {s.level >= 4 && <PyroPanel />}
               {s.level >= 4 && <SamplerPanel />}
