@@ -38,6 +38,8 @@ export interface VideotronData {
   callout?: { kicker: string; text: string } | null;
   dj: string | null;
   top: { name: string; spent: number }[];
+  /** Tonight's biggest token moves, e.g. "NVDA ▲ 4.2%". */
+  movers: string[];
 }
 
 interface Slide {
@@ -91,6 +93,12 @@ export class Videotron {
           )
           .join("   ·   "),
         hue: 45,
+      });
+    if (data.movers.length)
+      out.push({
+        kicker: t.movers,
+        text: data.movers.join("   ·   "),
+        hue: 140,
       });
     out.push(
       data.dj

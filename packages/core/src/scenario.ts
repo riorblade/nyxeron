@@ -1,10 +1,10 @@
 import {
   defaultPrice,
-  drinks,
+  tokens,
   ids,
   permits,
   scenarios,
-  type DrinkId,
+  type TokenId,
   type PermitId,
 } from "./data";
 import { clamp, createGameState, type GameState } from "./state";
@@ -22,8 +22,8 @@ export function createBasement(seed: number): GameState {
     clubName: basement.clubName,
   });
   const stock = { ...s.stock };
-  for (const d of ids(drinks))
-    stock[d] = (basement.stock as Record<DrinkId, number>)[d] ?? 0;
+  for (const d of ids(tokens))
+    stock[d] = (basement.stock as Record<TokenId, number>)[d] ?? 0;
   const perm = { ...s.permits };
   for (const p of ids(permits)) {
     const exp = (
@@ -38,7 +38,7 @@ export function createBasement(seed: number): GameState {
     mode: "basement",
     level: 4,
     prices: Object.fromEntries(
-      ids(drinks).map((d) => [d, defaultPrice(d, 4)]),
+      ids(tokens).map((d) => [d, defaultPrice(d, 4)]),
     ) as GameState["prices"],
     coin: basement.coin,
     reputation: basement.reputation,
@@ -62,9 +62,9 @@ export function createSandbox(seed: number): GameState {
     reputation: sb.reputation,
     hype: sb.hype,
     prices: Object.fromEntries(
-      ids(drinks).map((d) => [d, defaultPrice(d, level)]),
+      ids(tokens).map((d) => [d, defaultPrice(d, level)]),
     ) as GameState["prices"],
-    stock: { ...s.stock, ...(sb.stock as Record<DrinkId, number>) },
+    stock: { ...s.stock, ...(sb.stock as Record<TokenId, number>) },
     staff: { ...s.staff, ...sb.staff },
     permits: Object.fromEntries(
       ids(permits).map((p) => [

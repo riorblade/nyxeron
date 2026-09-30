@@ -359,9 +359,16 @@ export function buildFurniture(
         0.39,
         12,
       );
-      const bottle = cyl(0.03, 0.045, 0.22, mat(0x2e7d4f, 0.1, 0.2), 0.39, 12);
-      bottle.position.x = 0.14;
-      g.add(cyl(0.05, 0.12, 0.34, chrome), top, rim, candle, bottle);
+      // A trading tablet glowing on the table (guests buy tokens, not drinks).
+      const tablet = box(
+        0.16,
+        0.012,
+        0.11,
+        mat(0x0e1a24, 0.3, 0.1, 0x22d3ee),
+        0.14,
+        0.365,
+      );
+      g.add(cyl(0.05, 0.12, 0.34, chrome), top, rim, candle, tablet);
       break;
     }
     case "stool":

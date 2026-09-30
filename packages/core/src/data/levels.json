@@ -1,6 +1,6 @@
 {
   "1": {
-    "name": "Drink Booth",
+    "name": "Token Booth",
     "cost": 0,
     "repRequired": 0,
     "capacity": 20,
@@ -18,7 +18,7 @@
     "barSeats": 0
   },
   "2": {
-    "name": "Drink Shop",
+    "name": "Token Shop",
     "cost": 50000,
     "repRequired": 20,
     "capacity": 40,
@@ -36,7 +36,7 @@
     "barSeats": 0
   },
   "3": {
-    "name": "Bar & Live Music",
+    "name": "Token Bar & Live Music",
     "cost": 250000,
     "repRequired": 40,
     "capacity": 90,

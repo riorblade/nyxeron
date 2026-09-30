@@ -5,7 +5,7 @@ import { clamp, type CeoCall, type GameState } from "../state";
 const isInside = (state: string) =>
   state === "idle" || state === "bar" || state === "dance";
 
-/** CEO Call (Q), once per night: "Happy Hour" (+satisfaction, cheaper drinks) or "Close Door" (no more admissions). */
+/** CEO Call (Q), once per night: "Happy Hour" (+satisfaction, cheaper tokens) or "Close Door" (no more admissions). */
 export function ceoCall(s: GameState, call: CeoCall): ActionResult {
   if (s.phase !== "night" || !s.night) return fail("wrongPhase");
   if (s.ceoCallUsed) return fail("alreadyActive");
@@ -43,7 +43,7 @@ export function escortGuest(s: GameState, guestId: number): ActionResult {
   if (s.phase !== "night" || !s.night) return fail("wrongPhase");
   if (s.staff.security <= 0) return fail("noStaff");
   const g = s.night.guests[guestId];
-  if (!g || !isInside(g.state) || g.drunk < night.fightDrunkThreshold)
+  if (!g || !isInside(g.state) || g.tilt < night.fightTiltThreshold)
     return fail("invalidTarget");
   return {
     ok: true,
@@ -68,5 +68,5 @@ export function escortGuest(s: GameState, guestId: number): ActionResult {
   };
 }
 
-export const isAtFightRisk = (g: { drunk: number; state: string }) =>
-  isInside(g.state) && g.drunk >= night.fightDrunkThreshold;
+export const isAtFightRisk = (g: { tilt: number; state: string }) =>
+  isInside(g.state) && g.tilt >= night.fightTiltThreshold;

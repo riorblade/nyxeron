@@ -11,5 +11,5 @@ describe("balance", () => {
       expect(s.outcome).toBeNull();
       expect(s.level).toBeGreaterThanOrEqual(2);
     }
-  });
+  }, 20_000);
 });

@@ -42,6 +42,7 @@ import { EventFeed } from "@/hud/EventFeed";
 import { Objectives } from "@/hud/Objectives";
 import { CrowdMoves, EnergyMeter } from "@/hud/CrowdMoves";
 import { StockBars } from "@/hud/StockBars";
+import { TickerTape } from "@/hud/TickerTape";
 import { TopBar } from "@/hud/TopBar";
 import { clock, duration, en, fmt, genres } from "@/i18n/en";
 import { cn, trapFocus } from "@/lib/utils";
@@ -69,8 +70,8 @@ function useNightLoop() {
 }
 
 /**
- * Security handles drunk guests on its own. This only speaks up when it matters: guards busy walking someone out
- * (quiet info), or drunk guests waiting because every guard is busy / there is no security (a warning).
+ * Security handles tilt guests on its own. This only speaks up when it matters: guards busy walking someone out
+ * (quiet info), or tilt guests waiting because every guard is busy / there is no security (a warning).
  */
 function SecurityStatus({ s }: { s: GameState }) {
   const { total, busy, waiting } = securityStatus(s);
@@ -469,6 +470,7 @@ export function Night({ s }: { s: GameState }) {
             </>
           }
         />
+        <TickerTape s={s} />
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pointer-events-none! lg:flex-row lg:overflow-visible [&>*]:pointer-events-auto">
           {panel && (
             <aside

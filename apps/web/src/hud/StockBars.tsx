@@ -1,7 +1,7 @@
-import { drinks, ids, type GameState } from "@nyxeron/core";
+import { tokens, ids, type GameState } from "@nyxeron/core";
 import { art } from "@/art";
 import { Img } from "@/components/Img";
-import { DrinkLink } from "./DrinkDetail";
+import { TokenLink } from "./TokenDetail";
 import { en } from "@/i18n/en";
 import { cn } from "@/lib/utils";
 
@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 const FULL = 150;
 
 export function StockBars({ s }: { s: GameState }) {
-  const menu = ids(drinks).filter((d) => drinks[d].minLevel <= s.level);
+  const menu = ids(tokens).filter((d) => tokens[d].minLevel <= s.level);
   const low = menu.filter((d) => s.stock[d] < FULL * 0.2);
   return (
     <section>
@@ -24,19 +24,19 @@ export function StockBars({ s }: { s: GameState }) {
               key={d}
               className="grid grid-cols-[6.5rem_1fr_2.5rem] items-center gap-2 text-xs"
             >
-              <DrinkLink
+              <TokenLink
                 s={s}
                 id={d}
                 className="flex items-center gap-2 text-left hover:underline"
               >
                 <Img
-                  src={art.drink(d)}
+                  src={art.token(d)}
                   alt=""
-                  className="size-6 object-contain"
+                  className="size-6 rounded-full object-cover"
                   fallback={<span className="size-6" />}
                 />
-                <span>{drinks[d].name}</span>
-              </DrinkLink>
+                <span className="font-mono">{tokens[d].ticker}</span>
+              </TokenLink>
               <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                 <div
                   className={cn(
@@ -55,7 +55,7 @@ export function StockBars({ s }: { s: GameState }) {
       </ul>
       {low.length > 0 && (
         <p className="mt-2 text-xs">
-          ⚠ {en.stock.low(low.map((d) => drinks[d].name).join(", "))}
+          ⚠ {en.stock.low(low.map((d) => tokens[d].name).join(", "))}
         </p>
       )}
     </section>

@@ -71,11 +71,11 @@ export const en = {
     settings: "Settings",
     contactNew: "Open the doors",
     contactContinue: "Continue",
-    lede: "Veltra City, 22:00. One drink booth, ten thousand coin and a permit that runs out in thirty days. Stock the bar, book the DJ, keep the inspectors sweet, and build it into the venue this city can't stop talking about.",
+    lede: "Veltra City, 22:00. One token booth, ten thousand coin and a permit that runs out in thirty days. Stock the token desk, book the DJ, keep the inspectors sweet, and build it into the venue this city can't stop talking about.",
     copyright: "©2026 Kelompok Empuy",
     scroll: "Scroll down",
-    statement: "From one drink booth to a premium venue in sixty nights.",
-    left: "Five venues, one ladder. Every level unlocks a new system: staff, live music, DJs, security, bottle service.",
+    statement: "From one token booth to a premium venue in sixty nights.",
+    left: "Five venues, one ladder. Every level unlocks a new system: staff, live music, DJs, security, whale tables.",
     right:
       "No choice is free. More security means a slower door, cheap stock sells out by midnight, and one bad promo brings the inspector.",
     bottom: ["Plan by day", "Survive the night", "Own the city"],
@@ -100,7 +100,7 @@ export const en = {
 
   menu: {
     continue: "Continue",
-    copy: "Start with a single drink booth in Veltra City.\nBuild it into a premium venue in 60 nights.\nPlan by day. Survive the night.",
+    copy: "Start with a single token booth in Veltra City.\nBuild it into a premium venue in 60 nights.\nPlan by day. Survive the night.",
     city: "Veltra City",
     play: "Play scenario",
     week1: "Week 1",
@@ -163,7 +163,7 @@ export const en = {
     tabInfo: {
       stock: {
         title: "Stock Room",
-        desc: "Order drinks, pick a supplier and set your prices.",
+        desc: "Stock tokenized stocks, pick a supplier and set your list prices. Tonight's market moves them.",
       },
       talent: {
         title: "Talent Agency",
@@ -175,7 +175,7 @@ export const en = {
       },
       staff: {
         title: "Staff Room",
-        desc: "Bar, security, hosts, guest relations and the MC: the people who make the night.",
+        desc: "Brokers, security, hosts, guest relations and the MC: the people who make the night.",
       },
       rules: {
         title: "House Rules",
@@ -211,9 +211,9 @@ export const en = {
     supplier: "Supplier",
     autoRefill: "Auto-refill",
     autoRefillHint: (batch: number, at: number) =>
-      `Orders ${batch} more from the corner store when a drink drops to ${at}`,
+      `Orders ${batch} more from the corner store when a token drops to ${at}`,
     lead: (d: number) => (d === 0 ? "instant" : `${d} day${d > 1 ? "s" : ""}`),
-    drink: "Drink",
+    drink: "Token",
     inStock: "In stock",
     price: "Price",
     cost: "Unit cost",
@@ -223,7 +223,7 @@ export const en = {
     emergency: "Emergency restock",
     need: "Tonight",
     needHint:
-      "Forecast for tonight: expected guests × ~3 drinks, spread over the menu",
+      "Forecast for tonight: expected guests × ~3 buys, spread over the menu",
     fill: "Fill to forecast",
     low: (name: string) => `${name} running low`,
   },
@@ -275,11 +275,11 @@ export const en = {
     securityHint: (cap: number) =>
       `Keep at least 1 security per 40 guests (${Math.ceil(cap / 40)} for full capacity). Security also checks IDs at the door.`,
     bartenderHint:
-      "Each bartender adds bar capacity. A slow bar means lost sales and unhappy guests.",
+      "Each desk broker adds order capacity. A slow desk means lost sales and unhappy guests.",
     hostHint:
-      "Social hosts keep the room lively: the club looks fuller, men spend more (and buy them drinks). Unlocks the 'Hosts to the floor' move.",
+      "Social hosts keep the room lively: the club looks fuller, men spend more (and buy them tokens). Unlocks the 'Hosts to the floor' move.",
     relationsHint:
-      "Guest relations meet every guest, keep them happy, talk up bigger orders and book tables (bottle service). One covers ~60 guests.",
+      "Guest relations meet every guest, keep them happy, talk up bigger orders and book tables (whale service). One covers ~60 guests.",
     mcHint:
       "Hype man on the stage. Unlocks 'MC hype': sing-alongs and hands in the air that lift the room's energy.",
   },
@@ -304,10 +304,10 @@ export const en = {
     needs: (coin: number, rep: number) => `${fmt(coin)} C · Rep ${rep}`,
     unlocks: [
       "Stock, pricing, posters",
-      "Staff, suppliers, takeaway liquor permit",
-      "Bar, on-premise liquor permit, more promo channels",
+      "Staff, suppliers, OTC trading licence",
+      "Token desk, trading-floor licence, more promo channels",
       "DJs, security, full night phase, crowd permit",
-      "Premium DJs, bottle-service crowd, festivals",
+      "Premium DJs, whale-table crowd, festivals",
     ],
     levelUp: (name: string) => `Welcome to your ${name}!`,
     permitsNeeded: (names: string) => `Also needs: ${names}`,
@@ -331,7 +331,7 @@ export const en = {
     ceoCall: "CEO CALL",
     ceoCallHint: "[Q] 1× / night",
     happyHour: "Happy Hour",
-    happyHourDesc: "+Satisfaction now, half-price drinks",
+    happyHourDesc: "+Satisfaction now, half-price tokens",
     closeDoor: "Close Door",
     closeDoorDesc: "Stop letting guests in",
     forceDoor: "Force door open",
@@ -343,11 +343,11 @@ export const en = {
     skipCancel: "Keep playing",
     paused: "PAUSED",
     securityBusy: (busy: number, total: number) =>
-      `Security: ${busy} of ${total} walking a drunk guest out`,
+      `Security: ${busy} of ${total} walking a tilted guest out`,
     securityStretched: (waiting: number, total: number) =>
-      `${waiting} drunk guest${waiting > 1 ? "s" : ""} waiting · all ${total} security busy`,
+      `${waiting} tilted guest${waiting > 1 ? "s" : ""} waiting · all ${total} security busy`,
     noSecurity: (waiting: number) =>
-      `${waiting} drunk guest${waiting > 1 ? "s" : ""} and no security on shift`,
+      `${waiting} tilted guest${waiting > 1 ? "s" : ""} and no security on shift`,
     hireSecurity: "Fights can break out: hire more security (Office → Staff)",
     objectives: "OBJECTIVES",
     panel: "Panels [Tab]",
@@ -367,7 +367,7 @@ export const en = {
     title: (d: number) => `Night Report · Day ${d}`,
     guests: "Guests",
     rejected: "Underage turned away",
-    bar: "Bar sales",
+    bar: "Token sales",
     cover: "Cover charge",
     table: "Tables",
     tax: "Entertainment tax",
@@ -386,17 +386,17 @@ export const en = {
     repHigh: "+Rep from 70",
     why: "Why guests felt this way",
     factorStock: (n: number) =>
-      `${n} guests wanted a drink you had run out of (−10 each)`,
+      `${n} guests wanted a token you had run out of (−10 each)`,
     factorSlow: (n: number) =>
-      `${n} times the bar was too busy to serve (hire bartenders)`,
+      `${n} times the desk was too busy to fill orders (hire brokers)`,
     factorDjMatch: "The DJ matched the crowd (+20% on the dance floor)",
     factorDjMiss: "The DJ didn't match the crowd (−15% on the dance floor)",
     factorNoDj: "No DJ tonight: the dance floor was half as fun",
     factorFights: (n: number) => `${n} fight${n > 1 ? "s" : ""}: Rep −5 each`,
-    factorClean: "Smooth night: nothing went wrong behind the bar",
+    factorClean: "Smooth night: nothing went wrong at the desk",
     energy: "Crowd energy",
     energyValue: (avg: number, peak: number) => `avg ${avg} · peak ${peak}`,
-    rounds: "Rounds bought for others",
+    rounds: "Tokens bought for others",
     escorted: "Walked out by security",
     tables: "Tables reserved",
     vipTables: "VIP tables",
@@ -404,7 +404,7 @@ export const en = {
     rejectedDress: "Turned away (dress code)",
     guestList: "Guest list guests",
     commission: "Promoter commission",
-    bottles: "Bottles from sparkler parades",
+    bottles: "Block buys from sparkler parades",
     factorEnergyHigh: (avg: number) =>
       `The room was buzzing (energy ${avg}): more dancing, more spending`,
     factorEnergyLow: (avg: number) =>
@@ -435,267 +435,70 @@ export const en = {
       "Space pause · 1/2/3 speed · O office · L layout · H hide UI · C cinematic · Tab panel · Q CEO Call · M mute · drag rotate · right-drag / arrows pan · wheel zoom · Esc menu",
   },
 
-  /** Real-world reference for each bar line: what gets poured under it. */
-  drinkInfo: {
-    beer: {
-      line: "Beer",
+  /** What each token tracks. Baskets use Portir's curated weights. */
+  tokenInfo: {
+    tsla: {
       about:
-        "The volume seller. Cheap to stock, quick to pour, and what most guests order first.",
-      serve: "Ice-cold, bottle or draught; buckets of five for tables.",
-      menu: [
-        {
-          name: "Pilsner / Lager",
-          abv: "4.5–5%",
-          origin: "Czechia · Germany",
-          note: "Pale, crisp and bubbly. The best-selling style on earth.",
-          famous: "Heineken, Bintang, Carlsberg, Corona Extra",
-        },
-        {
-          name: "Irish Stout",
-          abv: "4–4.5%",
-          origin: "Dublin, Ireland",
-          note: "Dark and roasty with a creamy nitro head. Guinness has brewed since 1759.",
-          famous: "Guinness Draught",
-        },
-        {
-          name: "Wheat Beer",
-          abv: "4.5–5.5%",
-          origin: "Belgium · Bavaria",
-          note: "Cloudy and soft; citrus and clove notes. Served with an orange slice.",
-          famous: "Hoegaarden, Paulaner Hefe-Weissbier",
-        },
-        {
-          name: "IPA",
-          abv: "5.5–7.5%",
-          origin: "England · USA",
-          note: "Heavily hopped: bitter, piney, tropical. The craft-beer crowd's order.",
-          famous: "Craft taps",
-        },
+        "Electric cars, batteries and robotaxis. The crowd's favourite meme-stock: when the room is loud, TSLA moves.",
+      legs: [],
+    },
+    us500: {
+      about:
+        "The whole US market in three ETFs. Low drama, low FOMO: the safe first buy of the night.",
+      legs: [
+        ["SPY", 50],
+        ["QQQ", 30],
+        ["IWM", 20],
       ],
     },
-    softDrink: {
-      line: "Soft drinks & mixers",
+    nvda: {
       about:
-        "Zero alcohol, but half the cocktail menu depends on it. Drivers and non-drinkers order it too.",
-      serve: "Over ice with a lime wedge, or straight into a mixed drink.",
-      menu: [
-        {
-          name: "Cola",
-          abv: "0%",
-          origin: "USA",
-          note: "The number-one mixer: rum & cola, whisky coke.",
-          famous: "Coca-Cola, Pepsi",
-        },
-        {
-          name: "Tonic Water",
-          abv: "0%",
-          origin: "British India",
-          note: "Bitter from quinine; the other half of a G&T.",
-          famous: "Schweppes, Fever-Tree",
-        },
-        {
-          name: "Energy Drink",
-          abv: "0%",
-          origin: "Thailand · Austria",
-          note: "Caffeine and taurine. Makes the Jägerbomb and the Vodka Red Bull.",
-          famous: "Red Bull, Monster",
-        },
-        {
-          name: "Ginger Beer",
-          abv: "0%",
-          origin: "England",
-          note: "Spicy and sharp; the base of a Moscow Mule.",
-          famous: "Fever-Tree, Bundaberg",
-        },
+        "The chips behind the AI boom. Big swings, bigger FOMO when the drop hits.",
+      legs: [],
+    },
+    bigtech: {
+      about: "The five platforms most of the internet runs on.",
+      legs: [
+        ["AAPL", 20],
+        ["MSFT", 20],
+        ["GOOGL", 20],
+        ["AMZN", 20],
+        ["META", 20],
       ],
     },
-    vodka: {
-      line: "Vodka",
-      about:
-        "Clean, neutral spirit distilled from grain or potato. The bottle-service staple.",
-      serve: "Chilled shots, with an energy drink, or in a long drink.",
-      menu: [
-        {
-          name: "Premium Vodka",
-          abv: "40%",
-          origin: "Poland · Sweden · France",
-          note: "Filtered to near-neutral; sold by the bottle at tables with mixers.",
-          famous: "Belvedere, Absolut, Grey Goose, Smirnoff",
-        },
-        {
-          name: "Vodka Red Bull",
-          abv: "~10%",
-          origin: "Club classic",
-          note: "Vodka and energy drink over ice. Keeps the dance floor going.",
-          famous: "",
-        },
-        {
-          name: "Moscow Mule",
-          abv: "~10%",
-          origin: "Los Angeles, 1941",
-          note: "Vodka, ginger beer and lime in a copper mug.",
-          famous: "",
-        },
-        {
-          name: "Freezer Shot",
-          abv: "40%",
-          origin: "Eastern Europe",
-          note: "Straight from the freezer, thick and ice-cold.",
-          famous: "",
-        },
+    aisemis: {
+      about: "The chips, fabs and clouds behind AI.",
+      legs: [
+        ["NVDA", 30],
+        ["AMD", 15],
+        ["AVGO", 15],
+        ["TSM", 15],
+        ["MSFT", 15],
+        ["GOOGL", 10],
       ],
     },
-    whisky: {
-      line: "Whisky",
+    dividend: {
       about:
-        "Grain spirit aged in oak barrels. Slower sipping, bigger margin, older crowd.",
-      serve: "Neat, on the rocks, as a highball, or with cola.",
-      menu: [
-        {
-          name: "Blended Scotch",
-          abv: "40%",
-          origin: "Scotland",
-          note: "Malt and grain whiskies married together. Aged at least 3 years in oak by law.",
-          famous: "Johnnie Walker, Chivas Regal",
-        },
-        {
-          name: "Single Malt",
-          abv: "40–46%",
-          origin: "Speyside · Islay",
-          note: "One distillery, 100% malted barley. From honeyed to heavily peated.",
-          famous: "The Macallan, Glenfiddich, Laphroaig",
-        },
-        {
-          name: "Bourbon / Tennessee",
-          abv: "40%",
-          origin: "Kentucky · Tennessee, USA",
-          note: "At least 51% corn, aged in new charred oak: vanilla and caramel.",
-          famous: "Jack Daniel's, Jim Beam, Maker's Mark",
-        },
-        {
-          name: "Irish Whiskey",
-          abv: "40%",
-          origin: "Ireland",
-          note: "Usually triple-distilled, light and smooth.",
-          famous: "Jameson",
-        },
-        {
-          name: "Japanese Highball",
-          abv: "~9%",
-          origin: "Japan",
-          note: "Whisky and ice-cold soda. Clean, fizzy, very drinkable.",
-          famous: "Suntory Toki, Hibiki",
-        },
+        "Household names that have paid dividends for decades. Guests hold it through a red candle.",
+      legs: [
+        ["JNJ", 20],
+        ["PG", 20],
+        ["KO", 20],
+        ["PEP", 20],
+        ["MCD", 20],
       ],
     },
-    cocktail: {
-      line: "Cocktails & shots",
+    skhy: {
       about:
-        "The mixed-drinks station: gin, rum, tequila and liqueurs. The busiest, loudest part of the bar.",
-      serve: "Shaken or built over ice; shots lined up for groups.",
-      menu: [
-        {
-          name: "Jägerbomb",
-          abv: "~8%",
-          origin: "Germany",
-          note: "A shot of Jägermeister (35%, 56 herbs and spices, from Wolfenbüttel since 1935) dropped into an energy drink. Best ice-cold.",
-          famous: "Jägermeister",
-        },
-        {
-          name: "Gin & Tonic",
-          abv: "~10%",
-          origin: "England",
-          note: "London Dry gin is juniper-led (37.5–47%). Tall glass, lots of ice, lime or cucumber.",
-          famous: "Gordon's, Tanqueray, Bombay Sapphire, Hendrick's",
-        },
-        {
-          name: "Mojito",
-          abv: "~10%",
-          origin: "Havana, Cuba",
-          note: "White rum, lime, mint, sugar and soda. Fresh and dangerous.",
-          famous: "Bacardi, Havana Club",
-        },
-        {
-          name: "Margarita",
-          abv: "~20%",
-          origin: "Mexico",
-          note: "Tequila (blue agave from Jalisco), orange liqueur and lime, salted rim.",
-          famous: "Jose Cuervo, Patrón, Don Julio",
-        },
-        {
-          name: "Tequila Shot",
-          abv: "38–40%",
-          origin: "Jalisco, Mexico",
-          note: "Salt, shot, lime. The round someone always regrets.",
-          famous: "Jose Cuervo, Patrón",
-        },
-        {
-          name: "Long Island Iced Tea",
-          abv: "~22%",
-          origin: "New York, 1970s",
-          note: "Vodka, gin, rum, tequila and triple sec topped with cola. Tastes like tea; isn't.",
-          famous: "",
-        },
-        {
-          name: "Espresso Martini",
-          abv: "~15%",
-          origin: "London, 1980s",
-          note: "Vodka, coffee liqueur and fresh espresso, shaken to a foam.",
-          famous: "Kahlúa",
-        },
-        {
-          name: "Negroni",
-          abv: "~24%",
-          origin: "Florence, Italy",
-          note: "Gin, Campari and sweet vermouth in equal parts. Bitter and strong.",
-          famous: "Campari",
-        },
-      ],
+        "Korean memory giant feeding the AI data centres. Moves hard on every chip headline.",
+      legs: [],
     },
-    wine: {
-      line: "Wine & bubbles",
+    spcx: {
       about:
-        "Glasses for the lounge, bottles for VIP. Champagne with sparklers is the club's loudest flex.",
-      serve: "By the glass or the bottle; Champagne on ice with sparklers.",
-      menu: [
-        {
-          name: "Champagne",
-          abv: "12%",
-          origin: "Champagne, France",
-          note: "Sparkling wine made by second fermentation in the bottle. Only this region may use the name.",
-          famous: "Moët & Chandon, Veuve Clicquot, Dom Pérignon",
-        },
-        {
-          name: "Prosecco",
-          abv: "11%",
-          origin: "Veneto, Italy",
-          note: "Lighter, fruitier bubbles at a friendlier price. The base of an Aperol Spritz.",
-          famous: "",
-        },
-        {
-          name: "Red Wine",
-          abv: "13–14.5%",
-          origin: "Bordeaux · Barossa",
-          note: "Cabernet Sauvignon and Shiraz: full-bodied, dark fruit.",
-          famous: "",
-        },
-        {
-          name: "White Wine",
-          abv: "11–13%",
-          origin: "Marlborough · Burgundy",
-          note: "Sauvignon Blanc (zesty) or Chardonnay (round).",
-          famous: "",
-        },
-        {
-          name: "Rosé",
-          abv: "12%",
-          origin: "Provence, France",
-          note: "Pale pink, dry and chilled.",
-          famous: "",
-        },
-      ],
+        "Rockets and satellites. The most volatile token on the floor: whales love it.",
+      legs: [],
     },
-  },
+  } as Record<string, { about: string; legs: [string, number][] }>,
   rules: {
     ladies: "Ladies' night",
     ladiesDesc:
@@ -721,7 +524,7 @@ export const en = {
     coverReset: "Use standard",
     happy: "Happy hour",
     happyDesc:
-      "Half-price drinks for one hour. Early fills the room sooner (and they stay); late keeps the crowd until close.",
+      "Half-price tokens for one hour. Early fills the room sooner (and they stay); late keeps the crowd until close.",
     happySlots: {
       off: "Off",
       early: "Early · 22:00–23:00",
@@ -757,7 +560,7 @@ export const en = {
       `Knock through walls and extend the licence: +15% guests per tier. Now ${fmt(n)}.`,
     storage: "Stock room",
     storageDesc: (n: number) =>
-      `More shelving and cold storage: +50% bottles per tier. Now ${fmt(n)}.`,
+      `More shelving and cold storage: +50% token inventory per tier. Now ${fmt(n)}.`,
     sound: "Sound system",
     soundDesc: "Bigger speakers: more energy, dancing feels better",
     lighting: "Lighting rig",
@@ -787,7 +590,7 @@ export const en = {
     djAnthem: "DJ anthem",
     djAnthemDesc: "Signature set: everyone stays",
     sparkler: "Sparkler parade",
-    sparklerDesc: (cost: string) => `Bottle service show · ${cost} C`,
+    sparklerDesc: (cost: string) => `Whale-table show · ${cost} C`,
     needTables: "Tables seated first",
     active: (m: number) => `Live · ${m} min`,
     ready: "Ready",
@@ -823,35 +626,49 @@ export const en = {
     off: "Off",
   },
 
-  drinkDetail: {
-    title: "Drink details",
-    onMenu: "On the menu",
-    famous: "Famous labels",
-    serve: "How it's served",
-    stock: "In stock",
+  tokenDetail: {
+    title: "Token",
+    stock: "Stock",
+    basket: "Basket",
+    inStock: "In stock",
     cost: "Unit cost",
-    price: "Sell price",
+    list: "List price",
+    live: "Live price",
+    change: "vs list",
     margin: "Margin",
-    buzz: "Buzz per drink",
+    fomo: "FOMO",
+    chart: "Tonight's market",
+    chartIdle: "The market opens with the doors. Open the club to see it move.",
+    legs: "What's in the basket",
+    rails: "On-chain later",
+    railsNote:
+      "Planned rails for the real thing: tokenized stocks on BNB Chain.",
     unlock: (lv: number) => `Unlocks at Lv ${lv}`,
     close: "Close",
-    open: "Show drink details",
+    open: "Show token details",
+  },
+
+  ticker: {
+    label: "Club market",
+    index: "Index",
   },
 
   venue: {
     vipLocked: "BUILD IT: OFFICE → BUILD",
+    tokenBoard: "TOKEN DESK · LIVE",
   },
 
   videotron: {
     shoutout: "SHOUTOUT",
     anthem: "THE ANTHEM",
-    bottles: "BOTTLE SERVICE",
+    bottles: "WHALE TABLES",
     sparklers: "SPARKLERS UP",
     mc: "MC ON THE MIC",
     handsUp: "HANDS UP!",
     floor: "HOSTS ON THE FLOOR",
     everybody: "EVERYBODY DANCE",
     topSpenders: "TOP SPENDERS TONIGHT",
+    movers: "TOP MOVERS",
     nowPlaying: "NOW ON THE DECKS",
     welcome: "WELCOME TO",
     title: "Videotron",
@@ -908,7 +725,7 @@ export const en = {
     sandbox1:
       "Sandbox: the Premium Venue (Level 5) is yours. 20M Coin, every permit, a full crew and stock. No win, no game over: book a DJ, set the house rules, and try every move.",
     career1:
-      "Welcome to your drink booth. Order Beer and Soft drinks in the Stock tab (guests order both), then press OPEN CLUB to start the night.",
+      "Welcome to your token booth. Stock TSLA and US500 in the Stock tab (guests buy both), then press OPEN CLUB to start the night.",
     career2:
       "Post a poster in the Promo tab. Hype brings more guests, and it fades by 10 every day.",
     basement1:
@@ -927,7 +744,7 @@ export const en = {
       reachGuests: `Reach ${o.target} guests tonight`,
       bookDj: "Book a DJ",
       hireSecurity: "Hire security",
-      renewLiquor: "Renew the liquor license",
+      renewLiquor: "Renew the trading licence",
       noViolationsTonight: "Finish the night without violations",
       noOutOfStock: "Don't run out of stock tonight",
       crowdPermit: "Hold a crowd permit",
@@ -999,17 +816,17 @@ export const en = {
           ? "CEO Call: Happy Hour!"
           : "CEO Call: door closed";
       case "guestEscorted":
-        return "Security escorted a drunk guest out";
+        return "Security escorted a tilted guest out";
       case "rivalPromo":
         return `A rival club launched a big promo: Hype ${e.hype}`;
       case "supplierDelay":
         return `Suppliers are running late: +${e.days} day on orders`;
       case "securityStretched":
-        return `Security is stretched: ${e.waiting} drunk guest${e.waiting > 1 ? "s" : ""} waiting for a guard`;
+        return `Security is stretched: ${e.waiting} tilted guest${e.waiting > 1 ? "s" : ""} waiting for a guard`;
       case "tactic":
         return {
           mcHype: "MC on the mic: hands up, the whole room sings along",
-          sparkler: "Bottles out with sparklers",
+          sparkler: "Whale tables light the sparklers",
           hostsFloor: "Hosts hit the dance floor: the crowd follows",
           djAnthem: "The DJ drops the anthem: nobody is going home",
         }[e.tactic];
@@ -1023,7 +840,7 @@ export const en = {
         return `${e.upgrade === "sound" ? "Sound system" : "Lighting rig"} upgraded to tier ${e.tier} (−${fmt(e.cost)} C)`;
       case "sparklerParade":
         return e.bottles
-          ? `Sparkler parade! ${e.bottles} more table${e.bottles > 1 ? "s" : ""} ordered bottles: +${fmt(e.revenue)} C`
+          ? `Sparkler parade! ${e.bottles} more table${e.bottles > 1 ? "s" : ""} made a block buy: +${fmt(e.revenue)} C`
           : "Sparkler parade lit up the room";
       case "policyChanged":
         return `House rules: ${[
@@ -1044,12 +861,12 @@ export const en = {
   reviews: {
     djMatch: "The DJ was spot on!",
     djMiss: "Wrong music for this crowd.",
-    outOfStock: "They ran out of my drink...",
+    outOfStock: "They ran out of the token I wanted...",
     fight: "Someone started a fight. Not coming back.",
     packed: "Packed! Waited forever in line though.",
     great: "Best night out in ages.",
     meh: "It was okay.",
     bad: "Honestly, pretty dead.",
-    slow: "Waited ages at the bar.",
+    slow: "Waited ages for my order to fill.",
   },
 };

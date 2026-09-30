@@ -25,13 +25,13 @@ export function fireStaff(s: GameState, role: StaffRole): ActionResult {
 export const r08_rejectAtDoor = (s: GameState, underage: boolean) =>
   underage && (s.staff.security > 0 || s.level < staffRoles.security.minLevel);
 
-/** R9: per-minute fight chance for a guest; high when drunk ≥ 80 and security:guests < 1:40. */
+/** R9: per-minute fight chance for a guest; high when tilt ≥ 80 and security:guests < 1:40. */
 export function r09_fightChance(
   s: GameState,
-  drunk: number,
+  tilt: number,
   guestsInside: number,
 ): number {
-  if (drunk < night.fightDrunkThreshold) return 0;
+  if (tilt < night.fightTiltThreshold) return 0;
   const understaffed =
     s.staff.security * night.guestsPerSecurity < guestsInside;
   return understaffed
@@ -61,7 +61,7 @@ export function r10_forceDoorOpen(s: GameState): ActionResult {
   };
 }
 
-/** Security on shift tonight: guards busy with an escort, and drunk guests at fight risk still waiting for one. */
+/** Security on shift tonight: guards busy with an escort, and tilt guests at fight risk still waiting for one. */
 export function securityStatus(s: GameState): {
   total: number;
   busy: number;
@@ -73,7 +73,7 @@ export function securityStatus(s: GameState): {
     ? n.guests.filter(
         (g) =>
           (g.state === "idle" || g.state === "bar" || g.state === "dance") &&
-          g.drunk >= night.fightDrunkThreshold,
+          g.tilt >= night.fightTiltThreshold,
       ).length
     : 0;
   return { total: s.staff.security, busy, waiting };

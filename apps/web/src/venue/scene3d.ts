@@ -1,6 +1,9 @@
 import {
   djs,
-  drinks,
+  ids,
+  marketOf,
+  marketPrice,
+  tokens,
   isAtFightRisk,
   isPeakTime,
   bandPlaying,
@@ -10,7 +13,7 @@ import {
   active as tacticActive,
   isInside,
   night as nightData,
-  type DrinkId,
+  type TokenId,
   type GameState,
 } from "@nyxeron/core";
 import * as THREE from "three";
@@ -49,6 +52,7 @@ import {
   type Item,
 } from "./furniture";
 import { en } from "@/i18n/en";
+import { art } from "@/art";
 import { StageFx, type FlameSpot } from "./effects";
 import { Videotron, VIDEOTRON_ASPECT, type VideotronData } from "./videotron";
 
@@ -59,19 +63,17 @@ const PERSON_H = 1.15;
  * drawn so that a full venue shows about CROWD_SPRITES; the hard cap is a safety net.
  */
 const CROWD_SPRITES = 150;
+interface TokenTile {
+  id: TokenId;
+  ctx: CanvasRenderingContext2D;
+  tex: THREE.CanvasTexture;
+  logo: HTMLImageElement;
+}
 const MAX_GUEST_SPRITES = 220;
 const BLOCK_H = 0.45;
 const WALL_H = 3.2;
 /** Club light palette: magenta, electric blue, violet, amber. */
 const PALETTE = [0xff2bd6, 0x22d3ee, 0xa855f7, 0xffb020];
-/** Back-bar shelf sections, left to right, and the bottle colours on each. */
-const SHELVES: { drink: DrinkId; glass: number[] }[] = [
-  { drink: "vodka", glass: [0xe8e8f0, 0xcfe3ff, 0xf4f4f4] },
-  { drink: "whisky", glass: [0xd9a441, 0xb86f24, 0xe0b25a] },
-  { drink: "cocktail", glass: [0x6fbf73, 0x1f5a36, 0xb8452f, 0xf2d06b] },
-  { drink: "wine", glass: [0x5a1020, 0x2c4a1e, 0xd8e0a0] },
-];
-
 /** Deterministic 0..1 from an integer, so a guest always picks the same spot and outfit. */
 const hash = (n: number) => {
   let t = (n * 2654435761) >>> 0;
@@ -118,7 +120,7 @@ export class VenueScene {
   private root = new THREE.Group();
   private assets: VenueAssets | null = null;
   private shadowTex = shadowTexture();
-  // Shared by every drunk-guest marker (they pulse together).
+  // Shared by every tilt-guest marker (they pulse together).
   private ringMat = new THREE.MeshBasicMaterial({
     color: 0xff2a2a,
     transparent: true,
@@ -242,18 +244,21 @@ export class VenueScene {
   private selBox: THREE.BoxHelper | null = null;
   private grid: THREE.GridHelper | null = null;
   private videotron: Videotron | null = null;
-  private tron: VideotronData = { dj: null, top: [] };
+  private tron: VideotronData = { dj: null, top: [], movers: [] };
   /** What each guest has spent tonight, from watching their budget drop. */
   private spent = new Map<number, number>();
   /** Invisible click targets over the cabinet sections and fridge. */
   private cabinetHits: THREE.Mesh[] = [];
+  private tokenTiles: TokenTile[] = [];
+  private tileMinute = -1;
+  private tileState: GameState | null = null;
   private hovered: THREE.Mesh | null = null;
   /** Told when a cabinet section is clicked. */
-  onDrinkClick?: (id: DrinkId) => void;
+  onTokenClick?: (id: TokenId) => void;
   /** Told when the selection changes in edit mode (-1 = none). */
   onSelect?: (index: number) => void;
 
-  // Security handles drunk guests on its own (core), so guests aren't clickable; only the bar cabinet and editing are.
+  // Security handles tilt guests on its own (core), so guests aren't clickable; only the bar cabinet and editing are.
 
   async init(el: HTMLElement) {
     [this.assets, this.playlist] = await Promise.all([
@@ -341,6 +346,11 @@ export class VenueScene {
     this.syncVip(s);
     this.energy = s.night.energy ?? 50;
     this.syncScreen(s);
+    if (s.night.minute !== this.tileMinute) {
+      this.tileMinute = s.night.minute;
+      this.tileState = s;
+      this.tokenTiles.forEach((t) => this.drawTile(t));
+    }
     this.peak = isPeakTime(s);
     this.drawShare = Math.min(1, CROWD_SPRITES / capacityOf(s));
     this.anthem =
@@ -405,6 +415,16 @@ export class VenueScene {
         .sort((a, b) => b[1] - a[1])
         .slice(0, 3)
         .map(([id, spent]) => ({ name: this.guestName(id), spent })),
+      movers: ids(tokens)
+        .filter((t) => tokens[t].minLevel <= s.level)
+        .map((t) => [t, marketOf(n, t) - 1] as const)
+        .filter(([, d]) => Math.abs(d) >= 0.005)
+        .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+        .slice(0, 3)
+        .map(
+          ([t, d]) =>
+            `${tokens[t].ticker} ${d > 0 ? "▲" : "▼"} ${Math.abs(Math.round(d * 1000) / 10)}%`,
+        ),
     };
 
     // Security reacts to what just happened tonight: escorts and fights send a bodyguard over.
@@ -447,6 +467,9 @@ export class VenueScene {
     this.root.add(this.shadows);
     this.grid = this.selBox = null;
     this.cabinetHits = [];
+    this.tokenTiles.forEach((t) => t.tex.dispose());
+    this.tokenTiles = [];
+    this.tileMinute = -1;
     this.hovered = null;
     this.selected = -1;
     this.sparks = [];
@@ -932,69 +955,116 @@ export class VenueScene {
     this.leds.push({ mesh, cells, light });
   }
 
-  /** Back-bar liquor cabinet: shelves of bottles in front of a warm backlight, plus a glass-door fridge. */
+  /** One price tile: logo, ticker, live price and the move vs list (green up, red down). */
+  private drawTile({ id, ctx, tex, logo }: TokenTile) {
+    const s = this.tileState;
+    const { width: w, height: h } = ctx.canvas;
+    const locked = !!s && tokens[id].minLevel > s.level;
+    const m = marketOf(s?.night, id);
+    const up = m > 1.0005,
+      down = m < 0.9995;
+    const tone = locked
+      ? "#4b5563"
+      : up
+        ? "#22c55e"
+        : down
+          ? "#ef4444"
+          : "#94a3b8";
+    ctx.fillStyle = "#05060a";
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = tone;
+    ctx.lineWidth = 6;
+    ctx.strokeRect(3, 3, w - 6, h - 6);
+    if (logo.complete && logo.naturalWidth) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(52, 52, 32, 0, Math.PI * 2);
+      ctx.clip();
+      const r = Math.max(64 / logo.naturalWidth, 64 / logo.naturalHeight);
+      const lw = logo.naturalWidth * r,
+        lh = logo.naturalHeight * r;
+      ctx.drawImage(logo, 52 - lw / 2, 52 - lh / 2, lw, lh);
+      ctx.restore();
+    }
+    ctx.fillStyle = "#fff";
+    ctx.font = "800 38px ui-monospace, Menlo, monospace";
+    ctx.textBaseline = "middle";
+    ctx.fillText(tokens[id].ticker, 98, 54);
+    ctx.globalAlpha = locked ? 0.5 : 1;
+    ctx.font = "700 46px ui-monospace, Menlo, monospace";
+    ctx.fillText(
+      locked ? `LV ${tokens[id].minLevel}` : s ? `${marketPrice(s, id)} C` : "",
+      22,
+      122,
+    );
+    if (!locked) {
+      const pct = Math.round((m - 1) * 1000) / 10;
+      ctx.fillStyle = tone;
+      ctx.font = "700 32px ui-monospace, Menlo, monospace";
+      ctx.fillText(`${up ? "▲" : down ? "▼" : "•"} ${Math.abs(pct)}%`, 22, 172);
+    }
+    ctx.globalAlpha = 1;
+    tex.needsUpdate = true;
+  }
+
+  /** Back-bar token board: a wall of live price tiles, one per token, each clickable for its detail card. */
   private buildCabinet(lane: Zone, eastWall = false) {
     const alongX = lane.w >= lane.h;
     const len = alongX ? lane.w : lane.h;
-    const depth = 0.34,
-      height = 2.1;
+    const height = 2.1;
     const g = new THREE.Group();
-    const wood = new THREE.MeshStandardMaterial({
-      color: 0x3a2618,
-      roughness: 0.7,
-    });
-    const carcass = new THREE.Mesh(
+    const back = new THREE.Mesh(
       new THREE.BoxGeometry(len, height, 0.06),
-      wood,
+      new THREE.MeshStandardMaterial({ color: 0x0b0d12, roughness: 0.5 }),
     );
-    carcass.position.set(len / 2, height / 2, 0.03);
-    g.add(carcass);
-    const glow = new THREE.Mesh(
-      new THREE.PlaneGeometry(len - 0.2, height - 0.7),
+    back.position.set(len / 2, height / 2, 0.03);
+    g.add(back);
+    const header = textTexture(en.venue.tokenBoard, {
+      size: 44,
+      weight: "800",
+      color: "#7dd3fc",
+    });
+    const hh = 0.16;
+    const head = new THREE.Mesh(
+      new THREE.PlaneGeometry(hh * header.aspect, hh),
       new THREE.MeshBasicMaterial({
-        color: 0xffa24a,
+        map: header.tex,
         transparent: true,
-        opacity: 0.55,
+        depthWrite: false,
       }),
     );
-    glow.position.set(len / 2, 0.6 + (height - 0.7) / 2, 0.065);
-    g.add(glow);
-    const shelfYs = [0.62, 1.12, 1.62];
-    for (const y of shelfYs) {
-      const shelf = new THREE.Mesh(
-        new THREE.BoxGeometry(len - 0.1, 0.04, depth),
-        wood,
+    head.position.set(len / 2, height - 0.15, 0.065);
+    g.add(head);
+
+    // Two rows of four tiles.
+    const cols = 4;
+    const all = ids(tokens);
+    const tileW = (len - 0.2) / cols - 0.06;
+    const tileH = Math.min(0.62, tileW / 1.6);
+    all.forEach((id, k) => {
+      const x = 0.1 + ((k % cols) + 0.5) * ((len - 0.2) / cols);
+      const y =
+        height - 0.35 - tileH / 2 - Math.floor(k / cols) * (tileH + 0.08);
+      const c = document.createElement("canvas");
+      c.width = 320;
+      c.height = 200;
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const tile = new THREE.Mesh(
+        new THREE.PlaneGeometry(tileW, tileH),
+        new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }),
       );
-      shelf.position.set(len / 2, y, depth / 2);
-      g.add(shelf);
-    }
-    // Four labelled sections of bottles; the fridge at the end holds beer and soft drinks.
-    const secW = (len - 1.1) / SHELVES.length;
-    const perSec = Math.floor((secW - 0.12) / 0.13);
-    const bottleGeo = new THREE.CylinderGeometry(0.035, 0.042, 0.24, 10);
-    bottleGeo.translate(0, 0.12, 0);
-    const bottles = new THREE.InstancedMesh(
-      bottleGeo,
-      new THREE.MeshStandardMaterial({
-        roughness: 0.15,
-        metalness: 0.2,
-        transparent: true,
-        opacity: 0.88,
-        emissive: 0x221100,
-      }),
-      perSec * shelfYs.length * SHELVES.length,
-    );
-    const m = new THREE.Matrix4();
-    let i = 0;
-    const hit = (
-      drink: DrinkId,
-      x: number,
-      y: number,
-      w: number,
-      h: number,
-    ) => {
+      tile.position.set(x, y, 0.07);
+      g.add(tile);
+      const logo = new Image();
+      const t: TokenTile = { id, ctx: c.getContext("2d")!, tex, logo };
+      logo.onload = () => this.drawTile(t);
+      logo.src = art.token(id);
+      this.tokenTiles.push(t);
+      this.drawTile(t);
+
       const box = new THREE.Mesh(
-        new THREE.BoxGeometry(w, h, depth + 0.06),
+        new THREE.BoxGeometry(tileW + 0.04, tileH + 0.04, 0.1),
         new THREE.MeshBasicMaterial({
           color: 0xffffff,
           transparent: true,
@@ -1003,73 +1073,11 @@ export class VenueScene {
           blending: THREE.AdditiveBlending,
         }),
       );
-      box.position.set(x, y, (depth + 0.06) / 2);
-      box.userData.drink = drink;
+      box.position.set(x, y, 0.1);
+      box.userData.token = id;
       g.add(box);
       this.cabinetHits.push(box);
-    };
-    const plate = (text: string, x: number, y: number) => {
-      const { tex, aspect } = textTexture(text, {
-        size: 44,
-        weight: "700",
-        color: "#ffd9a8",
-      });
-      const hgt = 0.13;
-      const lbl = new THREE.Mesh(
-        new THREE.PlaneGeometry(hgt * aspect, hgt),
-        new THREE.MeshBasicMaterial({
-          map: tex,
-          transparent: true,
-          depthWrite: false,
-        }),
-      );
-      lbl.position.set(x, y, 0.08);
-      g.add(lbl);
-    };
-    SHELVES.forEach(({ drink, glass }, sec) => {
-      const x0 = 0.1 + sec * secW;
-      for (const y of shelfYs)
-        for (let k = 0; k < perSec; k++) {
-          m.makeTranslation(x0 + 0.12 + k * 0.13, y + 0.02, depth * 0.55);
-          bottles.setMatrixAt(i, m);
-          bottles.setColorAt(
-            i,
-            new THREE.Color(glass[Math.floor(hash(i + 3) * glass.length)]!),
-          );
-          i++;
-        }
-      hit(drink, x0 + secW / 2, 1.3, secW - 0.04, 1.5);
-      plate(drinks[drink].name.toUpperCase(), x0 + secW / 2, height - 0.12);
     });
-    g.add(bottles);
-    hit("beer", len - 0.45, 0.83, 0.72, 0.55);
-    hit("softDrink", len - 0.45, 0.28, 0.72, 0.55);
-    plate(
-      `${drinks.beer.name} · ${drinks.softDrink.name}`.toUpperCase(),
-      len - 0.45,
-      1.25,
-    );
-    // Beer fridge at the far end, glowing through its glass door.
-    const fridge = new THREE.Mesh(
-      new THREE.BoxGeometry(0.7, 1.1, depth + 0.05),
-      new THREE.MeshStandardMaterial({
-        color: 0x1b1d22,
-        roughness: 0.4,
-        metalness: 0.5,
-      }),
-    );
-    fridge.position.set(len - 0.45, 0.55, (depth + 0.05) / 2);
-    g.add(fridge);
-    const door = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.58, 0.95),
-      new THREE.MeshBasicMaterial({
-        color: 0x9fd8ff,
-        transparent: true,
-        opacity: 0.55,
-      }),
-    );
-    door.position.set(len - 0.45, 0.55, depth + 0.052);
-    g.add(door);
 
     if (alongX) g.position.set(lane.x, 0, lane.y);
     else if (eastWall) {
@@ -1551,7 +1559,7 @@ export class VenueScene {
         Math.sin(t * Math.PI) * -0.1,
       ]);
     else if (counter)
-      // Along the bar, drinks going out.
+      // Along the bar, tokens going out.
       out.push((t) => [
         V(counter.x + 3.5, 2, counter.y + counter.h * (0.1 + t * 0.8)),
         V(
@@ -1821,7 +1829,7 @@ export class VenueScene {
     return p;
   }
 
-  /** The "!" and red ring over a drunk guest, created only when someone actually gets drunk. */
+  /** The "!" and red ring over a tilt guest, created only when someone actually gets tilt. */
   private markRisk(p: Person, on: boolean) {
     if (on && !p.alert) {
       const alert = new THREE.Sprite(this.alertMat);
@@ -2601,7 +2609,7 @@ export class VenueScene {
         return;
       aim(e);
       const shelf = ray.intersectObjects(this.cabinetHits, false)[0];
-      if (shelf) this.onDrinkClick?.(shelf.object.userData.drink as DrinkId);
+      if (shelf) this.onTokenClick?.(shelf.object.userData.token as TokenId);
     };
     const wheel = () => {
       if (!this.cine.on) return;
@@ -2710,7 +2718,7 @@ export class VenueScene {
       (p.sprite.material as THREE.SpriteMaterial).rotation = rot;
     };
 
-    // Drunk-guest markers share materials, so they pulse together.
+    // Tilted-guest markers share materials, so they pulse together.
     const markBeat = 0.5 + 0.5 * Math.sin(now / 120);
     this.alertMat.opacity = 0.5 + 0.5 * markBeat;
     this.ringMat.opacity = 0.4 + 0.5 * markBeat;

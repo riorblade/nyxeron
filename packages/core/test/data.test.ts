@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { channels, djs, drinks, levels, permits, suppliers } from "../src";
+import { channels, djs, tokens, levels, permits, suppliers } from "../src";
 
 // Guards against typos when balancing JSON by hand.
 describe("data", () => {
   it("every minLevel is 1..5 and every number is non-negative", () => {
-    for (const table of [drinks, suppliers, permits, channels, djs])
+    for (const table of [tokens, suppliers, permits, channels, djs])
       for (const row of Object.values(table)) {
         expect(row.minLevel).toBeGreaterThanOrEqual(1);
         expect(row.minLevel).toBeLessThanOrEqual(5);

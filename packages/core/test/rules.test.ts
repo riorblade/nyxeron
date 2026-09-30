@@ -167,7 +167,7 @@ describe("R8 / R9 / R10 security", () => {
       ),
     ).toBe(false);
   });
-  it("R9 fight chance depends on drunk and 1:40 ratio", () => {
+  it("R9 fight chance depends on tilt and 1:40 ratio", () => {
     const s = club({
       staff: { bartender: 0, security: 2, host: 0, relations: 0, mc: 0 },
     });

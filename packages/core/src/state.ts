@@ -1,5 +1,5 @@
 import {
-  drinks,
+  tokens,
   economy,
   ids,
   permits,
@@ -7,7 +7,7 @@ import {
   type BandId,
   type ChannelId,
   type DressCode,
-  type DrinkId,
+  type TokenId,
   type HappyHourSlot,
   type Genre,
   type Level,
@@ -56,7 +56,7 @@ export interface TacticState {
 }
 
 export interface Order {
-  drink: DrinkId;
+  drink: TokenId;
   qty: number;
   supplier: SupplierId;
   arrivesDay: number;
@@ -75,10 +75,10 @@ type Ev<K extends string, T = object> = {
 export type GameEvent =
   | Ev<
       "orderPlaced",
-      { drink: DrinkId; qty: number; cost: number; arrivesDay: number }
+      { drink: TokenId; qty: number; cost: number; arrivesDay: number }
     >
-  | Ev<"orderDelivered", { drink: DrinkId; qty: number }>
-  | Ev<"outOfStock", { drink: DrinkId }>
+  | Ev<"orderDelivered", { drink: TokenId; qty: number }>
+  | Ev<"outOfStock", { drink: TokenId }>
   | Ev<"upkeepPaid", { wages: number; rent: number }>
   | Ev<"taxPaid", { revenue: number; tax: number }>
   | Ev<"djBooked", { dj: TalentId; hype: number }>
@@ -126,7 +126,7 @@ export interface Guest {
   segment: SegmentId;
   genre: Genre;
   budget: number;
-  drunk: number;
+  tilt: number;
   satisfaction: number;
   underage: boolean;
   state: GuestState;
@@ -137,6 +137,9 @@ export interface Guest {
   /** Hit an out-of-stock drink once (R2); afterwards only orders what is in stock. */
   disappointed: boolean;
   female: boolean;
+  /** Tokens bought tonight and their average market index at purchase (their P&L is felt against it). */
+  bought?: number;
+  basis?: number;
   /** On a promoter's guest list: arrives early, skips the cover, the promoter is paid per head. */
   guestList?: PromoterId;
   /** Already stayed on once past their planned leave time (encore). */
@@ -149,13 +152,18 @@ export interface NightState {
   startReputation: number;
   guests: Guest[];
   djMultiplier: number;
+  /** Live token market: multiplier on list price per token, and its slow average (for momentum). */
+  market: Partial<Record<TokenId, number>>;
+  marketEma: Partial<Record<TokenId, number>>;
+  /** The market multiplier at the end of every minute so far tonight (for the charts). */
+  marketHist: Partial<Record<TokenId, number[]>>;
   /** Live band's dance multiplier while its set runs (null = not playing). */
   bandMultiplier: number | null;
   inspectionMinute: number | null;
   doorForced: boolean;
   /** CEO Call "Close Door": no more admissions tonight. */
   doorClosedByCeo: boolean;
-  /** CEO Call "Happy Hour": cheaper drinks for the rest of the night. */
+  /** CEO Call "Happy Hour": cheaper tokens for the rest of the night. */
   happyHour: boolean;
   doorClosedLogged: boolean;
   crowdChecked: boolean;
@@ -170,7 +178,7 @@ export interface NightState {
   djMatch: boolean | null;
   violationsTonight: number;
   finesTonight: number;
-  outOfStockLogged: DrinkId[];
+  outOfStockLogged: TokenId[];
   /** Crowd energy 0–100: how full and how moving the room is. */
   energy: number;
   energySum: number;
@@ -185,7 +193,7 @@ export interface NightState {
   guestListIn: number;
   commission: number;
   bottles: number;
-  /** Guards busy walking a drunk guest out, each until `until`. */
+  /** Guards busy walking a tilt guest out, each until `until`. */
   escorts: { guest: number; until: number }[];
   escorted: number;
   stretchedLogged: boolean;
@@ -238,8 +246,8 @@ export interface GameState {
   ceoCallUsed: boolean;
   violations: number;
   negativeCashDays: number;
-  stock: Record<DrinkId, number>;
-  prices: Record<DrinkId, number>;
+  stock: Record<TokenId, number>;
+  prices: Record<TokenId, number>;
   pendingOrders: Order[];
   permits: Record<PermitId, Permit>;
   bookedTalent: TalentId[];
@@ -297,8 +305,8 @@ export function createGameState(
     ceoCallUsed: false,
     violations: 0,
     negativeCashDays: 0,
-    stock: fill(ids(drinks), () => 0),
-    prices: fill(ids(drinks), (d) => drinks[d].defaultPrice),
+    stock: fill(ids(tokens), () => 0),
+    prices: fill(ids(tokens), (d) => tokens[d].defaultPrice),
     pendingOrders: [],
     // The booth starts with a business permit; everything else is bought later.
     permits: fill(ids(permits), (p) =>
@@ -345,6 +353,9 @@ const NIGHT_DEFAULTS = {
   escorted: 0,
   stretchedLogged: false,
   bandMultiplier: null,
+  market: {},
+  marketEma: {},
+  marketHist: {},
 };
 
 /**

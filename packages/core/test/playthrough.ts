@@ -36,12 +36,12 @@ export function playWeek(seed: number): {
 
   for (let day = 1; day <= 7 && !s.outcome; day++) {
     for (const d of [
-      "beer",
-      "vodka",
-      "whisky",
-      "cocktail",
-      "softDrink",
-      "wine",
+      "tsla",
+      "nvda",
+      "bigtech",
+      "aisemis",
+      "us500",
+      "dividend",
     ] as const)
       if (s.stock[d] < 150)
         s = ok(r01_orderStock(s, d, 150 - s.stock[d], "corner"));

@@ -31,7 +31,7 @@ import {
   vipFor,
   vipSpend,
   defaultPrice,
-  drinks,
+  tokens,
   endNight,
   energyTarget,
   expectedGuests,
@@ -65,10 +65,10 @@ const club = (over: Partial<GameState> = {}): GameState => {
       Object.keys(s0.permits).map((k) => [k, { valid: true, expiresDay: 99 }]),
     ) as GameState["permits"],
     stock: Object.fromEntries(
-      ids(drinks).map((d) => [d, 9999]),
+      ids(tokens).map((d) => [d, 9999]),
     ) as GameState["stock"],
     prices: Object.fromEntries(
-      ids(drinks).map((d) => [d, defaultPrice(d, 4)]),
+      ids(tokens).map((d) => [d, defaultPrice(d, 4)]),
     ) as GameState["prices"],
     staff: { bartender: 4, security: 6, host: 0, relations: 0, mc: 0 },
     bookedTalent: ["sable"],
@@ -475,14 +475,14 @@ describe("venue capacity and storage", () => {
   });
   it("the stock room caps orders; storage upgrades make room", () => {
     const full = { ...rich, stock: { ...rich.stock } };
-    for (const d of ids(drinks)) full.stock[d] = 0;
-    full.stock.beer = storageOf(full) - 5;
-    const tooMuch = r01_orderStock(full, "beer", 10, "corner");
+    for (const d of ids(tokens)) full.stock[d] = 0;
+    full.stock.tsla = storageOf(full) - 5;
+    const tooMuch = r01_orderStock(full, "tsla", 10, "corner");
     expect(tooMuch.ok).toBe(false);
     expect(!tooMuch.ok && tooMuch.reason).toBe("storageFull");
-    expect(r01_orderStock(full, "beer", 5, "corner").ok).toBe(true);
+    expect(r01_orderStock(full, "tsla", 5, "corner").ok).toBe(true);
     const up = buyUpgrade(full, "storage");
-    expect(up.ok && r01_orderStock(up.state, "beer", 10, "corner").ok).toBe(
+    expect(up.ok && r01_orderStock(up.state, "tsla", 10, "corner").ok).toBe(
       true,
     );
   });
@@ -527,40 +527,47 @@ describe("auto-refill", () => {
     const s = club({ autoRefill: on });
     // Realistic stock (the helper's 9999 of everything would fill the stock room).
     const stock = { ...s.stock };
-    for (const d of ids(drinks)) stock[d] = 100;
-    return { ...s, stock: { ...stock, beer: 3 } };
+    for (const d of ids(tokens)) stock[d] = 100;
+    return { ...s, stock: { ...stock, tsla: 3 } };
   };
   it("tops up a drink that runs low at night, only when switched on", () => {
-    expect(tickNight(startNight(low(true))).stock.beer).toBeGreaterThan(3);
-    expect(tickNight(startNight(low(false))).stock.beer).toBeLessThanOrEqual(3);
+    expect(tickNight(startNight(low(true))).stock.tsla).toBeGreaterThan(3);
+    expect(tickNight(startNight(low(false))).stock.tsla).toBeLessThanOrEqual(3);
     expect(setAutoRefill(club(), true).ok).toBe(true);
   });
   it("stops when there is no Coin", () => {
     const broke = { ...low(true), coin: 0 };
-    expect(tickNight(startNight(broke)).stock.beer).toBeLessThanOrEqual(3);
+    expect(tickNight(startNight(broke)).stock.tsla).toBeLessThanOrEqual(3);
   });
 });
 
 describe("security works on its own", () => {
-  // Three drunk guests inside at minute 100.
+  // Three tilt guests inside at minute 100.
   const drunkNight = (security: number) => {
     const s = ticks(startNight(club()), 100);
     let k = 0;
     const guests = s.night!.guests.map((g) =>
-      isInside(g) && k++ < 3 ? { ...g, drunk: 95 } : g,
+      isInside(g) && k++ < 3 ? { ...g, tilt: 95 } : g,
     );
     return {
       ...s,
       staff: { ...s.staff, security },
-      night: { ...s.night!, guests },
+      // A clean slate for security: nobody escorted yet tonight.
+      night: {
+        ...s.night!,
+        guests,
+        escorts: [],
+        escorted: 0,
+        stretchedLogged: false,
+      },
     };
   };
   const drunkInside = (s: GameState) =>
     s.night!.guests.filter(
-      (g) => isInside(g) && g.drunk >= night.fightDrunkThreshold,
+      (g) => isInside(g) && g.tilt >= night.fightTiltThreshold,
     ).length;
 
-  it("free guards walk drunk guests out without being asked", () => {
+  it("free guards walk tilt guests out without being asked", () => {
     const after = tickNight(drunkNight(6));
     expect(after.night!.escorted).toBeGreaterThanOrEqual(3);
     expect(securityStatus(after).busy).toBeGreaterThanOrEqual(3);

@@ -3,7 +3,7 @@ import {
   channels,
   defaultPrice,
   djs,
-  drinks,
+  tokens,
   ids,
   legal,
   levelData,
@@ -12,7 +12,7 @@ import {
   promoters,
   segments,
   strategy,
-  type DrinkId,
+  type TokenId,
   type ChannelId,
   type SegmentId,
   type SupplierId,
@@ -26,7 +26,15 @@ import {
   r12_newDay,
   r15_entertainmentTax,
 } from "./rules/economy";
-import { r01_orderStock, r02_serveDrink } from "./rules/inventory";
+import { r01_orderStock, r02_sellToken } from "./rules/inventory";
+import {
+  feelMarket,
+  fomoFactor,
+  marketIndex,
+  marketPrice,
+  recordBuy,
+  tickMarket,
+} from "./rules/market";
 import { inspect, permitActive, r06_inspectionChance } from "./rules/legal";
 import { r14_checkVictory } from "./rules/progression";
 import { r11_reputationDelta } from "./rules/reputation";
@@ -120,7 +128,7 @@ function makeGuest(
         coverBudget(s) *
         (female ? 1 : maleBudget(s)),
     ),
-    drunk: 0,
+    tilt: 0,
     satisfaction: night.startSatisfaction,
     underage: rng.chance(night.underageChance),
     state: "pending",
@@ -207,6 +215,9 @@ export function startNight(s: GameState): GameState {
       guests,
       djMultiplier: night.noDjDanceFactor,
       bandMultiplier: null,
+      market: {},
+      marketEma: {},
+      marketHist: {},
       inspectionMinute: sealed ? null : inspectionMinute,
       doorForced: false,
       doorClosedByCeo: false,
@@ -373,11 +384,11 @@ export function tickNight(s: GameState): GameState {
   }
 
   // Security works on its own: a free guard walks the drunkest at-risk guest out, which keeps that guard busy for a
-  // few minutes. More drunk guests than free guards = they wait (and may start fights): hire more security.
+  // few minutes. More tilt guests than free guards = they wait (and may start fights): hire more security.
   n.escorts = n.escorts.filter((e) => e.until > m);
   const atRisk = n.guests
-    .filter((g) => isInside(g) && g.drunk >= night.fightDrunkThreshold)
-    .sort((a, b) => b.drunk - a.drunk);
+    .filter((g) => isInside(g) && g.tilt >= night.fightTiltThreshold)
+    .sort((a, b) => b.tilt - a.tilt);
   const free = Math.max(0, st.staff.security - n.escorts.length);
   for (const g of atRisk.slice(0, free)) {
     g.state = "left";
@@ -414,7 +425,7 @@ export function tickNight(s: GameState): GameState {
     ev({ ...at, kind: "crowdThinning", energy: Math.round(n.energy) });
   }
   const coverage = relationsCoverage(st, insideNow.length);
-  // The vibe only matters once there is a floor to fill (Level 3+); the booth and shop just sell drinks.
+  // The vibe only matters once there is a floor to fill (Level 3+); the booth and shop just sell tokens.
   const vibe = st.level >= POLICY_MIN_LEVEL;
   const perMinute =
     (vibe
@@ -431,10 +442,18 @@ export function tickNight(s: GameState): GameState {
     (1 + strategy.relations.upsell * coverage);
   const rounds = roundChance(st, femaleInside);
 
+  // The token market trades a minute: energy lifts it, the DJ taking the decks and the anthem pump it.
+  const menu = ids(tokens).filter((d) => tokens[d].minLevel <= st.level);
+  const mk = strategy.market;
+  const pump =
+    (dj && m === night.djSetStartMinute ? mk.djStartPump : 0) +
+    (active(n, "djAnthem") ? mk.anthemPumpPerMinute : 0);
+  tickMarket(rng, n, menu, pump);
+  const index = marketIndex(n, menu);
+
   // Guests inside.
-  const menu = ids(drinks).filter((d) => drinks[d].minLevel <= st.level);
   // Bar throughput: the owner serves alone at first; each bartender adds a serving slot.
-  let barSlots = night.drinksServedPerMinute * (1 + st.staff.bartender);
+  let barSlots = night.ordersPerMinute * (1 + st.staff.bartender);
   for (const g of n.guests) {
     if (!isInside(g)) continue;
     if (m >= g.leaveMinute) {
@@ -454,7 +473,7 @@ export function tickNight(s: GameState): GameState {
         continue;
       }
     }
-    g.drunk = Math.max(0, g.drunk - night.drunkDecayPerMinute);
+    g.tilt = Math.max(0, g.tilt - night.tiltDecayPerMinute);
     // A flat, unhappy room empties early.
     if (
       vibe &&
@@ -466,11 +485,12 @@ export function tickNight(s: GameState): GameState {
       inside--;
       continue;
     }
+    feelMarket(g, index);
     g.satisfaction +=
       perMinute +
       (g.female ? 0 : st.staff.host * strategy.hosts.maleSatisfactionPerMinute);
 
-    if (rng.chance(r09_fightChance(st, g.drunk, inside))) {
+    if (rng.chance(r09_fightChance(st, g.tilt, inside))) {
       g.state = "left";
       inside--;
       n.fights++;
@@ -485,16 +505,19 @@ export function tickNight(s: GameState): GameState {
 
     const inStock = menu.filter((d) => st.stock[d] > 0);
     const drink = rng.pick(g.disappointed && inStock.length ? inStock : menu);
-    const price =
+    // List price (the player's, discounted at happy hour); guests pay it times the live market.
+    const list =
       n.happyHour || happyHourAt(st, m)
         ? Math.max(1, Math.round(st.prices[drink] * night.happyHourPriceFactor))
         : st.prices[drink];
-    // Pricier than default → fewer orders; drunk guests slow down.
+    const price = marketPrice(st, drink, list);
+    // A list price above default → fewer orders; a rising token → FOMO; tilted guests slow down.
     const barChance =
       barBoost *
       night.barChancePerMinute *
-      Math.min(1.5, defaultPrice(drink, st.level) / price) *
-      Math.max(0.2, 1 - g.drunk / night.drunkSlowdown);
+      Math.min(1.5, defaultPrice(drink, st.level) / list) *
+      fomoFactor(n, drink) *
+      Math.max(0.2, 1 - g.tilt / night.tiltSlowdown);
     const r = rng.next();
     if (r < barChance && g.budget >= price && barSlots <= 0) {
       g.state = "bar";
@@ -502,7 +525,7 @@ export function tickNight(s: GameState): GameState {
       n.slowServiceHits++;
     } else if (r < barChance && g.budget >= price) {
       barSlots--;
-      const res = r02_serveDrink(st, drink, price);
+      const res = r02_sellToken(st, drink, price);
       g.state = "bar";
       if (res.outOfStock) {
         g.disappointed = true;
@@ -514,8 +537,9 @@ export function tickNight(s: GameState): GameState {
       } else {
         st = res.state;
         g.budget -= price;
-        g.drunk += drinks[drink].alcohol;
-        g.satisfaction += night.drinkSatisfaction;
+        g.tilt += tokens[drink].fomo;
+        g.satisfaction += night.buySatisfaction;
+        recordBuy(g, index);
         // Buying a round: a man gets one for a woman in the crowd or a host.
         if (
           !g.female &&
@@ -523,7 +547,7 @@ export function tickNight(s: GameState): GameState {
           barSlots > 0 &&
           rng.chance(rounds)
         ) {
-          const again = r02_serveDrink(st, drink, price);
+          const again = r02_sellToken(st, drink, price);
           if (!again.outOfStock) {
             barSlots--;
             st = again.state;
@@ -683,11 +707,11 @@ export function genreForecast(s: GameState): Record<string, number> {
   return out;
 }
 
-/** Suggested stock per drink for tonight: expected guests × drinks per guest, spread over the menu. */
-export function stockForecast(s: GameState): Partial<Record<DrinkId, number>> {
-  const menu = ids(drinks).filter((d) => drinks[d].minLevel <= s.level);
+/** Suggested stock per drink for tonight: expected guests × tokens per guest, spread over the menu. */
+export function stockForecast(s: GameState): Partial<Record<TokenId, number>> {
+  const menu = ids(tokens).filter((d) => tokens[d].minLevel <= s.level);
   const perDrink = Math.ceil(
-    (expectedGuests(s) * night.forecastDrinksPerGuest) / menu.length,
+    (expectedGuests(s) * night.forecastOrdersPerGuest) / menu.length,
   );
   return Object.fromEntries(menu.map((d) => [d, perDrink]));
 }

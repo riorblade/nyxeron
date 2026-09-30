@@ -7,12 +7,12 @@
     "reputation": 55,
     "hype": 0,
     "stock": {
-      "beer": 150,
-      "softDrink": 100,
-      "vodka": 80,
-      "whisky": 60,
-      "cocktail": 60,
-      "wine": 40
+      "tsla": 150,
+      "us500": 100,
+      "nvda": 80,
+      "bigtech": 60,
+      "aisemis": 60,
+      "dividend": 40
     },
     "staff": {
       "bartender": 3,
@@ -44,12 +44,12 @@
     "reputation": 75,
     "hype": 60,
     "stock": {
-      "beer": 600,
-      "softDrink": 400,
-      "vodka": 400,
-      "whisky": 300,
-      "cocktail": 300,
-      "wine": 200
+      "tsla": 600,
+      "us500": 400,
+      "nvda": 400,
+      "bigtech": 300,
+      "aisemis": 300,
+      "dividend": 200
     },
     "staff": {
       "bartender": 6,

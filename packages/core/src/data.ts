@@ -1,7 +1,7 @@
 import bandsJson from "./data/bands.json";
 import channelsJson from "./data/channels.json";
 import djsJson from "./data/djs.json";
-import drinksJson from "./data/drinks.json";
+import tokensJson from "./data/tokens.json";
 import economyJson from "./data/economy.json";
 import legalJson from "./data/legal.json";
 import levelsJson from "./data/levels.json";
@@ -15,7 +15,7 @@ import strategyJson from "./data/strategy.json";
 import suppliersJson from "./data/suppliers.json";
 
 // ponytail: ids are the JSON keys, so adding an entry to a JSON file is the whole change.
-export const drinks = drinksJson;
+export const tokens = tokensJson;
 export const suppliers = suppliersJson;
 export const permits = permitsJson;
 export const channels = channelsJson;
@@ -31,7 +31,7 @@ export const scenarios = scenariosJson;
 export const strategy = strategyJson;
 export const promoters = promotersJson;
 
-export type DrinkId = keyof typeof drinks;
+export type TokenId = keyof typeof tokens;
 export type SupplierId = keyof typeof suppliers;
 export type PermitId = keyof typeof permits;
 export type ChannelId = keyof typeof channels;
@@ -53,7 +53,7 @@ export const levelData = (level: Level) => levels[level];
 
 /** Bigger venues charge more, pay more for stock and draw guests with deeper pockets. */
 export const priceScale = (level: Level) => levels[level].priceScale;
-export const defaultPrice = (drink: DrinkId, level: Level) =>
-  Math.round(drinks[drink].defaultPrice * priceScale(level));
+export const defaultPrice = (drink: TokenId, level: Level) =>
+  Math.round(tokens[drink].defaultPrice * priceScale(level));
 export const requiredPermits = (level: Level) =>
   levels[level].requiredPermits as PermitId[];

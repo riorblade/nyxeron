@@ -1,7 +1,7 @@
-import type { DrinkId, GameState } from "@nyxeron/core";
+import type { TokenId, GameState } from "@nyxeron/core";
 import { RotateCw, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { DrinkDetail } from "@/hud/DrinkDetail";
+import { TokenDetail } from "@/hud/TokenDetail";
 import { en } from "@/i18n/en";
 import { cn } from "@/lib/utils";
 import { useSettings } from "@/settings";
@@ -29,7 +29,7 @@ export function VenueView({
   const el = useRef<HTMLDivElement>(null);
   const r = useRef<VenueScene | null>(null);
   const [selected, setSelected] = useState(-1);
-  const [drink, setDrink] = useState<DrinkId | null>(null);
+  const [drink, setDrink] = useState<TokenId | null>(null);
   const clips = useSettings((x) => x.clips);
   const ads = useSettings((x) => x.ads);
 
@@ -37,7 +37,7 @@ export function VenueView({
     let cancelled = false;
     const v = new VenueScene();
     v.onSelect = setSelected;
-    v.onDrinkClick = setDrink;
+    v.onTokenClick = setDrink;
     v.init(el.current!).then(() => {
       // StrictMode mounts twice; a renderer torn down before init finished must not become current.
       if (cancelled) return;
@@ -91,7 +91,7 @@ export function VenueView({
   return (
     <>
       <div ref={el} className="absolute inset-0" />
-      {drink && <DrinkDetail s={s} id={drink} onClose={() => setDrink(null)} />}
+      {drink && <TokenDetail s={s} id={drink} onClose={() => setDrink(null)} />}
       {editing && (
         <div className="glass enter absolute inset-x-3 bottom-3 z-20 flex max-h-[45dvh] flex-col gap-2 overflow-y-auto rounded-xl p-3 lg:inset-x-auto lg:left-1/2 lg:-translate-x-1/2">
           <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1">

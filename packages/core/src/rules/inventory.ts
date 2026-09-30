@@ -1,10 +1,10 @@
 import {
-  drinks,
+  tokens,
   priceScale,
   type Level,
   economy,
   suppliers,
-  type DrinkId,
+  type TokenId,
   type SupplierId,
 } from "../data";
 import { fail, type ActionResult } from "../result";
@@ -12,13 +12,13 @@ import type { GameState } from "../state";
 import { stockHeld, storageOf } from "./strategy";
 
 export function orderCost(
-  drink: DrinkId,
+  drink: TokenId,
   qty: number,
   supplier: SupplierId,
   level: Level = 1,
 ): number {
   return Math.round(
-    drinks[drink].buyCost *
+    tokens[drink].buyCost *
       priceScale(level) *
       qty *
       suppliers[supplier].costMultiplier,
@@ -28,13 +28,13 @@ export function orderCost(
 /** R1: order stock if coin ≥ cost; arrives after supplier lead time (0 = now). Also allowed at night (emergency restock). */
 export function r01_orderStock(
   s: GameState,
-  drink: DrinkId,
+  drink: TokenId,
   qty: number,
   supplier: SupplierId,
 ): ActionResult {
   if (!Number.isInteger(qty) || qty <= 0) return fail("invalidQty");
   if (
-    s.level < drinks[drink].minLevel ||
+    s.level < tokens[drink].minLevel ||
     s.level < suppliers[supplier].minLevel
   )
     return fail("levelLocked");
@@ -83,9 +83,9 @@ export function deliverOrders(s: GameState): GameState {
  * R2: guest orders a drink. In stock → stock −1, coin +price (bar revenue).
  * Out of stock → satisfaction −10; the caller raises the "Out of Stock" alert (once per drink per night).
  */
-export function r02_serveDrink(
+export function r02_sellToken(
   s: GameState,
-  drink: DrinkId,
+  drink: TokenId,
   price = s.prices[drink],
 ): { state: GameState; satisfactionDelta: number; outOfStock: boolean } {
   if (s.stock[drink] <= 0)
@@ -108,7 +108,7 @@ export function r02_serveDrink(
 
 export function setPrice(
   s: GameState,
-  drink: DrinkId,
+  drink: TokenId,
   price: number,
 ): ActionResult {
   if (!Number.isInteger(price) || price <= 0) return fail("invalidPrice");

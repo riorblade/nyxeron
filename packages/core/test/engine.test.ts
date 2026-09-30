@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   createGameState,
+  ids,
+  tokens,
   endNight,
   expectedGuests,
   isInside,
@@ -166,15 +168,13 @@ describe("night report factors + stock forecast", () => {
     expect(dry.lastReport!.outOfStockHits).toBeGreaterThan(0);
     expect(dry.lastReport!.djMatch).toBeNull();
     const f = stockForecast(club());
-    expect(Object.keys(f).sort()).toEqual([
-      "beer",
-      "cocktail",
-      "softDrink",
-      "vodka",
-      "whisky",
-      "wine",
-    ]);
-    expect(f.beer).toBeGreaterThan(0);
+    // Every token on this level's menu (and nothing locked above it).
+    expect(Object.keys(f).sort()).toEqual(
+      ids(tokens)
+        .filter((t) => tokens[t].minLevel <= 4)
+        .sort(),
+    );
+    expect(f.tsla).toBeGreaterThan(0);
   });
 });
 

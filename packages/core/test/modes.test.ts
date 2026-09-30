@@ -48,7 +48,7 @@ describe("CEO Call", () => {
     expect(s.night!.guests.filter((g) => g.admitted).length).toBe(admitted);
   });
 
-  it("Happy Hour: +satisfaction now, cheaper drinks → more sales, less margin per drink", () => {
+  it("Happy Hour: +satisfaction now, cheaper tokens → more sales, less margin per drink", () => {
     const plenty = { ...createBasement(1), hype: 60 };
     for (const d of Object.keys(plenty.stock) as (keyof typeof plenty.stock)[])
       plenty.stock[d] = 10_000;
@@ -65,7 +65,7 @@ describe("CEO Call", () => {
 });
 
 describe("escortGuest", () => {
-  it("removes a drunk guest; needs security and a valid target", () => {
+  it("removes a tilt guest; needs security and a valid target", () => {
     let s = startNight({ ...createBasement(1), hype: 60 });
     s = tickTo(s, 30);
     const g = s.night!.guests.find(isInside)!;
@@ -74,17 +74,17 @@ describe("escortGuest", () => {
     ).toMatchObject({
       reason: "invalidTarget",
     });
-    const drunk = {
+    const tilt = {
       ...s,
       night: {
         ...s.night!,
         guests: s.night!.guests.map((x) =>
-          x.id === g.id ? { ...x, drunk: 90 } : x,
+          x.id === g.id ? { ...x, tilt: 90 } : x,
         ),
       },
     };
-    expect(escortGuest(drunk, g.id)).toMatchObject({ reason: "noStaff" });
-    const withSec = { ...drunk, staff: { ...drunk.staff, security: 2 } };
+    expect(escortGuest(tilt, g.id)).toMatchObject({ reason: "noStaff" });
+    const withSec = { ...tilt, staff: { ...tilt.staff, security: 2 } };
     expect(ok(escortGuest(withSec, g.id)).night!.guests[g.id]!.state).toBe(
       "left",
     );
@@ -97,7 +97,7 @@ describe("The Basement scenario", () => {
     expect(s.mode).toBe("basement");
     expect(s.level).toBe(4);
     expect(s.permits.liquorOnPremise.expiresDay).toBe(5);
-    expect(s.stock.beer).toBeGreaterThan(0);
+    expect(s.stock.tsla).toBeGreaterThan(0);
   });
 
   it("day events: rival promo (Day 5), late supplier (Day 6), inspector (Day 7)", () => {
@@ -110,7 +110,7 @@ describe("The Basement scenario", () => {
     advance();
     expect(s.supplierDelay).toBe(1);
     expect(
-      ok(r01_orderStock(s, "beer", 10, "corner")).pendingOrders[0]!.arrivesDay,
+      ok(r01_orderStock(s, "tsla", 10, "corner")).pendingOrders[0]!.arrivesDay,
     ).toBe(7);
     advance();
     expect(s.forcedInspection).toBe(true);
@@ -132,7 +132,7 @@ describe("objectives", () => {
   it("career Day 1 tutorial: order stock, then open the booth", () => {
     let s = createGameState(1);
     expect(objectives(s).map((o) => o.done)).toEqual([false, false]);
-    s = ok(r01_orderStock(s, "beer", 20, "corner"));
+    s = ok(r01_orderStock(s, "tsla", 20, "corner"));
     expect(objectives(s).map((o) => o.done)).toEqual([true, false]);
     s = startNight(s);
     expect(objectives(s).every((o) => o.done)).toBe(true);

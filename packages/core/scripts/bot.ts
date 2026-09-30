@@ -1,7 +1,7 @@
 import {
   applyPermit,
   djs,
-  drinks,
+  tokens,
   expectedGuests,
   genreForecast,
   hireStaff,
@@ -77,8 +77,8 @@ export function botDay(s: GameState): GameState {
   if (s.level >= 4 && expectedGuests(s) > 150 && !permitActive(s, "crowd"))
     s = tryAct(s, applyPermit(s, "crowd"));
 
-  // Stock for ~3 drinks per expected guest, spread over the menu, from the instant supplier.
-  const menu = ids(drinks).filter((d) => drinks[d].minLevel <= s.level);
+  // Stock for ~3 tokens per expected guest, spread over the menu, from the instant supplier.
+  const menu = ids(tokens).filter((d) => tokens[d].minLevel <= s.level);
   const perDrink = Math.ceil((expectedGuests(s) * 4) / menu.length); // bot over-stocks a bit vs stockForecast()
   for (const d of menu)
     if (s.stock[d] < perDrink)

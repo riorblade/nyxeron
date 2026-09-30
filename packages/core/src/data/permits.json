@@ -6,13 +6,13 @@
     "minLevel": 1
   },
   "liquorTakeaway": {
-    "name": "Liquor permit (takeaway)",
+    "name": "OTC trading licence",
     "cost": 5000,
     "durationDays": 30,
     "minLevel": 2
   },
   "liquorOnPremise": {
-    "name": "Liquor permit (on-premise)",
+    "name": "Trading-floor licence",
     "cost": 15000,
     "durationDays": 30,
     "minLevel": 3

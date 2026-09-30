@@ -2,7 +2,7 @@ import {
   bands,
   channels,
   djs,
-  drinks,
+  tokens,
   permits,
   promoters,
   type GameEvent,
@@ -10,7 +10,7 @@ import {
 import { en } from "@/i18n/en";
 
 const names = {
-  drink: (id: string) => drinks[id as keyof typeof drinks]?.name ?? id,
+  drink: (id: string) => tokens[id as keyof typeof tokens]?.name ?? id,
   dj: (id: string) => djs[id as keyof typeof djs]?.name ?? id,
   channel: (id: string) => channels[id as keyof typeof channels]?.name ?? id,
   permit: (id: string) => permits[id as keyof typeof permits]?.name ?? id,

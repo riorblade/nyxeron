@@ -192,5 +192,17 @@
     "threshold": 15,
     "batch": 50,
     "supplier": "corner"
+  },
+  "market": {
+    "revert": 0.015,
+    "energyDrift": 0.002,
+    "djStartPump": 0.06,
+    "anthemPumpPerMinute": 0.004,
+    "emaFollow": 0.05,
+    "momentumBuy": 3,
+    "fomoRange": [0.75, 1.4],
+    "pnlSatisfaction": 0.6,
+    "lossTilt": 8,
+    "range": [0.4, 3]
   }
 }

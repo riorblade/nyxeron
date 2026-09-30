@@ -1,6 +1,6 @@
 import {
   defaultPrice,
-  drinks,
+  tokens,
   ids,
   orderCost,
   r01_orderStock,
@@ -9,7 +9,7 @@ import {
   stockHeld,
   storageOf,
   suppliers,
-  type DrinkId,
+  type TokenId,
   type GameState,
   type SupplierId,
 } from "@nyxeron/core";
@@ -26,25 +26,29 @@ import {
 import { useState } from "react";
 import { art } from "@/art";
 import { Img } from "@/components/Img";
-import { DrinkLink } from "@/hud/DrinkDetail";
+import { LivePrice, TokenLink } from "@/hud/TokenDetail";
 import { en, fmt } from "@/i18n/en";
 import { cn } from "@/lib/utils";
 import { useGame } from "@/store";
 
 const supplierIcon = { corner: Store, wholesale: Truck, import: Ship } as const;
 
-function Thumb({ id, size = "size-11" }: { id: DrinkId; size?: string }) {
+function Thumb({ id, size = "size-11" }: { id: TokenId; size?: string }) {
   return (
     <span
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04]",
+        "flex shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-white/[0.04]",
         size,
       )}
     >
       <Img
-        src={art.drink(id)}
+        src={art.token(id)}
         alt=""
-        className="size-[85%] object-contain drop-shadow-[0_2px_6px_rgba(0,0,0,.8)]"
+        className={
+          tokens[id].kind === "basket"
+            ? "size-full object-cover"
+            : "size-[85%] object-contain"
+        }
         fallback={<Package className="size-4 text-white/50" />}
       />
     </span>
@@ -58,37 +62,37 @@ export function StockTab({ s, compact }: { s: GameState; compact?: boolean }) {
   const act = useGame((x) => x.act);
   // Instant supplier by default: tonight's needs must arrive tonight. Cheaper, slower ones are an informed choice.
   const [supplier, setSupplier] = useState<SupplierId>("corner");
-  const order = (d: DrinkId, qty: number) =>
+  const order = (d: TokenId, qty: number) =>
     act((g) => r01_orderStock(g, d, qty, supplier));
   const need = stockForecast(s);
-  const shortfall = (d: DrinkId) => Math.max(0, (need[d] ?? 0) - s.stock[d]);
+  const shortfall = (d: TokenId) => Math.max(0, (need[d] ?? 0) - s.stock[d]);
   const fill = () => {
-    for (const d of ids(drinks))
+    for (const d of ids(tokens))
       if (shortfall(d) > 0 && !order(d, shortfall(d))) break;
   };
-  const menu = ids(drinks);
+  const menu = ids(tokens);
 
   // Night side panel: compact list, instant supplier only.
   if (compact)
     return (
       <ul className="space-y-1.5">
         {menu
-          .filter((d) => drinks[d].minLevel <= s.level)
+          .filter((d) => tokens[d].minLevel <= s.level)
           .map((d) => (
             <li key={d} className="flex items-center gap-2.5">
-              <DrinkLink
+              <TokenLink
                 s={s}
                 id={d}
                 className="flex min-w-0 flex-1 items-center gap-2.5 text-left hover:[&_.nm]:underline"
               >
                 <Thumb id={d} size="size-8" />
                 <div className="min-w-0 flex-1 leading-tight">
-                  <div className="nm truncate text-sm">{drinks[d].name}</div>
+                  <div className="nm truncate text-sm">{tokens[d].name}</div>
                   <div className="font-mono text-[11px] text-white/60">
-                    {s.stock[d]} · {fmt(orderCost(d, 1, supplier, s.level))} C
+                    {s.stock[d]} · <LivePrice s={s} id={d} />
                   </div>
                 </div>
-              </DrinkLink>
+              </TokenLink>
               {[10, 50].map((q) => (
                 <button
                   key={q}
@@ -152,7 +156,7 @@ export function StockTab({ s, compact }: { s: GameState; compact?: boolean }) {
         <button
           onClick={fill}
           disabled={
-            !menu.some((d) => drinks[d].minLevel <= s.level && shortfall(d) > 0)
+            !menu.some((d) => tokens[d].minLevel <= s.level && shortfall(d) > 0)
           }
           className="flex h-11 items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-medium @xl:h-auto text-black shadow-[0_0_24px_rgba(255,255,255,.18)] disabled:bg-white/10 disabled:text-white/60 disabled:shadow-none"
         >
@@ -173,7 +177,7 @@ export function StockTab({ s, compact }: { s: GameState; compact?: boolean }) {
       </div>
       <ul className="space-y-1.5">
         {menu.map((d) => {
-          const dr = drinks[d];
+          const dr = tokens[d];
           const locked = dr.minLevel > s.level;
           const n = need[d] ?? 0;
           const short = shortfall(d);
@@ -185,17 +189,20 @@ export function StockTab({ s, compact }: { s: GameState; compact?: boolean }) {
                 locked && "opacity-40",
               )}
             >
-              <DrinkLink s={s} id={d}>
+              <TokenLink s={s} id={d}>
                 <Thumb id={d} />
                 <span className="min-w-0">
                   <span className="block truncate font-medium">{dr.name}</span>
+                  <span className="block font-mono text-[11px] text-white/55">
+                    {dr.ticker}
+                  </span>
                   {!locked && (
                     <span className="block font-mono text-xs @xl:hidden">
                       <StockCount have={s.stock[d]} need={n} />
                     </span>
                   )}
                 </span>
-              </DrinkLink>
+              </TokenLink>
               <span className="hidden font-mono text-sm tabular-nums @xl:block">
                 {locked ? "—" : <StockCount have={s.stock[d]} need={n} />}
               </span>
@@ -220,7 +227,7 @@ export function StockTab({ s, compact }: { s: GameState; compact?: boolean }) {
               <span className="hidden font-mono text-sm text-white/70 tabular-nums @3xl:block">
                 {fmt(orderCost(d, 1, supplier, s.level))}
               </span>
-              {/* Phones: the price stepper gets its own row under the drink. */}
+              {/* Phones: the price stepper gets its own row under the token. */}
               <span className="order-last col-span-2 flex items-center gap-1 @xl:order-none @xl:col-span-1">
                 {!locked && <PriceSlider s={s} d={d} />}
               </span>
@@ -259,7 +266,7 @@ export function StockTab({ s, compact }: { s: GameState; compact?: boolean }) {
                 className="flex items-center gap-2 rounded-lg bg-white/[0.05] py-1 pr-3 pl-1"
               >
                 <Thumb id={o.drink} size="size-7" />
-                {o.qty} {drinks[o.drink].name} ·{" "}
+                {o.qty} {tokens[o.drink].name} ·{" "}
                 {en.stock.arrives(o.arrivesDay)}
               </li>
             ))}
@@ -311,7 +318,7 @@ function StockCount({ have, need }: { have: number; need: number }) {
 }
 
 /** Drag to set a drink's price: 50%–300% of this venue's standard price. */
-function PriceSlider({ s, d }: { s: GameState; d: DrinkId }) {
+function PriceSlider({ s, d }: { s: GameState; d: TokenId }) {
   const act = useGame((x) => x.act);
   const std = defaultPrice(d, s.level);
   const min = Math.max(1, Math.round(std * 0.5));
@@ -332,7 +339,7 @@ function PriceSlider({ s, d }: { s: GameState; d: DrinkId }) {
         step={Math.max(1, Math.round(std * 0.01))}
         value={Math.min(max, Math.max(min, price))}
         onChange={(e) => act((g) => setPrice(g, d, Number(e.target.value)))}
-        aria-label={`${drinks[d].name} price`}
+        aria-label={`${tokens[d].name} price`}
         className="w-full accent-white"
       />
     </span>
