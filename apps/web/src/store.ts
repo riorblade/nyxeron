@@ -16,7 +16,8 @@ import { fetchQuotes } from "./quotes";
 import { writeSave } from "./save";
 
 /** menu = landing page, dashboard = the player's hub (pick a role), guest = partying at an AI-hosted event. */
-export type Screen = "menu" | "dashboard" | "setup" | "game" | "over" | "guest";
+export type Screen =
+  "menu" | "dashboard" | "setup" | "game" | "over" | "guest" | "studio";
 type NewGame =
   | { mode: "basement" }
   | { mode: "sandbox" }

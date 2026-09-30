@@ -38,6 +38,11 @@ const cuesOf = (file: string) =>
   Object.values(TRACKS).find((t) => t.file === file)?.cues;
 const titleOf = (file: string) =>
   Object.values(TRACKS).find((t) => t.file === file)?.title ?? file;
+/** The crate as the DJ studio lists it: file id and title. */
+export const CRATE_TRACKS = CRATE.map((file) => ({
+  file,
+  title: titleOf(file),
+}));
 /** Seconds of overlap when the DJ mixes into the next track. */
 const XFADE = 4;
 /** How long the DJ stays on one track before rotating to the next (seconds). */
@@ -247,6 +252,8 @@ class ClubAudio {
   play(id: string | null) {
     if (id === this.current) return;
     this.current = id ?? "";
+    // The DJ studio has the room: remember what should play, start it when the decks hand back.
+    if (this.decks) return;
     if (!this.ctx) {
       this.pending = !!id; // browsers block sound until the first gesture; unlock() starts it
       return;
@@ -405,8 +412,39 @@ class ClubAudio {
     return (
       !!this.ctx &&
       this.ctx.state === "running" &&
-      (!!this.synth || (!!this.el && !this.el.paused))
+      (!!this.synth ||
+        (!!this.el && !this.el.paused) ||
+        !!this.decks?.playing())
     );
+  }
+
+  /** The DJ studio's decks, while they own the room. */
+  private decks: { playing(): boolean } | null = null;
+
+  /**
+   * The studio takes the room: the club's music fades out and the decks plug in before the muffle/analyser, so the
+   * venue's lights, LED floor and pyro follow the player's mix. Call from a user gesture (it may create the context).
+   */
+  takeOver(decks: { playing(): boolean }): {
+    ctx: AudioContext;
+    input: AudioNode;
+  } {
+    if (!this.ctx) this.create();
+    void this.ctx!.resume();
+    const id = this.current;
+    this.play(null);
+    this.current = id;
+    this.decks = decks;
+    this.listeners.forEach((f) => f());
+    return { ctx: this.ctx!, input: this.muffle };
+  }
+
+  /** The studio hands the room back: whatever should be playing now starts again. */
+  release() {
+    this.decks = null;
+    const id = this.current;
+    this.current = "";
+    this.play(id || null);
   }
 
   /**

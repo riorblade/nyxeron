@@ -26,6 +26,7 @@ import {
 import {
   Briefcase,
   Clapperboard,
+  Disc3,
   Eye,
   EyeOff,
   PanelsTopLeft,
@@ -41,6 +42,7 @@ import { Button } from "@/components/ui/button";
 import { EventFeed } from "@/hud/EventFeed";
 import { Objectives } from "@/hud/Objectives";
 import { CrowdMoves, EnergyMeter } from "@/hud/CrowdMoves";
+import { DjStudio } from "@/dj/Studio";
 import { PyroPanel } from "@/hud/PyroPanel";
 import { StockBars } from "@/hud/StockBars";
 import { TickerTape } from "@/hud/TickerTape";
@@ -309,6 +311,9 @@ export function Night({ s }: { s: GameState }) {
   const [cinematic, setCinematic] = useState(false);
   const endCinematic = useCallback(() => setCinematic(false), []);
   const [ceoOpen, setCeoOpen] = useState(false);
+  // Live DJ studio over the club: the CEO takes the decks and the crowd hears the mix.
+  const [decks, setDecks] = useState(false);
+  const closeDecks = useCallback(() => setDecks(false), []);
   // Skipping ends the night in one go, so it asks first (easy to hit by mistake).
   const [confirmSkip, setConfirmSkip] = useState(false);
   useNightLoop();
@@ -388,7 +393,7 @@ export function Night({ s }: { s: GameState }) {
       <div
         className={cn(
           "pointer-events-none absolute inset-0 flex flex-col gap-3 p-3 [&>*]:pointer-events-auto",
-          (view === "edit" || !hud || cinematic) && "hidden",
+          (view === "edit" || !hud || cinematic || decks) && "hidden",
         )}
       >
         <TopBar
@@ -428,6 +433,14 @@ export function Night({ s }: { s: GameState }) {
                 </button>
                 <MuteButton className={seg(false)} />
               </div>
+              <button
+                className="flex size-10 items-center justify-center rounded-lg border border-white/25 bg-black/30 hover:bg-white/10"
+                onClick={() => setDecks(true)}
+                aria-label={en.dj.takeDecks}
+                title={en.dj.takeDecks}
+              >
+                <Disc3 className="size-4" />
+              </button>
               <button
                 className="flex size-10 items-center justify-center rounded-lg border border-white/25 bg-black/30 hover:bg-white/10"
                 onClick={() => setCinematic(true)}
@@ -711,6 +724,11 @@ export function Night({ s }: { s: GameState }) {
           <Eye className="size-4" />
           <span className="hidden sm:inline">{en.night.showHud} · H</span>
         </button>
+      )}
+      {decks && view === "venue" && (
+        <div className="fixed inset-x-0 bottom-0 z-20 flex max-h-[78dvh] flex-col">
+          <DjStudio live onClose={closeDecks} />
+        </div>
       )}
       {/* The office opens over the club; the venue scene stays alive underneath, so coming back is seamless. */}
       {view === "office" && (

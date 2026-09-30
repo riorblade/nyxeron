@@ -10,6 +10,7 @@ import {
   ArrowLeft,
   Briefcase,
   Crown,
+  Disc3,
   FolderOpen,
   PartyPopper,
   Settings,
@@ -306,8 +307,10 @@ function Home({ onEnter }: { onEnter: () => void }) {
 }
 
 function RolePicker({ onPick }: { onPick: (s: Step) => void }) {
+  const go = useGame((x) => x.go);
   const roles = [
     { id: "ceo" as const, Icon: Briefcase, ...t.roles.ceo },
+    { id: "dj" as const, Icon: Disc3, ...t.roles.dj },
     { id: "guest" as const, Icon: PartyPopper, ...t.roles.guest },
   ];
   return (
@@ -315,12 +318,12 @@ function RolePicker({ onPick }: { onPick: (s: Step) => void }) {
       <h2 className="text-2xl font-medium tracking-[-0.02em]">
         {t.chooseRole}
       </h2>
-      <div className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-2">
+      <div className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-3">
         {roles.map(({ id, Icon, title, tagline, desc }, i) => (
           <button
             key={id}
             autoFocus={i === 0}
-            onClick={() => onPick(id)}
+            onClick={() => (id === "dj" ? go("studio") : onPick(id))}
             className="enter group flex flex-col justify-between gap-8 rounded-2xl border border-white/12 bg-white/[0.03] p-6 text-left transition hover:border-white/40 hover:bg-white/[0.07] hover:shadow-[0_0_30px_rgba(255,255,255,.12)]"
             style={{ "--d": `${i * 80}ms` } as CSSProperties}
           >

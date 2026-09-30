@@ -20,6 +20,11 @@ const Night = lazy(() => loadNight().then((m) => ({ default: m.Night })));
 const GuestNight = lazy(() =>
   import("@/screens/GuestNight").then((m) => ({ default: m.GuestNight })),
 );
+const StudioScreen = lazy(() =>
+  import("@/screens/StudioScreen").then((m) => ({
+    default: m.StudioScreen,
+  })),
+);
 const blank = <div className="fixed inset-0 bg-black" />;
 
 export function App() {
@@ -44,6 +49,12 @@ export function App() {
   let key: string = screen;
   if (screen === "setup") view = <ClubSetup />;
   else if (screen === "dashboard") view = <Dashboard />;
+  else if (screen === "studio")
+    view = (
+      <Suspense fallback={blank}>
+        <StudioScreen />
+      </Suspense>
+    );
   else if (screen === "menu" || !game) view = <Landing />;
   else if (screen === "guest")
     view = (

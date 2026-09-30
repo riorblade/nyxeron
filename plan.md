@@ -330,3 +330,9 @@ P0–P5 done (MVP playable). P6 Web3 and P7 deploy not started.
   - Balance: feeShare 0.05 keeps the curve (90% victory, Level 5 ≈ day 56). 0.1 → 30%, 0.2 → 0% unless the economy is retuned.
   - Guest avatar: pick one of the 10 guest sprites on the Dashboard (1–5 men, 6–10 women); on guest nights it dances on the floor with a YOU tag and walks to the token desk after each trade.
 - Stage pyro has two modes (CEO night panel, Level 4+, saved in Settings): **Auto** fires on the DJ's beat and drops; **Manual** fires only on the Fire / Fog / Both buttons (keys F / G / B).
+- **DJ Studio (2026-09-30, `apps/web/src/dj/`):** a third role on the Dashboard (DJ, practice room) and **Take the decks** in the CEO's night view (live: the studio takes the room from the club music via `audio.takeOver()`, and the venue's lights, LED floor and pyro follow the mix).
+  - Decks (`deck.ts`): play/pause, CDJ cue, 4 hot cues, auto loops 1/2/4/8 beats, beat jump ±4, pitch fader ±16% / ±50%, SYNC (tempo + beat phase, half/double time when needed), nudge, reverse, vinyl brake, backspin/rewind, scratch on the platter (drag round either way), BPM ×2/÷2 correction. BPM and first beat detected on load (`analyze.ts`, tested).
+  - Mixer: gain, 3-band EQ with kill, one-knob filter (low-pass ↔ high-pass), echo (¾-beat, tempo-synced) and reverb sends, channel faders, equal-power crossfader, meters.
+  - Sampler (`sampler.ts`, synthesized, no files): air horn, siren, riser, downlifter, impact, sub drop, laser, snare roll (keys 1–8).
+  - Crate: the club tracks, plus any audio file the DJ brings.
+  - Not yet: planning a set before an event (tracks + transitions + FX, played automatically on the night), booking another player as the DJ (needs multiplayer), and the crowd reacting to the player's mixing in the sim.
