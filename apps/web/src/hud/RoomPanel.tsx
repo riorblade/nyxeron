@@ -15,14 +15,14 @@ export function RoomPanel({ clubName }: { clubName: string }) {
   const list = Object.values(players);
   const link = `${location.origin}/?join=${room}`;
 
-  if (role !== "host")
+  if (role !== "host" || !room)
     return (
       <section>
         <h3 className="mb-2 text-[10px] tracking-[0.2em] text-white/60 uppercase">
           {t.openTitle}
         </h3>
         <button
-          disabled={busy}
+          disabled={busy || role === "host"}
           onClick={async () => {
             setBusy(true);
             try {
@@ -36,7 +36,7 @@ export function RoomPanel({ clubName }: { clubName: string }) {
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-white px-3 py-2.5 text-sm font-medium text-black disabled:opacity-50"
         >
           <Radio className="size-4" />
-          {busy ? t.opening : t.open}
+          {busy || role === "host" ? t.opening : t.open}
         </button>
         <p className="mt-1.5 text-[11px] text-white/50">{t.openHint}</p>
       </section>
