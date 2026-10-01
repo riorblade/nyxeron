@@ -94,6 +94,14 @@ export const en = {
     wallet: "Wallet (BNB Chain)",
     walletPending: "Creating your wallet…",
     copied: "Address copied",
+    server: {
+      checking: "checking…",
+      ok: "✓ verified",
+      mismatch: "mismatch",
+      failed: "server check failed",
+    },
+    serverHint:
+      "The game server checked your sign-in with Privy (it, not the browser, is trusted for rewards).",
   },
 
   dashboard: {

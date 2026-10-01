@@ -288,7 +288,7 @@ function Portfolio() {
 
 /** Who is signed in: email, embedded wallet (copy), sign out. Hidden when sign-in isn't configured (dev). */
 function AccountRow() {
-  const { account, logout } = useAccount();
+  const { account, logout, server } = useAccount();
   const notify = useGame((x) => x.notify);
   if (!account) return null;
   const a = en.auth;
@@ -296,7 +296,17 @@ function AccountRow() {
   return (
     <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-xs">
       <div className="min-w-0 flex-1 leading-tight">
-        <div className="truncate text-sm">{account.email}</div>
+        <div className="flex items-center gap-1.5 text-sm">
+          <span className="truncate">{account.email}</span>
+          {server && (
+            <span
+              className="shrink-0 rounded border border-white/20 px-1 text-[9px] tracking-wider text-white/70 uppercase"
+              title={a.serverHint}
+            >
+              {a.server[server]}
+            </span>
+          )}
+        </div>
         <button
           className="mt-0.5 font-mono text-[11px] text-white/55 hover:text-white disabled:hover:text-white/55"
           disabled={!w}

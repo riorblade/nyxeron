@@ -19,6 +19,8 @@ export interface Account {
 
 interface AccountStore {
   account: Account | null;
+  /** The game API's check of this sign-in (GET /api/me): "ok" when it matches, else why not. */
+  server: "checking" | "ok" | "mismatch" | "failed" | null;
   /** Set by the auth shell: Privy's logout. */
   logout: (() => Promise<void>) | null;
   /** Fresh Privy access token for our API (Authorization: Bearer). */
@@ -27,6 +29,7 @@ interface AccountStore {
 
 export const useAccount = create<AccountStore>(() => ({
   account: null,
+  server: null,
   logout: null,
   token: null,
 }));
@@ -97,4 +100,35 @@ export async function signedIn(a: Account) {
   if (!useProfile.getState().name)
     useProfile.getState().setName(a.name || a.email.split("@")[0] || "");
   useAccount.setState({ account: a });
+  void checkServer();
+}
+
+/**
+ * Ask the game API who we are: it verifies the Privy token itself and reads email + wallet from Privy. Rewards
+ * and anything on-chain will trust only this, never what the browser says.
+ */
+export async function checkServer() {
+  const { token, account } = useAccount.getState();
+  if (!token || !account) return;
+  useAccount.setState({ server: "checking" });
+  try {
+    const t = await token();
+    const r = await fetch(`${import.meta.env.VITE_API_BASE ?? ""}/api/me`, {
+      headers: { Authorization: `Bearer ${t}` },
+    });
+    if (!r.ok) return useAccount.setState({ server: "failed" });
+    const me = (await r.json()) as {
+      id: string;
+      email: string;
+      wallet: string;
+    };
+    const same =
+      me.id === account.id &&
+      me.email.toLowerCase() === account.email.toLowerCase() &&
+      (!account.wallet ||
+        me.wallet.toLowerCase() === account.wallet.toLowerCase());
+    useAccount.setState({ server: same ? "ok" : "mismatch" });
+  } catch {
+    useAccount.setState({ server: "failed" });
+  }
 }
