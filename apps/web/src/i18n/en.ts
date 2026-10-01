@@ -83,6 +83,19 @@ export const en = {
     soundOff: "Sound off",
   },
 
+  auth: {
+    title: "Sign in to play",
+    why: "Your club, wallet and night-outs follow your account. Sign in with email or Google; we create your BNB Chain wallet for you.",
+    signIn: "Sign in",
+    modalTitle: "Sign in to NYXERON",
+    loading: "Loading your account…",
+    back: "Back to the landing page",
+    signOut: "Sign out",
+    wallet: "Wallet (BNB Chain)",
+    walletPending: "Creating your wallet…",
+    copied: "Address copied",
+  },
+
   dashboard: {
     title: "Dashboard",
     kicker: "Veltra City · tonight",

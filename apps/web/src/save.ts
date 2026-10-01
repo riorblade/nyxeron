@@ -25,7 +25,13 @@ export function deserialize(raw: string | null): SaveFile | null {
   }
 }
 
-const key = (slot: Slot) => `nyxeron:save:${slot}`;
+/** Saves belong to the signed-in player ("" before sign-in / without auth configured). */
+let scope = "";
+export const setSaveScope = (s: string) => {
+  scope = s;
+};
+const key = (slot: Slot) =>
+  scope ? `nyxeron:u:${scope}:save:${slot}` : `nyxeron:save:${slot}`;
 
 export function writeSave(slot: Slot, state: GameState): boolean {
   try {

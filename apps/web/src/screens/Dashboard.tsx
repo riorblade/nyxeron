@@ -33,6 +33,7 @@ import { canRefill, useProfile } from "@/profile";
 import { readSave, type Slot } from "@/save";
 import { useSettings } from "@/settings";
 import { guestJoin } from "@/net/session";
+import { useAccount } from "@/auth/account";
 import { useGame } from "@/store";
 
 type Step = "home" | "role" | "ceo" | "guest" | "dj";
@@ -127,6 +128,7 @@ function ProfileCard() {
       className="glass enter flex flex-col gap-5 rounded-2xl p-5"
       style={{ "--d": "60ms" } as CSSProperties}
     >
+      <AccountRow />
       <div className="flex items-center gap-3">
         <span className="flex size-12 shrink-0 items-start justify-center overflow-hidden rounded-full border border-white/20 bg-white/[0.06]">
           <img
@@ -280,6 +282,43 @@ function Portfolio() {
       ) : (
         <p className="text-xs text-white/50">{t.portfolioEmpty}</p>
       )}
+    </div>
+  );
+}
+
+/** Who is signed in: email, embedded wallet (copy), sign out. Hidden when sign-in isn't configured (dev). */
+function AccountRow() {
+  const { account, logout } = useAccount();
+  const notify = useGame((x) => x.notify);
+  if (!account) return null;
+  const a = en.auth;
+  const w = account.wallet;
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-xs">
+      <div className="min-w-0 flex-1 leading-tight">
+        <div className="truncate text-sm">{account.email}</div>
+        <button
+          className="mt-0.5 font-mono text-[11px] text-white/55 hover:text-white disabled:hover:text-white/55"
+          disabled={!w}
+          title={w || undefined}
+          onClick={() => {
+            void navigator.clipboard?.writeText(w);
+            notify(a.copied);
+          }}
+        >
+          {w ? `${a.wallet}: ${w.slice(0, 6)}…${w.slice(-4)}` : a.walletPending}
+        </button>
+      </div>
+      <button
+        className="shrink-0 rounded-md border border-white/15 px-2.5 py-1.5 hover:bg-white/10"
+        onClick={async () => {
+          await logout?.();
+          // A clean start: every per-player store goes back to signed-out defaults.
+          location.reload();
+        }}
+      >
+        {a.signOut}
+      </button>
     </div>
   );
 }

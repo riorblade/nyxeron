@@ -34,8 +34,20 @@ func cors(origins []string, w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func routes(q *quoter, origins []string) http.Handler {
+func routes(q *quoter, origins []string, auth *privy) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/me", func(w http.ResponseWriter, r *http.Request) {
+		cors(origins, w, r)
+		auth.handleMe(w, r)
+	})
+	// Preflight: the browser asks before sending the Authorization header cross-site.
+	mux.HandleFunc("OPTIONS /api/me", func(w http.ResponseWriter, r *http.Request) {
+		cors(origins, w, r)
+		w.Header().Set("Access-Control-Allow-Methods", "GET")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization")
+		w.Header().Set("Access-Control-Max-Age", "600")
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("GET /api/quotes", func(w http.ResponseWriter, r *http.Request) {
 		cors(origins, w, r)
 		w.Header().Set("Content-Type", "application/json")
@@ -70,7 +82,8 @@ func main() {
 			origins = append(origins, o)
 		}
 	}
-	srv := &http.Server{Addr: addr, Handler: routes(q, origins), ReadHeaderTimeout: 5 * time.Second, MaxHeaderBytes: 8 << 10}
+	auth := newPrivy(os.Getenv("PRIVY_APP_ID"), os.Getenv("PRIVY_APP_SECRET"), &http.Client{Timeout: 8 * time.Second})
+	srv := &http.Server{Addr: addr, Handler: routes(q, origins, auth), ReadHeaderTimeout: 5 * time.Second, MaxHeaderBytes: 8 << 10}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	go func() {
@@ -79,7 +92,7 @@ func main() {
 		defer cancel()
 		_ = srv.Shutdown(sctx)
 	}()
-	slog.Info("api listening", "addr", addr, "binance_key", q.key != "")
+	slog.Info("api listening", "addr", addr, "binance_key", q.key != "", "privy", auth.configured())
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("api stopped", "err", err)
 		os.Exit(1)

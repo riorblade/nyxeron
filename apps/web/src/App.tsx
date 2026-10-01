@@ -35,6 +35,8 @@ const LiveGuest = lazy(() =>
 const LiveDj = lazy(() =>
   import("@/screens/LiveDj").then((m) => ({ default: m.LiveDj })),
 );
+/** Sign-in (Privy) for everything past the landing page; its SDK loads only then. */
+const AuthShell = lazy(() => import("@/auth/AuthShell"));
 const blank = <div className="fixed inset-0 bg-black" />;
 
 export function App() {
@@ -108,11 +110,20 @@ export function App() {
     else view = <NightReport s={game} />;
   }
 
+  const screenView = (
+    <div key={key} className="screen-fade">
+      {view}
+    </div>
+  );
   return (
     <>
-      <div key={key} className="screen-fade">
-        {view}
-      </div>
+      {screen === "menu" ? (
+        screenView
+      ) : (
+        <Suspense fallback={blank}>
+          <AuthShell>{screenView}</AuthShell>
+        </Suspense>
+      )}
       {intro && game?.phase === "night" && screen === "game" && (
         <IntroVideo day={game.day} />
       )}
