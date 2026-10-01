@@ -19,27 +19,38 @@ Three containers, only `edge` is public:
    ```
    Caddy gets the certificate by itself on the first request.
 
-## Behind a proxy that already owns 80/443
+## Production today: frontend on Vercel, backend on the VPS
 
-If another project's Caddy already holds ports 80/443 on the VPS, NYXERON runs behind it instead: the edge publishes
-no ports and joins that proxy's Docker network as `nyxeron-edge` (set `GATEWAY_NETWORK`, default `deploy_default`).
+- `nyxeron.xyz` → Vercel (`vercel.json`; `apps/web/.env.production` points the game at the backend host).
+- `api.nyxeron.xyz` → the VPS: the shared Caddy (it already owns 80/443 for other projects) routes `/ws` to the
+  relay and `/api/*` to the api. Only those two containers run here:
 
 ```sh
-docker compose -f deploy/compose.yml -f deploy/compose.behind-proxy.yml up -d --build
+docker compose -f deploy/compose.yml -f deploy/compose.backend.yml up -d --build relay api
 ```
 
-Then add to that proxy's Caddyfile and reload it (`caddy reload`, no downtime for its other sites):
+Caddy block (on the proxy's Docker network, `GATEWAY_NETWORK`, default `deploy_default`):
 
 ```
-nyxeron.xyz {
-	reverse_proxy nyxeron-edge:80
+api.nyxeron.xyz {
+	handle /ws {
+		reverse_proxy nyxeron-relay:8787
+	}
+	handle /api/* {
+		reverse_proxy nyxeron-api:8788
+	}
+	handle {
+		respond 404
+	}
 }
 ```
+
+Frontend deploy: `vercel deploy --prod` from the repo root (project `nyxeron`).
 
 ## Update
 
 ```sh
-git pull && docker compose -f deploy/compose.yml up -d --build
+git pull && docker compose -f deploy/compose.yml up -d --build   # self-hosted, edge included
 ```
 
 ## Check
