@@ -22,9 +22,22 @@ func env(key, fallback string) string {
 	return fallback
 }
 
-func routes(q *quoter) http.Handler {
+// cors lets the game's own sites (CORS_ORIGINS, e.g. https://nyxeron.xyz) call the API from the browser.
+func cors(origins []string, w http.ResponseWriter, r *http.Request) {
+	o := r.Header.Get("Origin")
+	for _, allowed := range origins {
+		if o != "" && o == allowed {
+			w.Header().Set("Access-Control-Allow-Origin", o)
+			w.Header().Add("Vary", "Origin")
+			return
+		}
+	}
+}
+
+func routes(q *quoter, origins []string) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/quotes", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("GET /api/quotes", func(w http.ResponseWriter, r *http.Request) {
+		cors(origins, w, r)
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "public, max-age=30")
 		_ = json.NewEncoder(w).Encode(q.get())
@@ -51,7 +64,13 @@ func main() {
 		secret: os.Getenv("BINANCE_WEB3_SECRET_KEY"),
 		client: &http.Client{Timeout: 8 * time.Second},
 	}
-	srv := &http.Server{Addr: addr, Handler: routes(q), ReadHeaderTimeout: 5 * time.Second, MaxHeaderBytes: 8 << 10}
+	var origins []string
+	for _, o := range strings.Split(os.Getenv("CORS_ORIGINS"), ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			origins = append(origins, o)
+		}
+	}
+	srv := &http.Server{Addr: addr, Handler: routes(q, origins), ReadHeaderTimeout: 5 * time.Second, MaxHeaderBytes: 8 << 10}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	go func() {

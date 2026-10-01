@@ -14,7 +14,7 @@ export const useQuotes = create<QuoteFeed>(() => ({
 
 export async function fetchQuotes(): Promise<Record<string, number>> {
   try {
-    const r = await fetch("/api/quotes");
+    const r = await fetch(`${import.meta.env.VITE_API_BASE ?? ""}/api/quotes`);
     const j = (await r.json()) as { quotes?: Record<string, number> };
     const quotes = j.quotes ?? {};
     useQuotes.setState({

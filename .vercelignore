@@ -1,0 +1,9 @@
+# Only the web app and the core package are needed to build the frontend.
+node_modules
+**/node_modules
+**/dist
+services
+deploy
+docs
+apps/web/assets-src
+.git
