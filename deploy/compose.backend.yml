@@ -11,6 +11,9 @@ services:
     profiles: [standalone]
 
   relay:
+    environment:
+      # Sites allowed to open a WebSocket: the game's domain, plus an extra host (e.g. the Vercel project URL).
+      ORIGINS: ${DOMAIN:-localhost},${FRONTEND_EXTRA_HOST:-${DOMAIN:-localhost}}
     networks:
       default: {}
       gateway:
@@ -19,7 +22,7 @@ services:
   api:
     environment:
       # The frontend's origin(s): the browser calls the API cross-site.
-      CORS_ORIGINS: https://${DOMAIN:-localhost}
+      CORS_ORIGINS: https://${DOMAIN:-localhost},https://${FRONTEND_EXTRA_HOST:-${DOMAIN:-localhost}}
     networks:
       default: {}
       gateway:
