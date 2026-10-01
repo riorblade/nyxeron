@@ -14,6 +14,7 @@ import { DjStudio } from "@/dj/Studio";
 import { clock, duration, en, fmt } from "@/i18n/en";
 import { cn, trapFocus } from "@/lib/utils";
 import { useProfile } from "@/profile";
+import { player } from "@/auth/remote";
 import { useGame } from "@/store";
 import { VenueView } from "@/venue/VenueView";
 
@@ -59,7 +60,7 @@ export function GigNight({ s }: { s: GameState }) {
   }, []);
 
   const done = (paid: boolean) => {
-    if (paid && gig) useProfile.getState().payGig(gig.fee);
+    if (paid && gig) player.payGig(gig.fee);
     go("dashboard");
   };
 

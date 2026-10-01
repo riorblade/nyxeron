@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -34,22 +35,18 @@ func cors(origins []string, w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func routes(q *quoter, origins []string, auth *privy) http.Handler {
+func routes(q *quoter, origins []string, auth *privy, db *store) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/me", func(w http.ResponseWriter, r *http.Request) {
-		cors(origins, w, r)
-		auth.handleMe(w, r)
-	})
-	// Preflight: the browser asks before sending the Authorization header cross-site.
-	mux.HandleFunc("OPTIONS /api/me", func(w http.ResponseWriter, r *http.Request) {
-		cors(origins, w, r)
-		w.Header().Set("Access-Control-Allow-Methods", "GET")
-		w.Header().Set("Access-Control-Allow-Headers", "Authorization")
+	mux.HandleFunc("GET /api/me", auth.handleMe)
+	(&players{auth: auth, db: db}).route(mux)
+	// Preflight: the browser asks before sending Authorization / JSON cross-site.
+	mux.HandleFunc("OPTIONS /api/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 		w.Header().Set("Access-Control-Max-Age", "600")
 		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("GET /api/quotes", func(w http.ResponseWriter, r *http.Request) {
-		cors(origins, w, r)
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "public, max-age=30")
 		_ = json.NewEncoder(w).Encode(q.get())
@@ -57,7 +54,11 @@ func routes(q *quoter, origins []string, auth *privy) http.Handler {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("ok"))
 	})
-	return mux
+	// CORS for every route: only the game's own sites may call the API from a browser.
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cors(origins, w, r)
+		mux.ServeHTTP(w, r)
+	})
 }
 
 func main() {
@@ -83,7 +84,23 @@ func main() {
 		}
 	}
 	auth := newPrivy(os.Getenv("PRIVY_APP_ID"), os.Getenv("PRIVY_APP_SECRET"), &http.Client{Timeout: 8 * time.Second})
-	srv := &http.Server{Addr: addr, Handler: routes(q, origins, auth), ReadHeaderTimeout: 5 * time.Second, MaxHeaderBytes: 8 << 10}
+	db, err := openStore(env("DB_PATH", "nyxeron.db"))
+	if err != nil {
+		slog.Error("database", "err", err)
+		os.Exit(1)
+	}
+	defer db.close()
+	// Daily backup of the players' data, 7 kept.
+	go func() {
+		dir := filepath.Dir(env("DB_PATH", "nyxeron.db"))
+		for {
+			if err := db.backup(dir, time.Now(), 7); err != nil {
+				slog.Error("backup", "err", err)
+			}
+			time.Sleep(24 * time.Hour)
+		}
+	}()
+	srv := &http.Server{Addr: addr, Handler: routes(q, origins, auth, db), ReadHeaderTimeout: 5 * time.Second, MaxHeaderBytes: 8 << 10}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	go func() {

@@ -55,10 +55,16 @@ services:
       PRIVY_APP_ID: ${PRIVY_APP_ID:-}
       PRIVY_APP_SECRET: ${PRIVY_APP_SECRET:-}
       GOGC: "50"
-      GOMEMLIMIT: 24MiB
+      GOMEMLIMIT: 40MiB
+      # Players' data (SQLite) and its daily backups, on a volume.
+      DB_PATH: /data/nyxeron.db
+    volumes:
+      - api_data:/data
+    tmpfs: [/tmp]
     expose: ["8788"]
-    mem_limit: 32m
+    mem_limit: 48m
 
 volumes:
+  api_data:
   caddy_data:
   caddy_config:

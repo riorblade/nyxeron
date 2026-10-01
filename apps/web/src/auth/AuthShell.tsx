@@ -8,6 +8,7 @@ import { Cta } from "@/components/Cta";
 import { en } from "@/i18n/en";
 import { useGame } from "@/store";
 import { signedIn, useAccount, type Account } from "./account";
+import { syncProfile } from "./remote";
 
 const APP_ID = import.meta.env.VITE_PRIVY_APP_ID;
 const t = en.auth;
@@ -69,7 +70,12 @@ function Gate({ children }: { children: ReactNode }) {
       return;
     }
     let live = true;
-    void signedIn(a).then(() => live && setScoped(a.id));
+    void signedIn(a).then(() => {
+      if (!live) return;
+      setScoped(a.id);
+      // The server's profile (name, avatar, wallet, portfolio, record) replaces this device's cache.
+      void syncProfile();
+    });
     return () => {
       live = false;
     };

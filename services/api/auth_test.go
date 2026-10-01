@@ -98,7 +98,7 @@ func TestVerifyPrivyToken(t *testing.T) {
 func TestMeEndpoint(t *testing.T) {
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	p := fakePrivy(t, key)
-	srv := httptest.NewServer(routes(&quoter{}, []string{"https://nyxeron.xyz"}, p))
+	srv := httptest.NewServer(routes(&quoter{}, []string{"https://nyxeron.xyz"}, p, nil))
 	defer srv.Close()
 	call := func(auth string) (*http.Response, Me) {
 		req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/me", nil)
@@ -132,7 +132,7 @@ func TestMeEndpoint(t *testing.T) {
 	req, _ := http.NewRequest(http.MethodOptions, srv.URL+"/api/me", nil)
 	req.Header.Set("Origin", "https://nyxeron.xyz")
 	pre, _ := http.DefaultClient.Do(req)
-	if pre.StatusCode != 204 || pre.Header.Get("Access-Control-Allow-Headers") != "Authorization" {
+	if pre.StatusCode != 204 || !strings.Contains(pre.Header.Get("Access-Control-Allow-Headers"), "Authorization") {
 		t.Fatalf("preflight: %d %q", pre.StatusCode, pre.Header.Get("Access-Control-Allow-Headers"))
 	}
 }

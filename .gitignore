@@ -11,3 +11,8 @@ apps/web/assets-src/
 .env.*.local
 .env.local
 .vercel
+
+# Local SQLite (api dev)
+*.db
+*.db-shm
+*.db-wal

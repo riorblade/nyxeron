@@ -34,6 +34,7 @@ import { readSave, type Slot } from "@/save";
 import { useSettings } from "@/settings";
 import { guestJoin } from "@/net/session";
 import { useAccount } from "@/auth/account";
+import { player } from "@/auth/remote";
 import { useGame } from "@/store";
 
 type Step = "home" | "role" | "ceo" | "guest" | "dj";
@@ -144,7 +145,7 @@ function ProfileCard() {
             value={p.name}
             maxLength={20}
             placeholder={t.namePlaceholder}
-            onChange={(e) => p.setName(e.target.value)}
+            onChange={(e) => player.setName(e.target.value)}
           />
         </label>
       </div>
@@ -162,7 +163,7 @@ function ProfileCard() {
         {canRefill(p.wallet) && (
           <button
             className="mt-3 h-8 rounded-md bg-white px-3 text-xs font-medium text-black"
-            onClick={p.refill}
+            onClick={player.refill}
           >
             {t.refill}
           </button>
@@ -203,7 +204,8 @@ function ProfileCard() {
 
 /** Pick a look from the club's guest sprites (1–5 men, 6–10 women); it walks the floor on guest nights. */
 function AvatarPicker() {
-  const { avatar, setAvatar } = useProfile();
+  const avatar = useProfile((p) => p.avatar);
+  const setAvatar = player.setAvatar;
   const group = (label: string, from: number) => (
     <div>
       <div className="mb-1 text-[10px] text-white/45">{label}</div>

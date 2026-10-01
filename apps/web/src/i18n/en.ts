@@ -94,6 +94,7 @@ export const en = {
     wallet: "BNB Chain",
     walletPending: "Creating your wallet…",
     copied: "Address copied",
+    syncFailed: "Couldn't save to your account; showing what the server has.",
     server: {
       checking: "checking…",
       ok: "✓ verified",

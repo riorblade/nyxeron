@@ -30,7 +30,7 @@ import { TickerTape } from "@/hud/TickerTape";
 import { TokenLink } from "@/hud/TokenDetail";
 import { clock, en, fmt, reasonText } from "@/i18n/en";
 import { cn, trapFocus } from "@/lib/utils";
-import { useProfile } from "@/profile";
+import { player } from "@/auth/remote";
 import { useGame } from "@/store";
 import { VenueView } from "@/venue/VenueView";
 import { useNet } from "@/net/session";
@@ -112,7 +112,7 @@ export function GuestNight({
 
   const walkOut = () => {
     // Buy-only: the tokens are the guest's, so they go home to the portfolio with the cash.
-    if (v) useProfile.getState().settle(v.cash, v.holdings, pnl);
+    if (v) player.settle(v.cash, v.holdings, pnl);
     online?.leave();
     go("dashboard");
   };
