@@ -308,7 +308,7 @@ function AccountRow() {
           )}
         </div>
         <button
-          className="mt-0.5 font-mono text-[11px] text-white/55 hover:text-white disabled:hover:text-white/55"
+          className="mt-0.5 block max-w-full truncate font-mono text-[11px] whitespace-nowrap text-white/55 hover:text-white disabled:hover:text-white/55"
           disabled={!w}
           title={w || undefined}
           onClick={() => {
@@ -316,7 +316,9 @@ function AccountRow() {
             notify(a.copied);
           }}
         >
-          {w ? `${a.wallet}: ${w.slice(0, 6)}…${w.slice(-4)}` : a.walletPending}
+          {w
+            ? `${w.slice(0, 6)}…${w.slice(-4)} · ${a.wallet}`
+            : a.walletPending}
         </button>
       </div>
       <button

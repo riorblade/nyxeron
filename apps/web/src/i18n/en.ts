@@ -91,7 +91,7 @@ export const en = {
     loading: "Loading your account…",
     back: "Back to the landing page",
     signOut: "Sign out",
-    wallet: "Wallet (BNB Chain)",
+    wallet: "BNB Chain",
     walletPending: "Creating your wallet…",
     copied: "Address copied",
     server: {
