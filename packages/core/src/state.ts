@@ -369,6 +369,21 @@ const NIGHT_DEFAULTS = {
 /**
  * Fills in fields added after a save was written (house rules, new staff roles, crowd energy), so older saves load.
  */
+/** Days of event log a save keeps (screens only show today's; objectives look at today). */
+export const SAVE_LOG_DAYS = 7;
+
+/**
+ * What a save needs: the night is over once the report shows (the report reads lastReport), so its guest list and
+ * price history are dropped, and only the last week of the event log is kept. Keeps a 60-day career's save small.
+ */
+export function compactForSave(s: GameState): GameState {
+  return {
+    ...s,
+    night: s.phase === "report" ? null : s.night,
+    log: s.log.filter((e) => e.day > s.day - SAVE_LOG_DAYS),
+  };
+}
+
 export function migrateState(s: GameState): GameState {
   const staff = { ...fill(ids(staffRoles), () => 0), ...s.staff };
   const n = s.night;

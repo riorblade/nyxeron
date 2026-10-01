@@ -8,6 +8,7 @@ import { Cta } from "@/components/Cta";
 import { en } from "@/i18n/en";
 import { useGame } from "@/store";
 import { signedIn, useAccount, type Account } from "./account";
+import { syncDocs } from "./docs";
 import { syncProfile } from "./remote";
 
 const APP_ID = import.meta.env.VITE_PRIVY_APP_ID;
@@ -75,6 +76,8 @@ function Gate({ children }: { children: ReactNode }) {
       setScoped(a.id);
       // The server's profile (name, avatar, wallet, portfolio, record) replaces this device's cache.
       void syncProfile();
+      // Saves, DJ sets, layouts and videotron messages too.
+      void syncDocs();
     });
     return () => {
       live = false;

@@ -1,4 +1,5 @@
-import { migrateState, type GameState } from "@nyxeron/core";
+import { compactForSave, migrateState, type GameState } from "@nyxeron/core";
+import { syncHooks, userKey } from "./scope";
 
 /** Bump when GameState shape changes; older saves are then ignored instead of crashing the game. */
 export const SAVE_VERSION = 1;
@@ -10,7 +11,11 @@ export interface SaveFile {
 }
 
 export const serialize = (state: GameState, now = Date.now()) =>
-  JSON.stringify({ v: SAVE_VERSION, savedAt: now, state } satisfies SaveFile);
+  JSON.stringify({
+    v: SAVE_VERSION,
+    savedAt: now,
+    state: compactForSave(state),
+  } satisfies SaveFile);
 
 export function deserialize(raw: string | null): SaveFile | null {
   if (!raw) return null;
@@ -25,17 +30,16 @@ export function deserialize(raw: string | null): SaveFile | null {
   }
 }
 
-/** Saves belong to the signed-in player ("" before sign-in / without auth configured). */
-let scope = "";
-export const setSaveScope = (s: string) => {
-  scope = s;
-};
-const key = (slot: Slot) =>
-  scope ? `nyxeron:u:${scope}:save:${slot}` : `nyxeron:save:${slot}`;
+/** Saves belong to the signed-in player (scope.ts); every write also goes to their account on the server. */
+export const saveKey = (slot: Slot | string) =>
+  userKey(`save:${slot}`, `nyxeron:save:${slot}`);
+const key = saveKey;
 
 export function writeSave(slot: Slot, state: GameState): boolean {
   try {
-    localStorage.setItem(key(slot), serialize(state));
+    const raw = serialize(state);
+    localStorage.setItem(key(slot), raw);
+    syncHooks.save?.(String(slot), raw);
     return true;
   } catch {
     return false;

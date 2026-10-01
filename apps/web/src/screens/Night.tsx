@@ -61,7 +61,7 @@ import { useSettings } from "@/settings";
 import { art } from "@/art";
 import { Img } from "@/components/Img";
 import { StockTab } from "./office/StockTab";
-import { getShoutouts, MAX_SHOUTOUTS, setShoutouts } from "@/venue/videotron";
+import { getShoutouts, MAX_SHOUTOUTS, setShoutouts } from "@/venue/shoutouts";
 
 /** 1 tick = 1 in-game minute; 1× = 1 tick per real second (a night ≈ 6 minutes). */
 function useNightLoop() {

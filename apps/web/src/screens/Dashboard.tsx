@@ -35,6 +35,7 @@ import { useSettings } from "@/settings";
 import { guestJoin } from "@/net/session";
 import { useAccount } from "@/auth/account";
 import { player } from "@/auth/remote";
+import { useDocsSync } from "@/auth/docs";
 import { useGame } from "@/store";
 
 type Step = "home" | "role" | "ceo" | "guest" | "dj";
@@ -49,6 +50,8 @@ const signed = (n: number) =>
 /** The player's hub between the landing page and the game: profile, wallet, then pick a role (CEO or guest). */
 export function Dashboard() {
   useMusic(LOUNGE);
+  // Re-read saves once the account's copies have synced to this device.
+  useDocsSync((x) => x.version);
   // A shared invite link (…/?join=CODE) opens straight on the guest step with the code filled in.
   const [invite] = useState(() => {
     const code = new URLSearchParams(location.search).get("join") ?? "";

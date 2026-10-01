@@ -38,10 +38,12 @@ func cors(origins []string, w http.ResponseWriter, r *http.Request) {
 func routes(q *quoter, origins []string, auth *privy, db *store) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/me", auth.handleMe)
-	(&players{auth: auth, db: db}).route(mux)
+	pl := &players{auth: auth, db: db}
+	pl.route(mux)
+	pl.routeDocs(mux)
 	// Preflight: the browser asks before sending Authorization / JSON cross-site.
 	mux.HandleFunc("OPTIONS /api/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE")
 		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 		w.Header().Set("Access-Control-Max-Age", "600")
 		w.WriteHeader(http.StatusNoContent)

@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -234,5 +235,63 @@ func TestBackup(t *testing.T) {
 	defer b.close()
 	if p, _ := b.Get(ctx, "u"); p.Name != "Kiel" {
 		t.Fatalf("backup content: %+v", p)
+	}
+}
+
+func TestDocs(t *testing.T) {
+	s := testStore(t)
+	now := time.Now()
+	save := []byte(`{"v":1,"savedAt":1700000000000,"state":{"day":12,"level":3,"clubName":"Neon Tap","coin":250000,"outcome":null}}`)
+	info, err := s.PutDoc(ctx, "u", "saves", "auto", save, now)
+	if err != nil || info.Meta["day"] != float64(12) || info.Meta["clubName"] != "Neon Tap" {
+		t.Fatalf("%+v %v", info, err)
+	}
+	if got, err := s.GetDoc(ctx, "u", "saves", "auto"); err != nil || string(got) != string(save) {
+		t.Fatalf("get: %s %v", got, err)
+	}
+	if _, err := s.GetDoc(ctx, "someone-else", "saves", "auto"); !errors.Is(err, errNotFound) {
+		t.Fatalf("other player's save: %v", err)
+	}
+	list, _ := s.ListDocs(ctx, "u", "saves")
+	if len(list) != 1 || list[0].Slot != "auto" {
+		t.Fatalf("list: %+v", list)
+	}
+	bad := map[string]struct{ kind, slot, body string }{
+		"unknown kind":      {"secrets", "main", `{}`},
+		"slot 4":            {"saves", "4", string(save)},
+		"save without day":  {"saves", "1", `{"v":1,"savedAt":1,"state":{"level":1}}`},
+		"level 9":           {"saves", "1", `{"v":1,"savedAt":1,"state":{"day":1,"level":9}}`},
+		"9 shoutouts":       {"shoutouts", "main", `["1","2","3","4","5","6","7","8","9"]`},
+		"long shoutout":     {"shoutouts", "main", `["` + strings.Repeat("x", 81) + `"]`},
+		"djsets no sets":    {"djsets", "main", `{"tonight":null}`},
+		"layout not a list": {"layouts", "club", `{"a":1}`},
+	}
+	for name, c := range bad {
+		if _, err := s.PutDoc(ctx, "u", c.kind, c.slot, []byte(c.body), now); !errors.Is(err, errBad) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	// A big save (a 60-day career) fits, gzipped.
+	big := []byte(`{"v":1,"savedAt":1,"state":{"day":60,"level":5,"clubName":"X","coin":1,"log":"` + strings.Repeat("event ", 60_000) + `"}}`)
+	if _, err := s.PutDoc(ctx, "u", "saves", "1", big, now); err != nil {
+		t.Fatalf("big save: %v", err)
+	}
+	if got, _ := s.GetDoc(ctx, "u", "saves", "1"); len(got) != len(big) {
+		t.Fatal("big save not intact")
+	}
+	// Slot limits: at most 10 layouts.
+	for i := 0; i < 10; i++ {
+		if _, err := s.PutDoc(ctx, "u", "layouts", "l"+string(rune('a'+i)), []byte(`[]`), now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.PutDoc(ctx, "u", "layouts", "zz", []byte(`[]`), now); !errors.Is(err, errRejected) {
+		t.Fatalf("11th layout: %v", err)
+	}
+	if err := s.DeleteDoc(ctx, "u", "layouts", "la"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetDoc(ctx, "u", "layouts", "la"); !errors.Is(err, errNotFound) {
+		t.Fatalf("deleted layout still there: %v", err)
 	}
 }

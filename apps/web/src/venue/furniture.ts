@@ -1,3 +1,4 @@
+import { syncHooks, userKey } from "@/scope";
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { Layout, Zone } from "./layouts";
@@ -197,7 +198,9 @@ export function defaultFurniture(layout: Layout): Item[] {
 // ---------- persistence ----------
 
 // v2: the club was redesigned (bigger, VIP wings), so older arrangements no longer fit.
-const key = (layout: Layout) => `nyxeron.furniture.${layout.name}.v2`;
+export const layoutKey = (name: string) =>
+  userKey(`furniture.${name}.v2`, `nyxeron.furniture.${name}.v2`);
+const key = (layout: Layout) => layoutKey(layout.name);
 
 export function loadFurniture(layout: Layout): Item[] {
   try {
@@ -222,8 +225,10 @@ export function loadFurniture(layout: Layout): Item[] {
 
 export function saveFurniture(layout: Layout, items: Item[] | null) {
   try {
-    if (items) localStorage.setItem(key(layout), JSON.stringify(items));
+    const json = items ? JSON.stringify(items) : null;
+    if (json) localStorage.setItem(key(layout), json);
     else localStorage.removeItem(key(layout));
+    syncHooks.layout?.(layout.name, json);
   } catch {
     // ponytail: storage blocked (private mode) — the layout just lasts this session.
   }

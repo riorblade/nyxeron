@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS portfolio (
 	qty     INTEGER NOT NULL,
 	cost    INTEGER NOT NULL,
 	PRIMARY KEY (user_id, token)
-);`)
+);` + docsSchema)
 	if err != nil {
 		db.Close()
 		return nil, err

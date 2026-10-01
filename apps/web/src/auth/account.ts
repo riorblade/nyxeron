@@ -1,7 +1,8 @@
 import { create } from "zustand";
 import { useSets } from "@/dj/sets";
 import { useProfile } from "@/profile";
-import { setSaveScope } from "@/save";
+import { setScope } from "@/scope";
+import { resetShoutouts } from "@/venue/shoutouts";
 
 /**
  * The signed-in player (Privy: email or Google, plus an embedded wallet on BNB Chain). Each player's profile,
@@ -52,9 +53,13 @@ function claimLegacy(scope: string) {
   try {
     if (localStorage.getItem(CLAIMED)) return;
     for (const k of Object.keys(localStorage)) {
-      const base = LEGACY.includes(k) || k.startsWith("nyxeron:save:");
-      if (!base) continue;
-      const to = k.replace(/^nyxeron:/, `nyxeron:u:${scope}:`);
+      const to =
+        LEGACY.includes(k) || k.startsWith("nyxeron:save:")
+          ? k.replace(/^nyxeron:/, `nyxeron:u:${scope}:`)
+          : k.startsWith("nyxeron.furniture.") || k === "nyxeron.shoutouts"
+            ? `nyxeron:u:${scope}:${k.slice("nyxeron.".length)}`
+            : null;
+      if (!to) continue;
       if (localStorage.getItem(to) == null)
         localStorage.setItem(to, localStorage.getItem(k)!);
       localStorage.removeItem(k);
@@ -93,7 +98,8 @@ async function rescope<S>(
 export async function signedIn(a: Account) {
   const scope = scopeOf(a.id);
   claimLegacy(scope);
-  setSaveScope(scope);
+  setScope(scope);
+  resetShoutouts();
   await rescope(useProfile, `nyxeron:u:${scope}:profile`);
   await rescope(useSets, `nyxeron:u:${scope}:dj-sets`);
   // First visit: the name from Google (or the email), until the player picks one.
