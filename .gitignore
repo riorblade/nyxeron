@@ -10,3 +10,4 @@ apps/web/assets-src/
 .env
 .env.*.local
 .env.local
+.vercel
