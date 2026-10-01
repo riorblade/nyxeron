@@ -29,11 +29,20 @@ func TestToQuotes(t *testing.T) {
 }
 
 func TestQuotesWithoutKey(t *testing.T) {
-	srv := httptest.NewServer(routes(&quoter{}))
+	srv := httptest.NewServer(routes(&quoter{}, []string{"https://nyxeron.xyz"}, newPrivy("", "", http.DefaultClient), nil))
 	defer srv.Close()
-	res, err := http.Get(srv.URL + "/api/quotes")
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/quotes", nil)
+	req.Header.Set("Origin", "https://nyxeron.xyz")
+	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if got := res.Header.Get("Access-Control-Allow-Origin"); got != "https://nyxeron.xyz" {
+		t.Fatalf("CORS for the game site: %q", got)
+	}
+	req.Header.Set("Origin", "https://evil.example")
+	if res2, _ := http.DefaultClient.Do(req); res2.Header.Get("Access-Control-Allow-Origin") != "" {
+		t.Fatal("CORS granted to a foreign site")
 	}
 	var body quotesResponse
 	_ = json.NewDecoder(res.Body).Decode(&body)

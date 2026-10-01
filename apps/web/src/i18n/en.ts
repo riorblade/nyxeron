@@ -83,6 +83,28 @@ export const en = {
     soundOff: "Sound off",
   },
 
+  auth: {
+    title: "Sign in to play",
+    why: "Your club, wallet and night-outs follow your account. Sign in with email or Google; we create your BNB Chain wallet for you.",
+    signIn: "Sign in",
+    modalTitle: "Sign in to NYXERON",
+    loading: "Loading your account…",
+    back: "Back to the landing page",
+    signOut: "Sign out",
+    wallet: "BNB Chain",
+    walletPending: "Creating your wallet…",
+    copied: "Address copied",
+    syncFailed: "Couldn't save to your account; showing what the server has.",
+    server: {
+      checking: "checking…",
+      ok: "✓ verified",
+      mismatch: "mismatch",
+      failed: "server check failed",
+    },
+    serverHint:
+      "The game server checked your sign-in with Privy (it, not the browser, is trusted for rewards).",
+  },
+
   dashboard: {
     title: "Dashboard",
     kicker: "Veltra City · tonight",
@@ -146,6 +168,46 @@ export const en = {
     menu: (n: number) => `${n} tokens on the desk`,
   },
 
+  live: {
+    room: (code: string) => `Room ${code}`,
+    connecting: "Connecting to the club…",
+    closed: "The club has closed.",
+    error: (code: string) =>
+      code === "room_not_found"
+        ? "No club with that code (it may have closed)."
+        : code === "room_full"
+          ? "The club is full."
+          : `Couldn't join (${code}).`,
+    hostAway: "The CEO lost connection. Hang on, the club is still here…",
+    refused: (why: string) => `The door said no: ${why}`,
+    doorsClosed:
+      "Doors open at 22:00. You're on the list: you walk in the moment the CEO opens the club.",
+    atTheDoor: "At the door…",
+    joinTitle: "Join a live club",
+    joinHint: "Got a code from a CEO? Enter it to walk into their club.",
+    code: "Room code",
+    join: "Walk in",
+    openTitle: "Open to players",
+    openHint:
+      "Players join with this code (or the link) and party in your club: their buys are your revenue.",
+    open: "Open club to players",
+    opening: "Opening…",
+    copyLink: "Copy link",
+    copied: "Link copied",
+    close: "Close room",
+    players: (n: number) => `${n} player${n === 1 ? "" : "s"} connected`,
+    inside: "inside",
+    waiting: "waiting",
+    kick: "Kick",
+    none: "No one yet. Share the code.",
+    djTaken: "This club already has a DJ on the decks.",
+    djJoinTitle: "Play a live club",
+    djJoinHint:
+      "A CEO invited you to DJ? Enter their room code: your decks become the club's music, everyone hears your mix.",
+    djJoin: "Take the decks",
+    djLive: (name: string) => `DJ ${name} is on the decks`,
+  },
+
   gig: {
     left: (d: string) => `${d} of your set left`,
     crowd: "Crowd",
@@ -172,6 +234,8 @@ export const en = {
   },
 
   guest: {
+    doorsClosed: "Doors closed",
+    live: "LIVE",
     cash: "Cash",
     holdings: "Holdings",
     value: "Value",
@@ -699,6 +763,8 @@ export const en = {
     loading: "loading…",
     loadTo: (d: string) => `→ ${d}`,
     upload: "Bring your own track (mp3, wav…)",
+    crateOnly:
+      "Live in another club: crate tracks only (the other players can't hear a file from your computer).",
     loadError: "Couldn't load that track.",
     sampler: "Sampler",
     ceoSamplerHint:

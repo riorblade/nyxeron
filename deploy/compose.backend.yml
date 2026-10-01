@@ -1,0 +1,34 @@
+# Backend only (the frontend is on Vercel): the relay and the api join the Docker network of the proxy that owns
+# 80/443 on the VPS, and that proxy routes the backend host to them. The edge is not started.
+#   docker compose -f deploy/compose.yml -f deploy/compose.backend.yml up -d relay api
+# Proxy (e.g. the shared Caddy):
+#   api.nyxeron.xyz {
+#       handle /ws { reverse_proxy nyxeron-relay:8787 }
+#       handle /api/* { reverse_proxy nyxeron-api:8788 }
+#   }
+services:
+  edge:
+    profiles: [standalone]
+
+  relay:
+    environment:
+      # Sites allowed to open a WebSocket: the game's domain, plus an extra host (e.g. the Vercel project URL).
+      ORIGINS: ${DOMAIN:-localhost},${FRONTEND_EXTRA_HOST:-${DOMAIN:-localhost}}
+    networks:
+      default: {}
+      gateway:
+        aliases: [nyxeron-relay]
+
+  api:
+    environment:
+      # The frontend's origin(s): the browser calls the API cross-site.
+      CORS_ORIGINS: https://${DOMAIN:-localhost},https://${FRONTEND_EXTRA_HOST:-${DOMAIN:-localhost}}
+    networks:
+      default: {}
+      gateway:
+        aliases: [nyxeron-api]
+
+networks:
+  gateway:
+    external: true
+    name: ${GATEWAY_NETWORK:-deploy_default}

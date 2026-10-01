@@ -50,8 +50,12 @@ const dec = new TextDecoder();
 export const pack = (v: unknown) => enc.encode(JSON.stringify(v));
 export const unpack = <T>(p: Uint8Array): T => JSON.parse(dec.decode(p)) as T;
 
-/** Same origin: the edge (Caddy) and Vite dev both proxy /ws to the relay. */
+/**
+ * Production: VITE_RELAY_URL (the frontend is on a CDN, the relay on the backend host). Dev: same origin, where
+ * Vite proxies /ws to the local relay.
+ */
 export const relayUrl = () =>
+  import.meta.env.VITE_RELAY_URL ||
   `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
 
 const TOKEN_KEY = "nyxeron:relay-host";

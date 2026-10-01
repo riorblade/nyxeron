@@ -18,8 +18,11 @@ export function VenueView({
   onCinematicEnd,
   onDone,
   guestDj,
+  me = "me",
 }: {
   s: GameState;
+  /** Which visitor is this browser's player (online: their relay id). */
+  me?: string;
   /** Gig mode: the player at the decks (their avatar and name). */
   guestDj?: { name: string; avatar: number };
   editing?: boolean;
@@ -35,6 +38,7 @@ export function VenueView({
   const [selected, setSelected] = useState(-1);
   // The scene loads async (after the first effects ran), so init reads the latest guest DJ from here.
   const guestRef = useRef<{ name: string; avatar: number } | null>(null);
+  const meRef = useRef("me");
   const [drink, setDrink] = useState<TokenId | null>(null);
   const clips = useSettings((x) => x.clips);
   const ads = useSettings((x) => x.ads);
@@ -53,6 +57,7 @@ export function VenueView({
       v.setScreenPrefs({ clips, ads });
       v.setPyroAuto(pyro === "auto");
       v.setGuestDj(guestRef.current ?? null);
+      v.setMe(meRef.current);
       const g = useGame.getState().game;
       if (g) v.update(g);
     });
@@ -85,6 +90,10 @@ export function VenueView({
   useEffect(() => {
     r.current?.setPyroAuto(pyroMode === "auto");
   }, [pyroMode]);
+  useEffect(() => {
+    meRef.current = me;
+    r.current?.setMe(me);
+  }, [me]);
   const gName = guestDj?.name;
   const gAvatar = guestDj?.avatar;
   useEffect(() => {

@@ -9,6 +9,7 @@ import { Landing } from "@/screens/Landing";
 import { NightReport } from "@/screens/NightReport";
 import { Office } from "@/screens/Office";
 import { PauseMenu } from "@/screens/PauseMenu";
+import { hostClose, useNet } from "@/net/session";
 import { useGame } from "@/store";
 
 /**
@@ -28,10 +29,23 @@ const StudioScreen = lazy(() =>
 const GigNight = lazy(() =>
   import("@/screens/GigNight").then((m) => ({ default: m.GigNight })),
 );
+const LiveGuest = lazy(() =>
+  import("@/screens/LiveGuest").then((m) => ({ default: m.LiveGuest })),
+);
+const LiveDj = lazy(() =>
+  import("@/screens/LiveDj").then((m) => ({ default: m.LiveDj })),
+);
+/** Sign-in (Privy) for everything past the landing page; its SDK loads only then. */
+const AuthShell = lazy(() => import("@/auth/AuthShell"));
 const blank = <div className="fixed inset-0 bg-black" />;
 
 export function App() {
   const { screen, game, paused, setPaused, intro } = useGame();
+
+  // Leaving the CEO's game (home, game over) closes the live room; players are told the club closed.
+  useEffect(() => {
+    if (screen !== "game" && useNet.getState().role === "host") hostClose();
+  }, [screen]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -56,6 +70,18 @@ export function App() {
     view = (
       <Suspense fallback={blank}>
         <StudioScreen />
+      </Suspense>
+    );
+  else if (screen === "live")
+    view = (
+      <Suspense fallback={blank}>
+        <LiveGuest />
+      </Suspense>
+    );
+  else if (screen === "livedj")
+    view = (
+      <Suspense fallback={blank}>
+        <LiveDj />
       </Suspense>
     );
   else if (screen === "menu" || !game) view = <Landing />;
@@ -84,11 +110,20 @@ export function App() {
     else view = <NightReport s={game} />;
   }
 
+  const screenView = (
+    <div key={key} className="screen-fade">
+      {view}
+    </div>
+  );
   return (
     <>
-      <div key={key} className="screen-fade">
-        {view}
-      </div>
+      {screen === "menu" ? (
+        screenView
+      ) : (
+        <Suspense fallback={blank}>
+          <AuthShell>{screenView}</AuthShell>
+        </Suspense>
+      )}
       {intro && game?.phase === "night" && screen === "game" && (
         <IntroVideo day={game.day} />
       )}

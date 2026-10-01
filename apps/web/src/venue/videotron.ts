@@ -1,35 +1,6 @@
 import * as THREE from "three";
 import { en } from "@/i18n/en";
-
-// ---------- shoutouts (typed by the player, kept in this browser) ----------
-
-const KEY = "nyxeron.shoutouts";
-export const MAX_SHOUTOUTS = 8;
-let list: string[] | null = null;
-
-export function getShoutouts(): string[] {
-  if (!list)
-    try {
-      const v = JSON.parse(localStorage.getItem(KEY) ?? "[]") as unknown;
-      list = Array.isArray(v)
-        ? v
-            .filter((x): x is string => typeof x === "string")
-            .slice(0, MAX_SHOUTOUTS)
-        : [];
-    } catch {
-      list = [];
-    }
-  return list;
-}
-
-export function setShoutouts(next: string[]) {
-  list = next.slice(0, MAX_SHOUTOUTS);
-  try {
-    localStorage.setItem(KEY, JSON.stringify(list));
-  } catch {
-    // ponytail: storage blocked — messages last this session only.
-  }
-}
+import { getShoutouts } from "./shoutouts";
 
 // ---------- the LED board ----------
 

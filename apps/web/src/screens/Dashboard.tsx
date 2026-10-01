@@ -32,6 +32,10 @@ import { cn } from "@/lib/utils";
 import { canRefill, useProfile } from "@/profile";
 import { readSave, type Slot } from "@/save";
 import { useSettings } from "@/settings";
+import { guestJoin } from "@/net/session";
+import { useAccount } from "@/auth/account";
+import { player } from "@/auth/remote";
+import { useDocsSync } from "@/auth/docs";
 import { useGame } from "@/store";
 
 type Step = "home" | "role" | "ceo" | "guest" | "dj";
@@ -46,7 +50,18 @@ const signed = (n: number) =>
 /** The player's hub between the landing page and the game: profile, wallet, then pick a role (CEO or guest). */
 export function Dashboard() {
   useMusic(LOUNGE);
-  const [step, setStep] = useState<Step>("home");
+  // Re-read saves once the account's copies have synced to this device.
+  useDocsSync((x) => x.version);
+  // A shared invite link (…/?join=CODE) opens straight on the guest step with the code filled in.
+  const [invite] = useState(() => {
+    const code = new URLSearchParams(location.search).get("join") ?? "";
+    if (code) history.replaceState(null, "", location.pathname);
+    return code
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "")
+      .slice(0, 6);
+  });
+  const [step, setStep] = useState<Step>(invite ? "guest" : "home");
   const go = useGame((x) => x.go);
   const back = () => setStep(up);
 
@@ -95,7 +110,12 @@ export function Dashboard() {
             {step === "home" && <Home onEnter={() => setStep("role")} />}
             {step === "role" && <RolePicker onPick={setStep} />}
             {step === "ceo" && <CeoPanel />}
-            {step === "guest" && <EventList />}
+            {step === "guest" && (
+              <>
+                <LiveJoin initial={invite} />
+                <EventList />
+              </>
+            )}
             {step === "dj" && <GigList />}
           </section>
         </div>
@@ -112,6 +132,7 @@ function ProfileCard() {
       className="glass enter flex flex-col gap-5 rounded-2xl p-5"
       style={{ "--d": "60ms" } as CSSProperties}
     >
+      <AccountRow />
       <div className="flex items-center gap-3">
         <span className="flex size-12 shrink-0 items-start justify-center overflow-hidden rounded-full border border-white/20 bg-white/[0.06]">
           <img
@@ -127,7 +148,7 @@ function ProfileCard() {
             value={p.name}
             maxLength={20}
             placeholder={t.namePlaceholder}
-            onChange={(e) => p.setName(e.target.value)}
+            onChange={(e) => player.setName(e.target.value)}
           />
         </label>
       </div>
@@ -145,7 +166,7 @@ function ProfileCard() {
         {canRefill(p.wallet) && (
           <button
             className="mt-3 h-8 rounded-md bg-white px-3 text-xs font-medium text-black"
-            onClick={p.refill}
+            onClick={player.refill}
           >
             {t.refill}
           </button>
@@ -186,7 +207,8 @@ function ProfileCard() {
 
 /** Pick a look from the club's guest sprites (1–5 men, 6–10 women); it walks the floor on guest nights. */
 function AvatarPicker() {
-  const { avatar, setAvatar } = useProfile();
+  const avatar = useProfile((p) => p.avatar);
+  const setAvatar = player.setAvatar;
   const group = (label: string, from: number) => (
     <div>
       <div className="mb-1 text-[10px] text-white/45">{label}</div>
@@ -265,6 +287,55 @@ function Portfolio() {
       ) : (
         <p className="text-xs text-white/50">{t.portfolioEmpty}</p>
       )}
+    </div>
+  );
+}
+
+/** Who is signed in: email, embedded wallet (copy), sign out. Hidden when sign-in isn't configured (dev). */
+function AccountRow() {
+  const { account, logout, server } = useAccount();
+  const notify = useGame((x) => x.notify);
+  if (!account) return null;
+  const a = en.auth;
+  const w = account.wallet;
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-xs">
+      <div className="min-w-0 flex-1 leading-tight">
+        <div className="flex items-center gap-1.5 text-sm">
+          <span className="truncate">{account.email}</span>
+          {server && (
+            <span
+              className="shrink-0 rounded border border-white/20 px-1 text-[9px] tracking-wider text-white/70 uppercase"
+              title={a.serverHint}
+            >
+              {a.server[server]}
+            </span>
+          )}
+        </div>
+        <button
+          className="mt-0.5 block max-w-full truncate font-mono text-[11px] whitespace-nowrap text-white/55 hover:text-white disabled:hover:text-white/55"
+          disabled={!w}
+          title={w || undefined}
+          onClick={() => {
+            void navigator.clipboard?.writeText(w);
+            notify(a.copied);
+          }}
+        >
+          {w
+            ? `${w.slice(0, 6)}…${w.slice(-4)} · ${a.wallet}`
+            : a.walletPending}
+        </button>
+      </div>
+      <button
+        className="shrink-0 rounded-md border border-white/15 px-2.5 py-1.5 hover:bg-white/10"
+        onClick={async () => {
+          await logout?.();
+          // A clean start: every per-player store goes back to signed-out defaults.
+          location.reload();
+        }}
+      >
+        {a.signOut}
+      </button>
     </div>
   );
 }
@@ -427,6 +498,77 @@ function CeoPanel() {
   );
 }
 
+/** Walk into a real CEO's live club with the room code they shared. */
+function LiveJoin({
+  initial,
+  as = "guest",
+}: {
+  initial: string;
+  as?: "guest" | "dj";
+}) {
+  const go = useGame((x) => x.go);
+  const [code, setCode] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const l = en.live;
+  const join = async () => {
+    const { name, avatar, wallet } = useProfile.getState();
+    setBusy(true);
+    setError("");
+    try {
+      await guestJoin(code, { name: name || t.anon, avatar, cash: wallet }, as);
+      go(as === "dj" ? "livedj" : "live");
+    } catch (e) {
+      setError(l.error((e as Error).message));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form
+      className="mb-6 flex flex-col gap-2 rounded-2xl border border-white/20 bg-white/[0.04] p-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void join();
+      }}
+    >
+      <div>
+        <h2 className="text-lg font-medium">
+          {as === "dj" ? l.djJoinTitle : l.joinTitle}
+        </h2>
+        <p className="text-sm text-white/55">
+          {as === "dj" ? l.djJoinHint : l.joinHint}
+        </p>
+      </div>
+      <div className="flex gap-2">
+        <Input
+          value={code}
+          onChange={(e) =>
+            setCode(
+              e.target.value
+                .toUpperCase()
+                .replace(/[^A-Z0-9]/g, "")
+                .slice(0, 6),
+            )
+          }
+          placeholder="K7QX9P"
+          aria-label={l.code}
+          autoFocus={!!initial}
+          className="h-10 max-w-40 font-mono text-lg tracking-[0.3em] uppercase"
+        />
+        <button
+          type="submit"
+          disabled={code.length !== 6 || busy}
+          className="h-10 rounded-lg bg-white px-4 text-xs font-semibold tracking-[0.14em] text-black uppercase disabled:opacity-40"
+        >
+          {busy ? "…" : as === "dj" ? l.djJoin : l.join}
+        </button>
+      </div>
+      {error && <p className="text-sm text-white/80">{error}</p>}
+    </form>
+  );
+}
+
 function EventList() {
   const join = useGame((x) => x.joinEvent);
   const wallet = useProfile((p) => p.wallet);
@@ -522,6 +664,7 @@ function GigList() {
         </span>
         <span aria-hidden>→</span>
       </button>
+      <LiveJoin initial="" as="dj" />
       <div>
         <h2 className="text-2xl font-medium tracking-[-0.02em]">{g.invites}</h2>
         <p className="mt-1 text-sm text-white/55">
