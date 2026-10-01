@@ -16,11 +16,12 @@ import (
 //	POST  /api/profile/import   Profile → Profile (once: this device's pre-account data)
 //	PATCH /api/profile          {name?, avatar?} → Profile
 //	POST  /api/wallet/refill    → Profile (only when the wallet is nearly empty)
-//	POST  /api/nights           {cash, bought, pnl} → Profile (a night out as a guest)
+//	POST  /api/nights           {cash, bought, pnl, room?} → Profile (a night out as a guest)
 //	POST  /api/gigs             {fee} → Profile (a DJ gig played to the end)
 type players struct {
 	auth *privy
 	db   *store
+	q    *quoter
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -127,9 +128,10 @@ func (pl *players) route(mux *http.ServeMux) {
 			Cash   int64              `json:"cash"`
 			Bought map[string]Holding `json:"bought"`
 			Pnl    int64              `json:"pnl"`
+			Room   string             `json:"room"` // a live party at a rented venue: its tenant gets the spend
 		}
 		if ok && body(w, r, &in) {
-			p, err := pl.db.Night(r.Context(), id, in.Cash, in.Bought, in.Pnl)
+			p, err := pl.db.Night(r.Context(), id, in.Cash, in.Bought, in.Pnl, in.Room)
 			reply(w, p, err)
 		}
 	})

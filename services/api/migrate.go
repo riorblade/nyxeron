@@ -48,6 +48,39 @@ var migrations = []string{
 		value      TEXT NOT NULL,
 		updated_at INTEGER NOT NULL
 	);`,
+	// 2 — the city: weekly venue leases, shop stock (the player's, moves with them), scheduled parties.
+	`CREATE TABLE leases (
+		id        INTEGER PRIMARY KEY,
+		level     INTEGER NOT NULL,
+		slot      INTEGER NOT NULL,
+		user_id   TEXT    NOT NULL,
+		club      TEXT    NOT NULL,
+		rent      INTEGER NOT NULL,
+		starts_at INTEGER NOT NULL,
+		ends_at   INTEGER NOT NULL,
+		open      INTEGER NOT NULL DEFAULT 1
+	);
+	CREATE INDEX leases_venue ON leases(level, slot, ends_at);
+	CREATE INDEX leases_user ON leases(user_id, ends_at);
+	CREATE TABLE shop_stock (
+		user_id TEXT    NOT NULL,
+		token   TEXT    NOT NULL,
+		qty     INTEGER NOT NULL,
+		price   INTEGER NOT NULL,
+		PRIMARY KEY (user_id, token)
+	);
+	CREATE TABLE parties (
+		id         INTEGER PRIMARY KEY,
+		lease_id   INTEGER NOT NULL,
+		title      TEXT    NOT NULL DEFAULT '',
+		starts_at  INTEGER NOT NULL,
+		minutes    INTEGER NOT NULL,
+		room       TEXT    NOT NULL DEFAULT '',
+		cancelled  INTEGER NOT NULL DEFAULT 0,
+		created_at INTEGER NOT NULL
+	);
+	CREATE INDEX parties_time ON parties(starts_at);
+	CREATE INDEX parties_room ON parties(room);`,
 }
 
 func migrate(db *sql.DB) error {

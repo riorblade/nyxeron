@@ -2,6 +2,7 @@ import { Copy, Radio, UserX } from "lucide-react";
 import { useState } from "react";
 import { en } from "@/i18n/en";
 import { cn } from "@/lib/utils";
+import { city } from "@/auth/city";
 import { hostClose, hostOpen, kick, useNet } from "@/net/session";
 import { useGame } from "@/store";
 
@@ -26,7 +27,8 @@ export function RoomPanel({ clubName }: { clubName: string }) {
           onClick={async () => {
             setBusy(true);
             try {
-              await hostOpen(clubName);
+              // A scheduled party at a rented venue: list it as live with this room.
+              await city.roomOpened(await hostOpen(clubName));
             } catch (e) {
               notify(t.error((e as Error).message), true);
             } finally {

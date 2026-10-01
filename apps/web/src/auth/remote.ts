@@ -1,6 +1,7 @@
 import type { TokenId } from "@nyxeron/core";
 import { en } from "@/i18n/en";
 import { useProfile, type Profile } from "@/profile";
+import { useNet } from "@/net/session";
 import { useGame } from "@/store";
 import { useAccount } from "./account";
 
@@ -22,10 +23,10 @@ type ServerProfile = Pick<
   banReason?: string;
 };
 
-const online = () =>
+export const online = () =>
   !!useAccount.getState().account && !!useAccount.getState().token;
 
-async function call(
+export async function call(
   method: string,
   path: string,
   body?: unknown,
@@ -39,12 +40,16 @@ async function call(
     },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!r.ok) throw new Error(String(r.status));
+  if (!r.ok)
+    throw new Error(
+      ((await r.json().catch(() => ({}))) as { error?: string }).error ??
+        String(r.status),
+    );
   return (await r.json()) as ServerProfile;
 }
 
 /** The server's word replaces the cache. */
-function apply(p: ServerProfile) {
+export function apply(p: ServerProfile) {
   useProfile.setState({
     name: p.name,
     avatar: p.avatar,
@@ -139,6 +144,8 @@ export const player = {
         cash: Math.round(cash),
         bought,
         pnl: Math.round(pnl),
+        // A live party at a rented venue: the tenant is paid what this guest spent.
+        room: useNet.getState().role === "guest" ? useNet.getState().room : "",
       }).then(apply, recover);
   },
   payGig(fee: number) {

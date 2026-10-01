@@ -91,6 +91,7 @@ export interface Stats {
   saves: number;
   live: { rooms: number; conns: number } | null;
   quotes: { source: string; tickers: number };
+  rent: { total: number; week: number; leases: number };
   lastBackup: number;
   dbBytes: number;
 }
@@ -98,3 +99,33 @@ export interface Stats {
 export const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
 export const when = (unix: number) =>
   unix ? new Date(unix * 1000).toLocaleString() : "—";
+
+export interface Lease {
+  id: number;
+  club: string;
+  owner: string;
+  ownerId: string;
+  email: string;
+  since: number;
+  endsAt: number;
+  open: boolean;
+  stock: { token: string; qty: number; price: number }[];
+}
+
+export interface CityView {
+  venues: { level: number; slot: number; lease: Lease | null }[];
+  parties: {
+    id: number;
+    leaseId: number;
+    level: number;
+    club: string;
+    owner: string;
+    title: string;
+    startsAt: number;
+    minutes: number;
+    room: string;
+    live: boolean;
+  }[];
+  rent: Record<string, number>;
+  now: number;
+}

@@ -36,14 +36,22 @@ export function setQuotes(
 }
 
 /** How far the real market has moved this token since the club started watching it (weighted over its legs). */
-export function spotFactor(s: GameState, t: TokenId): number {
+export const spotFactor = (s: GameState, t: TokenId) =>
+  spotFactorOf(s.quotes, s.quoteRef, t);
+
+/** The same from plain maps (spot now, reference spot): the server prices city shops with it. */
+export function spotFactorOf(
+  quotes: Record<string, number> | undefined,
+  ref: Record<string, number> | undefined,
+  t: TokenId,
+): number {
   let sum = 0,
     w = 0;
   for (const [ticker, weight] of legsOf(t)) {
-    const now = s.quotes?.[ticker];
-    const ref = s.quoteRef?.[ticker];
-    if (!now || !ref) continue;
-    sum += (now / ref) * weight;
+    const now = quotes?.[ticker];
+    const was = ref?.[ticker];
+    if (!now || !was) continue;
+    sum += (now / was) * weight;
     w += weight;
   }
   return w ? clamp(sum / w, P.spotFactorRange[0]!, P.spotFactorRange[1]!) : 1;

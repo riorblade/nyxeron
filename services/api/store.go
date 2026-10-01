@@ -321,7 +321,9 @@ func (s *store) Refill(ctx context.Context, id string) (p Profile, err error) {
 
 // Night settles a night out as a guest. Guests only spend (door + tokens), so the wallet can't grow, and the tokens
 // taken home can't have cost more than what was spent.
-func (s *store) Night(ctx context.Context, id string, cash int64, bought map[string]Holding, pnl int64) (p Profile, err error) {
+//
+// At a live party in the city (room), what the guest spent goes to the venue's tenant.
+func (s *store) Night(ctx context.Context, id string, cash int64, bought map[string]Holding, pnl int64, room string) (p Profile, err error) {
 	if cash < 0 || !validHoldings(bought) {
 		return p, errBad
 	}
@@ -346,8 +348,16 @@ func (s *store) Night(ctx context.Context, id string, cash int64, bought map[str
 			cash, pnl, best, id); e != nil {
 			return e
 		}
-		if e := ledger(t, id, cash-cur.Wallet, "night", "", ""); e != nil {
+		if e := ledger(t, id, cash-cur.Wallet, "night", "", room); e != nil {
 			return e
+		}
+		if host := partyHost(t, room, time.Now()); host != "" && host != id && spent > 0 {
+			if _, e := t.Exec(`UPDATE users SET wallet = wallet + ? WHERE id = ?`, spent, host); e != nil {
+				return e
+			}
+			if e := ledger(t, host, spent, "party", "", room); e != nil {
+				return e
+			}
 		}
 		if e := addHoldings(t, id, bought); e != nil {
 			return e

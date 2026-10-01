@@ -1,5 +1,6 @@
 import { PrivyProvider, usePrivy } from "@privy-io/react-auth";
 import {
+  Building2,
   LayoutDashboard,
   LogOut,
   ScrollText,
@@ -9,6 +10,7 @@ import {
 import { useEffect, useState, type ReactNode } from "react";
 import { api, setToken, type Role } from "./api";
 import { Audit } from "./pages/Audit";
+import { Venues } from "./pages/Venues";
 import { Overview } from "./pages/Overview";
 import { Settings } from "./pages/Settings";
 import { UserPage } from "./pages/UserPage";
@@ -100,6 +102,7 @@ function useRoute() {
 const NAV = [
   { path: "", label: "Overview", Icon: LayoutDashboard },
   { path: "users", label: "Players", Icon: UsersIcon },
+  { path: "venues", label: "Venues", Icon: Building2 },
   { path: "audit", label: "Audit log", Icon: ScrollText },
   { path: "settings", label: "Settings", Icon: Cog },
 ];
@@ -153,6 +156,7 @@ function Shell({
         {page === "" && <Overview />}
         {page === "users" &&
           (id ? <UserPage id={id} canEdit={canEdit} /> : <Users />)}
+        {page === "venues" && <Venues canEdit={canEdit} />}
         {page === "audit" && <Audit />}
         {page === "settings" && <Settings role={role} />}
       </main>

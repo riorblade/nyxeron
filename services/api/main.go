@@ -43,9 +43,10 @@ func routes(q *quoter, origins []string, auth *privy, db *store, adm *admin) htt
 	adm.auth, adm.db, adm.quotes = auth, db, q
 	adm.route(mux)
 	mux.HandleFunc("GET /api/me", auth.handleMe)
-	pl := &players{auth: auth, db: db}
+	pl := &players{auth: auth, db: db, q: q}
 	pl.route(mux)
 	pl.routeDocs(mux)
+	pl.routeCity(mux)
 	// Preflight: the browser asks before sending Authorization / JSON cross-site.
 	mux.HandleFunc("OPTIONS /api/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE")

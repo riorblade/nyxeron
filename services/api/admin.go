@@ -459,6 +459,99 @@ func (s *store) SetAnnouncement(ctx context.Context, actor string, a Announcemen
 	return t.Commit()
 }
 
+// ---------- city ----------
+
+// EndLease evicts a tenant now (no refund) and cancels their upcoming parties.
+func (s *store) EndLease(ctx context.Context, actor string, lease int64, reason string, now time.Time) error {
+	if strings.TrimSpace(reason) == "" {
+		return errBad
+	}
+	t, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer t.Rollback()
+	var owner, club string
+	var ends int64
+	err = t.QueryRow(`SELECT user_id, club, ends_at FROM leases WHERE id = ? AND ends_at > ?`, lease, now.Unix()).Scan(&owner, &club, &ends)
+	if errors.Is(err, sql.ErrNoRows) {
+		return errNotFound
+	} else if err != nil {
+		return err
+	}
+	if _, err := t.Exec(`UPDATE leases SET ends_at = ?, open = 0 WHERE id = ?`, now.Unix(), lease); err != nil {
+		return err
+	}
+	if _, err := t.Exec(`UPDATE parties SET cancelled = 1 WHERE lease_id = ? AND starts_at + minutes * 60 > ?`, lease, now.Unix()); err != nil {
+		return err
+	}
+	if err := audit(t, actor, "end-lease", owner, map[string]any{"club": club, "before": ends, "after": now.Unix()}, reason); err != nil {
+		return err
+	}
+	return t.Commit()
+}
+
+func (s *store) AdminCancelParty(ctx context.Context, actor string, pid int64, reason string) error {
+	if strings.TrimSpace(reason) == "" {
+		return errBad
+	}
+	owner, err := s.partyOwner(ctx, pid)
+	if err != nil {
+		return err
+	}
+	t, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer t.Rollback()
+	if _, err := t.Exec(`UPDATE parties SET cancelled = 1 WHERE id = ?`, pid); err != nil {
+		return err
+	}
+	if err := audit(t, actor, "cancel-party", owner, map[string]int64{"party": pid}, reason); err != nil {
+		return err
+	}
+	return t.Commit()
+}
+
+// SetRent changes the weekly rent per venue level (applies to new leases and extensions).
+func (s *store) SetRent(ctx context.Context, actor string, rent map[string]int64, reason string) error {
+	if strings.TrimSpace(reason) == "" || len(rent) == 0 {
+		return errBad
+	}
+	before := s.Rent(ctx)
+	after := map[string]int64{}
+	for l, v := range before {
+		after[l] = v
+	}
+	for l, v := range rent {
+		if _, ok := before[l]; !ok || v < 1 || v > maxGrant {
+			return errBad
+		}
+		after[l] = v
+	}
+	b, _ := json.Marshal(after)
+	t, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer t.Rollback()
+	if _, err := t.Exec(`INSERT INTO settings (key, value, updated_at) VALUES ('rent', ?, ?)
+		ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`, string(b), time.Now().Unix()); err != nil {
+		return err
+	}
+	if err := audit(t, actor, "rent", "", map[string]any{"before": before, "after": after}, reason); err != nil {
+		return err
+	}
+	return t.Commit()
+}
+
+// Revenue: rent the platform took (all time and the last 7 days).
+func (s *store) Revenue(ctx context.Context, now time.Time) (total, week int64) {
+	_ = s.db.QueryRowContext(ctx, `SELECT COALESCE(-SUM(delta), 0), COALESCE(-SUM(CASE WHEN at >= ? THEN delta END), 0)
+		FROM ledger WHERE kind = 'rent'`, now.Unix()-7*86400).Scan(&total, &week)
+	return
+}
+
 type Stats struct {
 	Users     int   `json:"users"`
 	New24h    int   `json:"new24h"`
@@ -477,6 +570,11 @@ type Stats struct {
 		Source  string `json:"source"`
 		Tickers int    `json:"tickers"`
 	} `json:"quotes"`
+	Rent struct {
+		Total  int64 `json:"total"`
+		Week   int64 `json:"week"`
+		Leases int   `json:"leases"`
+	} `json:"rent"`
 	LastBackup int64 `json:"lastBackup"`
 	DBBytes    int64 `json:"dbBytes"`
 }
@@ -492,6 +590,8 @@ func (a *admin) stats(ctx context.Context, now time.Time) (Stats, error) {
 		return st, err
 	}
 	_ = a.db.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM docs WHERE kind = 'saves'`).Scan(&st.Saves)
+	st.Rent.Total, st.Rent.Week = a.db.Revenue(ctx, now)
+	_ = a.db.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM leases WHERE ends_at > ?`, n).Scan(&st.Rent.Leases)
 	if a.quotes != nil {
 		q := a.quotes.get()
 		st.Quotes.Source, st.Quotes.Tickers = q.Source, len(q.Quotes)
@@ -651,6 +751,42 @@ func (a *admin) route(mux *http.ServeMux) {
 		var in Announcement
 		if yes && body(w, r, &in) {
 			ok(w, a.db.SetAnnouncement(r.Context(), actor, in))
+		}
+	})
+	mux.HandleFunc("GET /api/admin/city", func(w http.ResponseWriter, r *http.Request) {
+		if _, _, yes := a.who(w, r, roleViewer); yes {
+			v, err := a.db.City(r.Context(), "", true, time.Now())
+			if err != nil {
+				fail(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, v)
+		}
+	})
+	mux.HandleFunc("POST /api/admin/leases/{id}/end", func(w http.ResponseWriter, r *http.Request) {
+		actor, _, yes := a.who(w, r, roleAdmin)
+		var in struct{ Reason string }
+		if yes && body(w, r, &in) {
+			id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+			ok(w, a.db.EndLease(r.Context(), actor, id, in.Reason, time.Now()))
+		}
+	})
+	mux.HandleFunc("POST /api/admin/parties/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
+		actor, _, yes := a.who(w, r, roleAdmin)
+		var in struct{ Reason string }
+		if yes && body(w, r, &in) {
+			id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+			ok(w, a.db.AdminCancelParty(r.Context(), actor, id, in.Reason))
+		}
+	})
+	mux.HandleFunc("PUT /api/admin/rent", func(w http.ResponseWriter, r *http.Request) {
+		actor, _, yes := a.who(w, r, roleAdmin)
+		var in struct {
+			Rent   map[string]int64
+			Reason string
+		}
+		if yes && body(w, r, &in) {
+			ok(w, a.db.SetRent(r.Context(), actor, in.Rent, in.Reason))
 		}
 	})
 	// Public: the banner players see.

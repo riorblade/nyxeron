@@ -37,13 +37,18 @@ import { useAccount } from "@/auth/account";
 import { player } from "@/auth/remote";
 import { useDocsSync } from "@/auth/docs";
 import { useGame } from "@/store";
+import { CityCeo, CityGuest } from "./CityPanels";
 
-type Step = "home" | "role" | "ceo" | "guest" | "dj";
+type Step = "home" | "role" | "ceo" | "city" | "guest" | "dj";
 const t = en.dashboard;
 const SLOTS: Slot[] = ["auto", 1, 2, 3];
 /** One step back: a role's panel → the role picker → the dashboard home. */
 const up = (s: Step): Step =>
-  s === "ceo" || s === "guest" || s === "dj" ? "role" : "home";
+  s === "city"
+    ? "ceo"
+    : s === "ceo" || s === "guest" || s === "dj"
+      ? "role"
+      : "home";
 const signed = (n: number) =>
   `${n > 0 ? "+" : n < 0 ? "−" : ""}${fmt(Math.abs(n))} C`;
 
@@ -110,10 +115,12 @@ export function Dashboard() {
             )}
             {step === "home" && <Home onEnter={() => setStep("role")} />}
             {step === "role" && <RolePicker onPick={setStep} />}
-            {step === "ceo" && <CeoPanel />}
+            {step === "ceo" && <CeoPanel onCity={() => setStep("city")} />}
+            {step === "city" && <CityCeo />}
             {step === "guest" && (
               <>
                 <LiveJoin initial={invite} />
+                <CityGuest />
                 <EventList />
               </>
             )}
@@ -443,13 +450,14 @@ function RolePicker({ onPick }: { onPick: (s: Step) => void }) {
   );
 }
 
-function CeoPanel() {
+function CeoPanel({ onCity }: { onCity: () => void }) {
   const { start, go, load } = useGame();
   const auto = readSave("auto");
   const [loading, setLoading] = useState(false);
   const row =
     "flex w-full items-center justify-between gap-4 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3.5 text-left hover:border-white/30 hover:bg-white/[0.07] disabled:opacity-40";
   const options: [string, string, () => void][] = [
+    [en.city.title, en.city.desc, onCity],
     [t.newCareer, t.newCareerDesc, () => go("setup")],
     [t.basement, t.basementDesc, () => start({ mode: "basement" })],
     [t.sandbox, t.sandboxDesc, () => start({ mode: "sandbox" })],
