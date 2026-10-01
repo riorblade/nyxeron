@@ -54,6 +54,10 @@ services:
       # Privy sign-in, verified server-side (GET /api/me). The secret stays in this service.
       PRIVY_APP_ID: ${PRIVY_APP_ID:-}
       PRIVY_APP_SECRET: ${PRIVY_APP_SECRET:-}
+      # Back office owners (comma-separated emails); they add other admins from the back office itself.
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      # Live rooms on the back office overview (the relay's internal /stats).
+      RELAY_URL: http://relay:8787
       GOGC: "50"
       GOMEMLIMIT: 40MiB
       # Players' data (SQLite) and its daily backups, on a volume.

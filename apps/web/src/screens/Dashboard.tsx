@@ -96,6 +96,7 @@ export function Dashboard() {
           </div>
         </header>
 
+        <Announcement />
         <div className="grid flex-1 grid-cols-1 gap-6 lg:grid-cols-[21rem_1fr]">
           <ProfileCard />
           <section className="glass enter flex min-h-[28rem] flex-col rounded-2xl p-5 sm:p-7">
@@ -121,6 +122,29 @@ export function Dashboard() {
         </div>
       </div>
     </main>
+  );
+}
+
+/** The back office's banner (events, maintenance), if one is up. */
+function Announcement() {
+  const [text, setText] = useState("");
+  useEffect(() => {
+    fetch(`${import.meta.env.VITE_API_BASE ?? ""}/api/announcement`)
+      .then((r) => (r.ok ? (r.json() as Promise<{ text: string }>) : null))
+      .then((a) => setText(a?.text ?? ""))
+      .catch(() => {});
+  }, []);
+  if (!text) return null;
+  return (
+    <div
+      role="status"
+      className="enter flex items-start gap-3 rounded-xl border border-white/20 bg-white/[0.05] px-4 py-3 text-sm shadow-[0_0_24px_rgba(255,255,255,.08)]"
+    >
+      <span className="shrink-0 text-[10px] tracking-[0.3em] text-white/50 uppercase">
+        {en.auth.announcement}
+      </span>
+      <span className="text-white/85">{text}</span>
+    </div>
   );
 }
 

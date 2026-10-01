@@ -8,6 +8,7 @@ import {
   createGameState,
   type ActionResult,
   type Difficulty,
+  type Level,
   type GameState,
 } from "@nyxeron/core";
 import { create } from "zustand";
@@ -31,7 +32,13 @@ export type Screen =
 type NewGame =
   | { mode: "basement" }
   | { mode: "sandbox" }
-  | { mode: "career"; name: string; genre: string; difficulty: Difficulty };
+  | {
+      mode: "career";
+      name: string;
+      genre: string;
+      difficulty: Difficulty;
+      level?: Level;
+    };
 
 interface Store {
   screen: Screen;
@@ -110,6 +117,7 @@ export const useGame = create<Store>((set, get) => ({
             : createGameState(newSeed(), g.genre, {
                 clubName: g.name,
                 difficulty: g.difficulty,
+                level: g.level,
               }),
     }),
   gig: null,

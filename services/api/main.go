@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-// The NYXERON API: game backend services that are not the multiplayer relay. Today: spot quotes.
+// The NYXERON API: game backend services that are not the multiplayer relay: spot quotes, players, back office.
 func env(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -35,8 +35,13 @@ func cors(origins []string, w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func routes(q *quoter, origins []string, auth *privy, db *store) http.Handler {
+func routes(q *quoter, origins []string, auth *privy, db *store, adm *admin) http.Handler {
 	mux := http.NewServeMux()
+	if adm == nil {
+		adm = &admin{owners: map[string]bool{}}
+	}
+	adm.auth, adm.db, adm.quotes = auth, db, q
+	adm.route(mux)
 	mux.HandleFunc("GET /api/me", auth.handleMe)
 	pl := &players{auth: auth, db: db}
 	pl.route(mux)
@@ -102,7 +107,12 @@ func main() {
 			time.Sleep(24 * time.Hour)
 		}
 	}()
-	srv := &http.Server{Addr: addr, Handler: routes(q, origins, auth, db), ReadHeaderTimeout: 5 * time.Second, MaxHeaderBytes: 8 << 10}
+	srv := &http.Server{Addr: addr, Handler: routes(q, origins, auth, db, &admin{
+		owners:   parseOwners(os.Getenv("ADMIN_EMAILS")),
+		relayURL: os.Getenv("RELAY_URL"),
+		dbPath:   env("DB_PATH", "nyxeron.db"),
+		client:   &http.Client{Timeout: 2 * time.Second},
+	}), ReadHeaderTimeout: 5 * time.Second, MaxHeaderBytes: 8 << 10}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	go func() {

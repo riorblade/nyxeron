@@ -13,7 +13,14 @@ type Holdings = Partial<Record<TokenId, { qty: number; cost: number }>>;
 type ServerProfile = Pick<
   Profile,
   "name" | "avatar" | "wallet" | "nights" | "gigs" | "totalPnl" | "bestPnl"
-> & { id: string; portfolio: Holdings; imported: boolean };
+> & {
+  id: string;
+  portfolio: Holdings;
+  imported: boolean;
+  unlockLevel: number;
+  banned: boolean;
+  banReason?: string;
+};
 
 const online = () =>
   !!useAccount.getState().account && !!useAccount.getState().token;
@@ -47,6 +54,13 @@ function apply(p: ServerProfile) {
     gigs: p.gigs,
     totalPnl: p.totalPnl,
     bestPnl: p.bestPnl,
+  });
+  useAccount.setState({
+    access: {
+      unlockLevel: p.unlockLevel || 1,
+      banned: p.banned,
+      banReason: p.banReason ?? "",
+    },
   });
 }
 

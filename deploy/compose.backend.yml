@@ -22,7 +22,7 @@ services:
   api:
     environment:
       # The frontend's origin(s): the browser calls the API cross-site.
-      CORS_ORIGINS: https://${DOMAIN:-localhost},https://${FRONTEND_EXTRA_HOST:-${DOMAIN:-localhost}}
+      CORS_ORIGINS: https://${DOMAIN:-localhost},https://${FRONTEND_EXTRA_HOST:-${DOMAIN:-localhost}},https://${ADMIN_HOST:-admin.${DOMAIN:-localhost}}
     networks:
       default: {}
       gateway:

@@ -51,6 +51,11 @@ type Profile struct {
 	BestPnl   int64              `json:"bestPnl"`
 	// Imported: the one-time import of this device's pre-account data is used up (or any change happened).
 	Imported bool `json:"imported"`
+	// Set from the back office: the highest venue level this player may start a career at (1 = the normal
+	// ladder), and a ban.
+	UnlockLevel int    `json:"unlockLevel"`
+	Banned      bool   `json:"banned"`
+	BanReason   string `json:"banReason,omitempty"`
 }
 
 var (
@@ -91,6 +96,9 @@ CREATE TABLE IF NOT EXISTS portfolio (
 	cost    INTEGER NOT NULL,
 	PRIMARY KEY (user_id, token)
 );` + docsSchema)
+	if err == nil {
+		err = migrate(db)
+	}
 	if err != nil {
 		db.Close()
 		return nil, err
@@ -137,13 +145,15 @@ func (s *store) tx(ctx context.Context, id string, fn func(*sql.Tx) error) error
 
 func read(t *sql.Tx, id string) (Profile, error) {
 	p := Profile{ID: id, Portfolio: map[string]Holding{}}
-	var imported int
-	err := t.QueryRow(`SELECT name, avatar, wallet, nights, gigs, total_pnl, best_pnl, imported FROM users WHERE id = ?`, id).
-		Scan(&p.Name, &p.Avatar, &p.Wallet, &p.Nights, &p.Gigs, &p.TotalPnl, &p.BestPnl, &imported)
+	var imported, banned int
+	err := t.QueryRow(`SELECT name, avatar, wallet, nights, gigs, total_pnl, best_pnl, imported, unlock_level, banned, ban_reason
+		FROM users WHERE id = ?`, id).
+		Scan(&p.Name, &p.Avatar, &p.Wallet, &p.Nights, &p.Gigs, &p.TotalPnl, &p.BestPnl, &imported, &p.UnlockLevel, &banned, &p.BanReason)
 	if err != nil {
 		return p, err
 	}
 	p.Imported = imported == 1
+	p.Banned = banned == 1
 	rows, err := t.Query(`SELECT token, qty, cost FROM portfolio WHERE user_id = ?`, id)
 	if err != nil {
 		return p, err
@@ -163,6 +173,17 @@ func read(t *sql.Tx, id string) (Profile, error) {
 // touch marks a change: bumps updated_at and closes the one-time import.
 func touch(t *sql.Tx, id string) error {
 	_, err := t.Exec(`UPDATE users SET imported = 1, updated_at = ? WHERE id = ?`, time.Now().Unix(), id)
+	return err
+}
+
+// ledger records a wallet change (and the balance after it), so every coin can be traced: nights, gigs,
+// refills, the one-time import and admin grants.
+func ledger(t *sql.Tx, id string, delta int64, kind, actor, reason string) error {
+	if delta == 0 {
+		return nil
+	}
+	_, err := t.Exec(`INSERT INTO ledger (user_id, delta, balance, kind, actor, reason, at)
+		SELECT id, ?, wallet, ?, ?, ?, ? FROM users WHERE id = ?`, delta, kind, actor, reason, time.Now().Unix(), id)
 	return err
 }
 
@@ -222,6 +243,9 @@ func (s *store) Import(ctx context.Context, id string, in Profile) (p Profile, e
 			name, in.Avatar, in.Wallet, in.Nights, in.Gigs, clamp(in.TotalPnl), clamp(in.BestPnl), id); e != nil {
 			return e
 		}
+		if e := ledger(t, id, in.Wallet-cur.Wallet, "import", "", ""); e != nil {
+			return e
+		}
 		if e := addHoldings(t, id, in.Portfolio); e != nil {
 			return e
 		}
@@ -272,16 +296,23 @@ func (s *store) Update(ctx context.Context, id string, name *string, avatar *int
 // Refill gives a broke guest the starter wallet again.
 func (s *store) Refill(ctx context.Context, id string) (p Profile, err error) {
 	err = s.tx(ctx, id, func(t *sql.Tx) error {
-		res, e := t.Exec(`UPDATE users SET wallet = ? WHERE id = ? AND wallet < ?`, startWallet, id, refillBelow)
-		if e != nil {
+		var before int64
+		if e := t.QueryRow(`SELECT wallet FROM users WHERE id = ?`, id).Scan(&before); e != nil {
 			return e
 		}
-		if n, _ := res.RowsAffected(); n == 0 {
+		if before >= refillBelow {
 			return errRejected
+		}
+		if _, e := t.Exec(`UPDATE users SET wallet = ? WHERE id = ?`, startWallet, id); e != nil {
+			return e
+		}
+		if e := ledger(t, id, startWallet-before, "refill", "", ""); e != nil {
+			return e
 		}
 		if e := touch(t, id); e != nil {
 			return e
 		}
+		var e error
 		p, e = read(t, id)
 		return e
 	})
@@ -315,6 +346,9 @@ func (s *store) Night(ctx context.Context, id string, cash int64, bought map[str
 			cash, pnl, best, id); e != nil {
 			return e
 		}
+		if e := ledger(t, id, cash-cur.Wallet, "night", "", ""); e != nil {
+			return e
+		}
 		if e := addHoldings(t, id, bought); e != nil {
 			return e
 		}
@@ -342,6 +376,9 @@ func (s *store) Gig(ctx context.Context, id string, fee int64, now time.Time) (p
 		}
 		if _, e := t.Exec(`UPDATE users SET wallet = wallet + ?, gigs = gigs + 1, last_gig = ? WHERE id = ?`,
 			fee, now.Unix(), id); e != nil {
+			return e
+		}
+		if e := ledger(t, id, fee, "gig", "", ""); e != nil {
 			return e
 		}
 		if e := touch(t, id); e != nil {

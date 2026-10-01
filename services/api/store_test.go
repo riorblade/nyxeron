@@ -6,6 +6,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -179,7 +180,7 @@ func TestConstantsMatchGameData(t *testing.T) {
 func TestProfileEndpoints(t *testing.T) {
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	p := fakePrivy(t, key)
-	srv := httptest.NewServer(routes(&quoter{}, []string{"https://nyxeron.xyz"}, p, testStore(t)))
+	srv := httptest.NewServer(routes(&quoter{}, []string{"https://nyxeron.xyz"}, p, testStore(t), nil))
 	defer srv.Close()
 	tok := signJWT(t, key, map[string]any{"alg": "ES256", "kid": "k1"}, good(time.Now().Add(time.Hour)))
 	call := func(method, path, auth string, body any) (int, Profile) {
@@ -293,5 +294,41 @@ func TestDocs(t *testing.T) {
 	}
 	if _, err := s.GetDoc(ctx, "u", "layouts", "la"); !errors.Is(err, errNotFound) {
 		t.Fatalf("deleted layout still there: %v", err)
+	}
+}
+
+// A database from before the back office (the live one) upgrades in place and keeps every player's data.
+func TestMigrateLiveDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "old.db")
+	old, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = old.Exec(`
+CREATE TABLE users (id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', avatar INTEGER NOT NULL DEFAULT 1,
+	wallet INTEGER NOT NULL, nights INTEGER NOT NULL DEFAULT 0, gigs INTEGER NOT NULL DEFAULT 0,
+	total_pnl INTEGER NOT NULL DEFAULT 0, best_pnl INTEGER NOT NULL DEFAULT 0, imported INTEGER NOT NULL DEFAULT 0,
+	last_gig INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE portfolio (user_id TEXT NOT NULL, token TEXT NOT NULL, qty INTEGER NOT NULL, cost INTEGER NOT NULL,
+	PRIMARY KEY (user_id, token));
+INSERT INTO users (id, name, avatar, wallet, nights, created_at, updated_at) VALUES ('did:privy:old', 'Kiel', 3, 18914, 3, 1, 1);
+INSERT INTO portfolio VALUES ('did:privy:old', 'tsla', 1, 292);`)
+	old.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := openStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.close()
+	p, err := s.Get(ctx, "did:privy:old")
+	if err != nil || p.Name != "Kiel" || p.Wallet != 18914 || p.Nights != 3 || p.Portfolio["tsla"].Qty != 1 || p.UnlockLevel != 1 || p.Banned {
+		t.Fatalf("%+v %v", p, err)
+	}
+	// Opening again doesn't re-run migrations.
+	s.close()
+	if s, err = openStore(path); err != nil {
+		t.Fatalf("reopen: %v", err)
 	}
 }

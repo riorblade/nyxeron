@@ -91,6 +91,10 @@ export const en = {
     loading: "Loading your account…",
     back: "Back to the landing page",
     signOut: "Sign out",
+    bannedTitle: "Account suspended",
+    banned: (reason: string) =>
+      `This account can't play right now${reason ? `: ${reason}` : ""}. Contact support if you think this is a mistake.`,
+    announcement: "Announcement",
     wallet: "BNB Chain",
     walletPending: "Creating your wallet…",
     copied: "Address copied",
@@ -302,6 +306,9 @@ export const en = {
       string
     >,
     start: "Start Career",
+    venue: "Starting venue",
+    venueNote:
+      "Unlocked for your account: skip the climb and open at a bigger venue.",
   },
 
   hud: {

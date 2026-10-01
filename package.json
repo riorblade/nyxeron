@@ -4,9 +4,10 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm --filter web dev",
+    "dev:admin": "pnpm --filter admin dev",
     "build": "pnpm -r build",
     "test": "vitest run",
-    "lint": "tsc -p packages/core && tsc -p apps/web && eslint . && prettier --check .",
+    "lint": "tsc -p packages/core && tsc -p apps/web && tsc -p apps/admin && eslint . && prettier --check .",
     "format": "prettier --write .",
     "balance": "tsx packages/core/scripts/balance.ts",
     "dev:api": "cd services/api && go run .",

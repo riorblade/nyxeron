@@ -60,6 +60,11 @@ func (pl *players) who(w http.ResponseWriter, r *http.Request) (string, bool) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid_token"})
 		return "", false
 	}
+	// A banned player can still sign in and see why, but changes nothing.
+	if r.Method != http.MethodGet && pl.db.Banned(r.Context(), id) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "banned"})
+		return "", false
+	}
 	return id, true
 }
 
@@ -83,6 +88,11 @@ func (pl *players) route(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/profile", func(w http.ResponseWriter, r *http.Request) {
 		if id, ok := pl.who(w, r); ok {
 			p, err := pl.db.Get(r.Context(), id)
+			if err == nil {
+				// Keep the email and wallet the back office searches by (Privy lookups are cached for minutes).
+				me, _ := pl.auth.user(id, time.Now())
+				_ = pl.db.SetIdentity(r.Context(), id, me.Email, me.Wallet, time.Now())
+			}
 			reply(w, p, err)
 		}
 	})
