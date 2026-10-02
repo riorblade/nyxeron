@@ -53,6 +53,8 @@ export interface City {
     string,
     Partial<Record<TokenId, { wholesale: number; shelf: number; max: number }>>
   >;
+  /** What the platform's warehouse holds per token (shops restock from it). */
+  supply?: Partial<Record<TokenId, number>>;
 }
 
 interface CityStore {
@@ -106,6 +108,8 @@ export const city = {
       () => call("POST", "/city/lease", { level, slot, club, weeks }),
       en.city.rented,
     ),
+  rename: (club: string) =>
+    act(() => call("PUT", "/city/venue", { club }), en.city.renamed),
   stock: (token: TokenId, qty: number) =>
     act(() => call("POST", "/city/stock", { token, qty }), en.city.stocked),
   shop: (open?: boolean, prices?: Partial<Record<TokenId, number>>) =>

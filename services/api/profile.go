@@ -37,6 +37,8 @@ func fail(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad_request"})
 	case errors.Is(err, errRejected):
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "rejected"})
+	case errors.Is(err, errSoldOut):
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "sold_out"})
 	case errors.Is(err, errConflict):
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "conflict"})
 	default:

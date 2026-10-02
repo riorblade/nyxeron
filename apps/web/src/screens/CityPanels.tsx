@@ -153,9 +153,7 @@ function MyVenue({ v }: { v: Venue }) {
           <div className="text-[10px] tracking-[0.25em] text-white/50 uppercase">
             {t.yours}
           </div>
-          <div className="truncate text-lg font-medium">
-            {t.at(lease.club, levels[v.level].name)}
-          </div>
+          <Rename club={lease.club} level={v.level} />
           <div className="text-xs text-white/55">
             {t.until(day(lease.endsAt))}
           </div>
@@ -175,6 +173,45 @@ function MyVenue({ v }: { v: Venue }) {
         <p className="text-sm text-white/55">{t.partiesLocked}</p>
       )}
     </>
+  );
+}
+
+/** The tenant's venue name, editable in place (e.g. "Escala Bar"). */
+function Rename({ club, level }: { club: string; level: Level }) {
+  const [name, setName] = useState<string | null>(null);
+  if (name === null)
+    return (
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="truncate text-lg font-medium">
+          {t.at(club, levels[level].name)}
+        </span>
+        <button
+          className="text-xs text-white/55 underline hover:text-white"
+          onClick={() => setName(club)}
+        >
+          {t.rename}
+        </button>
+      </div>
+    );
+  return (
+    <form
+      className="mt-1 flex items-center gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (name.trim() && name.trim() !== club) void city.rename(name.trim());
+        setName(null);
+      }}
+    >
+      <input
+        className={field}
+        maxLength={20}
+        value={name}
+        autoFocus
+        onChange={(e) => setName(e.target.value)}
+        aria-label={t.clubName}
+      />
+      <button className={btn}>{t.rename}</button>
+    </form>
   );
 }
 
@@ -214,6 +251,7 @@ function Shop({ v }: { v: Venue }) {
                 <span className="block text-[11px] text-white/50">
                   {t.inStock(s?.qty ?? 0)}
                   {p ? ` · ${t.cost(fmt(p.wholesale))}` : ""}
+                  {` · ${t.warehouse(c.supply?.[tok] ?? 0)}`}
                 </span>
               </span>
               <span className="flex items-center gap-2">
@@ -236,7 +274,7 @@ function Shop({ v }: { v: Venue }) {
                 )}
                 <button
                   className={ghost}
-                  disabled={!p}
+                  disabled={!p || (c.supply?.[tok] ?? 0) < qty}
                   onClick={() => void city.stock(tok, qty)}
                 >
                   {t.restock(qty, fmt((p?.wholesale ?? 0) * qty))}

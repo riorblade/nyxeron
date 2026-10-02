@@ -81,6 +81,25 @@ var migrations = []string{
 	);
 	CREATE INDEX parties_time ON parties(starts_at);
 	CREATE INDEX parties_room ON parties(room);`,
+	// 3 — the platform's warehouse (CEOs stock from it; the back office and the agent restock it) and every
+	// movement in and out, for demand and the audit trail.
+	`CREATE TABLE platform_stock (
+		token      TEXT PRIMARY KEY,
+		qty        INTEGER NOT NULL CHECK (qty >= 0),
+		updated_at INTEGER NOT NULL
+	);
+	CREATE TABLE stock_moves (
+		id      INTEGER PRIMARY KEY,
+		token   TEXT    NOT NULL,
+		delta   INTEGER NOT NULL,
+		kind    TEXT    NOT NULL,
+		user_id TEXT    NOT NULL DEFAULT '',
+		actor   TEXT    NOT NULL DEFAULT '',
+		reason  TEXT    NOT NULL DEFAULT '',
+		tx      TEXT    NOT NULL DEFAULT '',
+		at      INTEGER NOT NULL
+	);
+	CREATE INDEX stock_moves_token ON stock_moves(token, kind, at);`,
 }
 
 func migrate(db *sql.DB) error {

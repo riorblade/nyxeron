@@ -3,8 +3,11 @@ package main
 import (
 	"bytes"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -87,9 +90,20 @@ func TestShop(t *testing.T) {
 		t.Fatalf("no venue: %v", err)
 	}
 	s.Lease(ctx, "a", 1, 0, "Booth", 1, now)
+	// The platform's warehouse is empty until it is restocked.
+	if _, err := s.Stock(ctx, "a", "tsla", 10, flat, now); !errors.Is(err, errSoldOut) {
+		t.Fatalf("empty warehouse: %v", err)
+	}
+	if err := s.Restock(ctx, "boss", "tsla", 15, "restock", "launch", ""); err != nil {
+		t.Fatal(err)
+	}
+	s.Restock(ctx, "boss", "us500", 5000, "restock", "launch", "")
 	before := wallet(t, s, "a")
 	if _, err := s.Stock(ctx, "a", "tsla", 10, flat, now); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := s.Stock(ctx, "a", "tsla", 6, flat, now); !errors.Is(err, errSoldOut) {
+		t.Fatalf("more than the warehouse has: %v", err)
 	}
 	if got := before - wallet(t, s, "a"); got != 10*wholesale("tsla", 1, 1) {
 		t.Fatalf("stock cost %d", got)
@@ -232,5 +246,90 @@ func TestPartyPaysHost(t *testing.T) {
 	}
 	if err := s.SetRent(ctx, "boss", map[string]int64{"9": 1}, "x"); !errors.Is(err, errBad) {
 		t.Fatalf("unknown level: %v", err)
+	}
+}
+
+func TestRename(t *testing.T) {
+	s := testStore(t)
+	now := time.Now()
+	if err := s.Rename(ctx, "a", "Escala Bar", now); !errors.Is(err, errNoLease) {
+		t.Fatalf("no venue: %v", err)
+	}
+	s.Lease(ctx, "a", 1, 0, "Booth", 1, now)
+	if err := s.Rename(ctx, "a", "  ", now); !errors.Is(err, errBad) {
+		t.Fatalf("blank: %v", err)
+	}
+	if err := s.Rename(ctx, "a", "Escala Bar", now); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := s.City(ctx, "a", false, now); v.Venues[0].Lease.Club != "Escala Bar" {
+		t.Fatalf("%+v", v.Venues[0].Lease)
+	}
+}
+
+// The warehouse: CEOs' orders show up as demand; the agent restocks only with an on-chain purchase behind it.
+func TestSupplyAndAgent(t *testing.T) {
+	s := testStore(t)
+	now := time.Now()
+	s.Restock(ctx, "boss", "tsla", 100, "restock", "launch", "")
+	s.Lease(ctx, "a", 1, 0, "Booth", 1, now)
+	s.Stock(ctx, "a", "tsla", 70, flat, now)
+	sup, err := s.Supply(ctx, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tsla SupplyRow
+	for _, r := range sup.Tokens {
+		if r.Token == "tsla" {
+			tsla = r
+		}
+	}
+	if tsla.OnHand != 30 || tsla.InShops != 70 || tsla.Sold7d != 70 || tsla.Shops != 1 || tsla.Suggested != 0 {
+		t.Fatalf("%+v", tsla)
+	}
+	// 10/day for 3 days = 30 on hand: none suggested; sell 21 more → 13/day × 3 = 39 − 9 = 30.
+	s.Stock(ctx, "a", "tsla", 21, flat, now)
+	sup, _ = s.Supply(ctx, now)
+	for _, r := range sup.Tokens {
+		if r.Token == "tsla" && (r.OnHand != 9 || r.Suggested != 30) {
+			t.Fatalf("%+v", r)
+		}
+	}
+	if err := s.Restock(ctx, "boss", "tsla", -10, "adjust", "count", ""); !errors.Is(err, errSoldOut) {
+		t.Fatalf("below zero: %v", err)
+	}
+	if err := s.Restock(ctx, "boss", "doge", 1, "restock", "x", ""); !errors.Is(err, errBad) {
+		t.Fatalf("unknown token: %v", err)
+	}
+
+	ag := &agent{key: "k-secret", db: s}
+	mux := http.NewServeMux()
+	ag.route(mux)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	call := func(method, path, key, body string) int {
+		req, _ := http.NewRequest(method, srv.URL+path, strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+key)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		return res.StatusCode
+	}
+	if c := call("GET", "/api/agent/demand", "wrong", ""); c != 401 {
+		t.Fatalf("bad key: %d", c)
+	}
+	if c := call("GET", "/api/agent/demand", "k-secret", ""); c != 200 {
+		t.Fatalf("demand: %d", c)
+	}
+	if c := call("POST", "/api/agent/restock", "k-secret", `{"token":"tsla","qty":30}`); c != 400 {
+		t.Fatalf("restock without a tx: %d", c)
+	}
+	if c := call("POST", "/api/agent/restock", "k-secret", `{"token":"tsla","qty":30,"tx":"0xabc"}`); c != 200 {
+		t.Fatalf("restock: %d", c)
+	}
+	if sup, _ = s.Supply(ctx, now); sup.Moves[0].Actor != "agent" || sup.Moves[0].Tx != "0xabc" || sup.Moves[0].Delta != 30 {
+		t.Fatalf("%+v", sup.Moves[0])
 	}
 }

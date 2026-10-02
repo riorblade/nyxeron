@@ -129,3 +129,29 @@ export interface CityView {
   rent: Record<string, number>;
   now: number;
 }
+
+export interface Supply {
+  tokens: {
+    token: string;
+    ticker: string;
+    onHand: number;
+    inShops: number;
+    sold24h: number;
+    sold7d: number;
+    shops: number;
+    daysLeft: number;
+    suggested: number;
+  }[];
+  moves: {
+    id: number;
+    token: string;
+    delta: number;
+    kind: string;
+    userId?: string;
+    actor: string;
+    reason: string;
+    tx?: string;
+    at: number;
+  }[];
+  coverDays: number;
+}

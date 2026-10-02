@@ -256,6 +256,10 @@ export const en = {
     by: (owner: string) => `by ${owner || "a CEO"}`,
     at: (club: string, level: string) => `${club} · ${level}`,
     rented: "Venue rented",
+    renamed: "Venue renamed",
+    rename: "Rename",
+    warehouse: (n: number) =>
+      n ? `platform has ${n}` : "sold out at the platform",
     stocked: "Stock delivered",
     saved: "Shop updated",
     bought: (n: number, t: string) => `Bought ${n} ${t}`,
@@ -264,6 +268,7 @@ export const en = {
     failed: (code: string) =>
       ({
         rejected: "Not enough Coin, storage or stock for that.",
+        sold_out: "The platform's warehouse doesn't have that many right now.",
         conflict: "That's taken (or you already rent a venue).",
         no_lease: "Rent a venue first.",
         bad_request: "Check the values.",

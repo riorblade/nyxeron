@@ -789,6 +789,31 @@ func (a *admin) route(mux *http.ServeMux) {
 			ok(w, a.db.SetRent(r.Context(), actor, in.Rent, in.Reason))
 		}
 	})
+	mux.HandleFunc("GET /api/admin/stock", func(w http.ResponseWriter, r *http.Request) {
+		if _, _, yes := a.who(w, r, roleViewer); yes {
+			v, err := a.db.Supply(r.Context(), time.Now())
+			if err != nil {
+				fail(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, v)
+		}
+	})
+	mux.HandleFunc("PUT /api/admin/stock/{token}", func(w http.ResponseWriter, r *http.Request) {
+		actor, _, yes := a.who(w, r, roleAdmin)
+		var in struct {
+			Delta  int64
+			Reason string
+			Tx     string
+		}
+		if yes && body(w, r, &in) {
+			kind := "adjust"
+			if in.Delta > 0 {
+				kind = "restock"
+			}
+			ok(w, a.db.Restock(r.Context(), actor, r.PathValue("token"), in.Delta, kind, in.Reason, in.Tx))
+		}
+	})
 	// Public: the banner players see.
 	mux.HandleFunc("GET /api/announcement", func(w http.ResponseWriter, r *http.Request) {
 		if a.db == nil {

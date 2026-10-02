@@ -20,7 +20,8 @@ import (
 //
 //	GET    /api/city                       → venues (free / rented, shops, stock), upcoming + live parties, rent
 //	POST   /api/city/lease                 {level, slot?, club, weeks} → rent (or extend) a venue
-//	POST   /api/city/stock                 {token, qty} → buy stock for my shop at the market's price
+//	POST   /api/city/stock                 {token, qty} → buy stock for my shop from the platform's warehouse
+//	PUT    /api/city/venue                 {club} → rename my venue
 //	PUT    /api/city/shop                  {open?, prices?} → open/close my shop, set shelf prices
 //	POST   /api/city/shops/{lease}/buy     {token, qty} → buy from someone's shop
 //	POST   /api/city/parties               {startsAt, minutes?, title?} → schedule a party at my venue
@@ -181,6 +182,8 @@ type CityView struct {
 	Now     int64            `json:"now"`
 	// Prices[level][token]: what stock costs, the usual shelf price and the most a shop may ask, right now.
 	Prices map[string]map[string]PriceRow `json:"prices,omitempty"`
+	// Supply[token]: what the platform's warehouse holds (shops restock from it).
+	Supply map[string]int64 `json:"supply,omitempty"`
 }
 
 type PriceRow struct {
@@ -402,6 +405,22 @@ func (s *store) Lease(ctx context.Context, id string, level, slot int, club stri
 	return
 }
 
+// Rename: the tenant names their venue (e.g. "Escala Bar").
+func (s *store) Rename(ctx context.Context, id, club string, now time.Time) error {
+	club, ok := cleanName(club)
+	if !ok || club == "" {
+		return errBad
+	}
+	return s.tx(ctx, id, func(t *sql.Tx) error {
+		l, e := myLease(t, id, now)
+		if e != nil {
+			return e
+		}
+		_, e = t.Exec(`UPDATE leases SET club = ? WHERE id = ?`, club, l.id)
+		return e
+	})
+}
+
 // Stock buys units for the player's shop at the market's price; they must fit the venue's storage.
 func (s *store) Stock(ctx context.Context, id, token string, qty int64, f factorFn, now time.Time) (p Profile, err error) {
 	tok, known := game.tokens[token]
@@ -424,6 +443,10 @@ func (s *store) Stock(ctx context.Context, id, token string, qty int64, f factor
 			return errRejected
 		}
 		factor := f(token)
+		// From the platform's warehouse: what isn't there can't be sold.
+		if e := moveStock(t, token, -qty, "sold", id, "", "", ""); e != nil {
+			return e
+		}
 		if e := pay(t, id, wholesale(token, l.level, factor)*qty, "stock", token); e != nil {
 			return e
 		}
@@ -675,6 +698,7 @@ func (pl *players) routeCity(mux *http.ServeMux) {
 		}
 		v, err := pl.db.City(r.Context(), pl.viewer(r), false, time.Now())
 		v.Prices = priceTable(pl.factor(r.Context()))
+		v.Supply = pl.db.supplyFor(r.Context())
 		reply(w, v, err)
 	})
 	mux.HandleFunc("POST /api/city/lease", func(w http.ResponseWriter, r *http.Request) {
@@ -686,6 +710,13 @@ func (pl *players) routeCity(mux *http.ServeMux) {
 		if ok && body(w, r, &in) {
 			p, err := pl.db.Lease(r.Context(), id, in.Level, in.Slot, in.Club, in.Weeks, time.Now())
 			reply(w, p, err)
+		}
+	})
+	mux.HandleFunc("PUT /api/city/venue", func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pl.who(w, r)
+		var in struct{ Club string }
+		if ok && body(w, r, &in) {
+			reply(w, map[string]bool{"ok": true}, pl.db.Rename(r.Context(), id, in.Club, time.Now()))
 		}
 	})
 	mux.HandleFunc("POST /api/city/stock", func(w http.ResponseWriter, r *http.Request) {

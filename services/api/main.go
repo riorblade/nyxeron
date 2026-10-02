@@ -42,6 +42,7 @@ func routes(q *quoter, origins []string, auth *privy, db *store, adm *admin) htt
 	}
 	adm.auth, adm.db, adm.quotes = auth, db, q
 	adm.route(mux)
+	(&agent{key: os.Getenv("AGENT_KEY"), db: db}).route(mux)
 	mux.HandleFunc("GET /api/me", auth.handleMe)
 	pl := &players{auth: auth, db: db, q: q}
 	pl.route(mux)
