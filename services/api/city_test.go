@@ -181,10 +181,10 @@ func TestParties(t *testing.T) {
 	if err != nil || p.Minutes != game.city.Party.DefaultMinutes || p.Live || p.Club != "Neon Tap" {
 		t.Fatalf("%+v %v", p, err)
 	}
-	if _, err := s.Event(ctx, "host", EventInput{Lease: hostLease, StartsAt: start+60, Minutes: 10, Title: ""}, now); !errors.Is(err, errConflict) {
+	if _, err := s.Event(ctx, "host", EventInput{Lease: hostLease, StartsAt: start + 60, Minutes: 10, Title: ""}, now); !errors.Is(err, errConflict) {
 		t.Fatalf("overlap: %v", err)
 	}
-	if _, err := s.Event(ctx, "host", EventInput{Lease: hostLease, StartsAt: now.Add(8*24*time.Hour).Unix(), Minutes: 10, Title: ""}, now); !errors.Is(err, errBad) {
+	if _, err := s.Event(ctx, "host", EventInput{Lease: hostLease, StartsAt: now.Add(8 * 24 * time.Hour).Unix(), Minutes: 10, Title: ""}, now); !errors.Is(err, errBad) {
 		t.Fatalf("too far ahead: %v", err)
 	}
 	if err := s.EventRoom(ctx, "host", p.ID, "ABC123", now); !errors.Is(err, errRejected) {
