@@ -127,7 +127,7 @@ Each rule gets its own function and a unit test. Naming: `r01_orderStock`, `r02_
 | R12 | New day: energy reset to 5, wages and rent deducted                               | Economy          |
 | R13 | Coin < 0 for 3 days, or 3 violations, or rep 0 → Defeat                           | Economy          |
 | R14 | Level 5 and rep ≥ 80 → Victory                                                    | Progression      |
-| R15 | 40% entertainment tax on night revenue                                            | Economy          |
+| R15 | Entertainment tax on night revenue (tiered: L3 20%, L4 30%, L5 40%)               | Economy          |
 | R16 | Drinking on premise with takeaway-only liquor permit → violation                  | Legal            |
 | R17 | Controversial promo: hype +30, 25% chance rep −20 + guaranteed inspection         | Marketing        |
 | R18 | Upgrade level if coin ≥ cost and rep ≥ requirement                                | Progression      |
@@ -270,7 +270,7 @@ P0–P5 done (MVP playable). P6 Web3 and P7 deploy not started.
 - Modes: Career (Level 1 → 5, 60 days) and Scenario "The Basement" (Level 4, GDD 15.3 Week 1).
 - Deviations from this plan, all tunable in `packages/core/src/data/*.json`:
   - Entertainment tax (R15) applies from Level 3 (bars/clubs), not to the booth/shop.
-  - Below Level 4 the owner checks IDs (R8), since security only unlocks at Level 4.
+  - Below Level 3 the owner checks IDs (R8); security unlocks at Level 3 (2026-10-02, was 4).
   - Each level has a `priceScale` (drink prices, stock cost, guest budgets) so income keeps pace with the GDD ladder costs (50k → 5M).
   - Bartenders add bar throughput; out-of-stock (R2) hits each guest once, then they order what's in stock.
   - Staff is stored as counts per role, not `Staff[]`.
@@ -353,3 +353,4 @@ P0–P5 done (MVP playable). P6 Web3 and P7 deploy not started.
 - **Sign-in live (2026-10-01):** nyxeron.xyz requires a Privy account (email or Google) past the landing page; the api on `api.nyxeron.xyz` verifies every sign-in (`/api/me`, Dashboard badge "✓ verified"). Checked with a real account: email, embedded BNB Chain wallet and the device's earlier data carried over. Privy app is still in development mode (user cap): switch it to production in the Privy dashboard before opening to the public.
 - **All account data on the server (2026-10-01):** besides the profile, the api keeps per-player documents (`/api/docs/{kind}/{slot}`, gzipped in SQLite): CEO career saves (auto + 3 slots), planned DJ sets, venue furniture layouts and videotron messages; each kind has whitelisted slots, a size cap and a shape check. The browser keeps a per-account cache (`apps/web/src/scope.ts`: every account-owned key is scoped; layouts and shoutouts were device-wide before), merges at sign-in (`auth/docs.ts`: saves newest-wins by savedAt, the rest server-wins, device copies go up if the server has none) and sends every change as it happens. Device preferences (volume, music, clips, intro) stay in the browser on purpose.
 - **Data audit (2026-10-01):** `packages/core/test/persistence.test.ts`: over 60-day careers every visible number stays valid (no NaN; stock never negative or above storage; level, rep, hype, safety, prices, upgrades and staff in range); save → load gives the identical game (by day and mid-night) and it plays on identically; old saves (before upgrades, house rules, the market, multiplayer) load and play. Found and fixed: a 60-day save had grown to 452 KB (the finished night's guest list + an unbounded event log); saves are now compact (`compactForSave`: no finished night, last 7 days of log) and stay under 40 KB, with a test that the game continues exactly the same from a compact save.
+- Balance (2026-10-02): security unlocks at Level 3 (bot careers had ~1 fight a night there: −15 safety, −5 rep each) and the entertainment tax is tiered L3 20% / L4 30% / L5 40% (was a flat 40%). Bot (300 runs): fights at L3 0.95 → 0 a night; Level 5 ≈ day 44 (was 55); 100% victory. Safety now matters (fewer walk-ins, more inspectors under 40). A Level 3+ club with no guard gets a "Hire security" objective. `scripts/levelstats.ts` reports fights, tax share and profit per level.

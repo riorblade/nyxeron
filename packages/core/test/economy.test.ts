@@ -44,10 +44,20 @@ describe("R12 newDay", () => {
 });
 
 describe("R15 entertainmentTax", () => {
-  it("takes 40% of cover + table + bar at Level 3+", () => {
+  it("is tiered: none for booth/shop, then 20% / 30% / 40% at Level 3 / 4 / 5", () => {
+    const at = (level: 1 | 2 | 3 | 4 | 5) =>
+      r15_entertainmentTax({
+        ...createGameState(1),
+        level,
+        nightRevenue: { bar: 1000, cover: 0, table: 0 },
+      }).tax;
+    expect([at(1), at(2), at(3), at(4), at(5)]).toEqual([0, 0, 200, 300, 400]);
+  });
+
+  it("takes the venue's rate of cover + table + bar", () => {
     const s0 = {
       ...createGameState(1),
-      level: 4 as const,
+      level: 5 as const,
       nightRevenue: { bar: 1000, cover: 500, table: 250 },
     };
     const { state, tax } = r15_entertainmentTax(s0);

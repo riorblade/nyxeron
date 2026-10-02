@@ -136,10 +136,19 @@ describe("7-day Level 4 playthrough (The Basement, Week 1)", () => {
     for (const r of reports) {
       expect(r.guests).toBeGreaterThan(0);
       expect(r.guests).toBeLessThanOrEqual(
-        expectedGuests({ ...state, hype: 100, reputation: 100, day: 7 }),
+        expectedGuests({
+          ...state,
+          hype: 100,
+          reputation: 100,
+          safety: 100,
+          day: 7,
+        }),
       );
       expect(r.tax).toBe(
-        Math.round((r.revenue.bar + r.revenue.cover + r.revenue.table) * 0.4),
+        Math.round(
+          (r.revenue.bar + r.revenue.cover + r.revenue.table) *
+            levels[4].entertainmentTaxRate,
+        ),
       );
       expect(r.avgSatisfaction).toBeGreaterThanOrEqual(0);
       expect(r.avgSatisfaction).toBeLessThanOrEqual(100);

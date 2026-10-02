@@ -3,8 +3,10 @@ import {
   createGameState,
   expectedGuests,
   night,
+  objectives,
   r06_inspectionChance,
   runNight,
+  staffRoles,
   statHistory,
   type GameState,
 } from "../src";
@@ -56,5 +58,19 @@ describe("HUD stats do something and can be explained", () => {
     );
     expect(statHistory(fought, "violations")).toHaveLength(1);
     expect(statHistory(fought, "hype")).toHaveLength(0);
+  });
+});
+
+describe("security unlocks with the bar", () => {
+  it("a Level 3 club without a guard is asked to hire one; with one, it isn't", () => {
+    const s = createGameState(2, "edm", { level: 3 });
+    const day3 = { ...s, day: 3 };
+    expect(objectives(day3).map((o) => o.id)).toContain("hireSecurity");
+    expect(
+      objectives({ ...day3, staff: { ...day3.staff, security: 1 } }).map(
+        (o) => o.id,
+      ),
+    ).not.toContain("hireSecurity");
+    expect(staffRoles.security.minLevel).toBe(3);
   });
 });

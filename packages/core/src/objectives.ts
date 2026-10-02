@@ -1,4 +1,4 @@
-import { levels, scenarios, type Level } from "./data";
+import { levels, scenarios, staffRoles, type Level } from "./data";
 import { permitActive } from "./rules/legal";
 import type { GameState } from "./state";
 
@@ -88,9 +88,15 @@ export function objectives(s: GameState): Objective[] {
 
   if (s.day === 1) return [orderStock, openClub];
   if (s.day === 2) return [postPromo, guests(15)];
-  if (s.level === 5) return [rep(80)];
+  // From the venue where security unlocks, the door needs a guard (underage ID checks, the 1:40 ratio).
+  const guard: Objective[] =
+    s.level >= staffRoles.security.minLevel && s.staff.security === 0
+      ? [{ id: "hireSecurity", done: false }]
+      : [];
+  if (s.level === 5) return [...guard, rep(80)];
   const next = levels[(s.level + 1) as Level];
   return [
+    ...guard,
     {
       id: "saveCoin",
       target: next.cost,
