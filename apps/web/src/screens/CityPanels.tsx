@@ -21,6 +21,7 @@ import {
   type Venue,
 } from "@/api/city";
 import { Img } from "@/components/Img";
+import { fetchOpenClubs, type OpenClub } from "@/api/rooms";
 import { en, fmt } from "@/i18n/en";
 import { guestJoin } from "@/net/session";
 import { useProfile } from "@/state/profile";
@@ -434,26 +435,50 @@ function Parties({ v }: { v: Venue }) {
 }
 
 /** Guest: parties on now and coming up, and shops to buy from. */
+/** Clubs open right now, refreshed every 15 s. */
+function useOpenClubs() {
+  const [clubs, setClubs] = useState<OpenClub[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    const load = () =>
+      fetchOpenClubs()
+        .then((x) => live && setClubs(x))
+        .catch(() => live && setClubs((c) => c ?? []));
+    void load();
+    const id = setInterval(load, 15_000);
+    return () => {
+      live = false;
+      clearInterval(id);
+    };
+  }, []);
+  return clubs;
+}
+
 export function CityGuest() {
   const { city: c } = useCityLive();
+  const open = useOpenClubs();
   if (!c) return null;
-  const live = c.parties.filter((p) => p.live && p.room && !p.mine);
   const later = c.parties.filter((p) => !p.live);
   const shops = c.venues.filter(
     (v) => v.lease?.open && !v.lease.mine && v.lease.stock.length,
   );
   return (
     <div className="flex flex-col gap-5">
-      {live.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <h3 className="text-[10px] tracking-[0.25em] text-white/60 uppercase">
-            ● {t.liveNow}
-          </h3>
-          {live.map((p) => (
-            <LiveParty key={p.id} p={p} />
-          ))}
-        </section>
-      )}
+      <section className="flex flex-col gap-2">
+        <h3 className="text-[10px] tracking-[0.25em] text-white/60 uppercase">
+          ● {t.openNow}
+        </h3>
+        {open?.length === 0 && (
+          <p className="text-xs text-white/45">{t.noneOpen}</p>
+        )}
+        {open?.map((club) => (
+          <OpenClubRow
+            key={club.room}
+            club={club}
+            party={c.parties.find((p) => p.live && p.room === club.room)}
+          />
+        ))}
+      </section>
       <section className="flex flex-col gap-2">
         <h3 className="text-[10px] tracking-[0.25em] text-white/60 uppercase">
           {t.upcoming}
@@ -488,15 +513,24 @@ export function CityGuest() {
   );
 }
 
-function LiveParty({ p }: { p: Party }) {
+function OpenClubRow({ club, party }: { club: OpenClub; party?: Party }) {
   const go = useGame((x) => x.go);
   const [busy, setBusy] = useState(false);
   return (
     <div className={row}>
-      <span className="min-w-0">
-        <span className="block truncate font-medium">{p.title || p.club}</span>
+      <Img
+        src={art.venue(club.level)}
+        alt=""
+        className="size-12 shrink-0 rounded-lg object-cover"
+        fallback={<span className="size-12 rounded-lg bg-white/5" />}
+      />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-medium">
+          {party?.title || club.club}
+        </span>
         <span className="text-xs text-white/55">
-          {t.at(p.club, levels[p.level].name)} · {t.by(p.owner)}
+          {t.at(club.club, levels[club.level].name)} · {t.by(club.host)} ·{" "}
+          {club.night ? t.nightOn : t.doorsSoon} · {t.inside(club.players)}
         </span>
       </span>
       <button
@@ -506,7 +540,7 @@ function LiveParty({ p }: { p: Party }) {
           const { name, avatar, wallet } = useProfile.getState();
           setBusy(true);
           try {
-            await guestJoin(p.room, {
+            await guestJoin(club.room, {
               name: name || en.dashboard.anon,
               avatar,
               cash: wallet,

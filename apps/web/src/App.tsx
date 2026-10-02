@@ -9,6 +9,7 @@ import { Landing } from "@/screens/Landing";
 import { NightReport } from "@/screens/NightReport";
 import { Office } from "@/screens/Office";
 import { PauseMenu } from "@/screens/PauseMenu";
+import { useHostedClub } from "@/api/rooms";
 import { hostClose, useNet } from "@/net/session";
 import { useGame } from "@/state/store";
 
@@ -41,6 +42,9 @@ const blank = <div className="fixed inset-0 bg-black" />;
 
 export function App() {
   const { screen, game, paused, setPaused, intro } = useGame();
+
+  // A CEO in their club has it open to players and listed for guests.
+  useHostedClub(screen);
 
   // Leaving the CEO's game (home, game over) closes the live room; players are told the club closed.
   useEffect(() => {
