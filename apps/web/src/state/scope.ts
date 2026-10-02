@@ -15,7 +15,7 @@ export const userKey = (base: string, legacy: string) =>
 
 /** Called after the browser saved something that belongs to the account. */
 export const syncHooks: {
-  save?: (slot: string, raw: string) => void;
+  save?: (slot: string, raw: string | null) => void;
   layout?: (name: string, json: string | null) => void;
   shoutouts?: (json: string) => void;
 } = {};

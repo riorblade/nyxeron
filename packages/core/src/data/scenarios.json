@@ -36,30 +36,6 @@
       }
     }
   },
-  "sandbox": {
-    "clubName": "Nyxeron Premium",
-    "clubGenre": "house",
-    "level": 5,
-    "coin": 20000000,
-    "reputation": 75,
-    "hype": 60,
-    "stock": {
-      "tsla": 600,
-      "us500": 400,
-      "nvda": 400,
-      "bigtech": 300,
-      "aisemis": 300,
-      "dividend": 200
-    },
-    "staff": {
-      "bartender": 6,
-      "security": 9,
-      "host": 4,
-      "relations": 3,
-      "mc": 1
-    },
-    "permitDays": 60
-  },
   "events": [
     {
       "id": "neon",

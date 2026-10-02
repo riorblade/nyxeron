@@ -3,6 +3,16 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-03 · CEO: your clubs
+
+- **CEO home is one list of the clubs you run:** rented city venues (several allowed, up to 5) and offline practice
+  clubs (up to 4, each in its own save slot, saved after every night and when leaving). Open one, close a practice
+  club, rent a new venue or start a practice club; The Basement is a small challenge link.
+- Removed: the sandbox (bigger venues are granted from the back office), "Continue", "Load a save" and the pause
+  menu's save slots. Old sandbox saves load as normal careers; AI-run events use mode `event`.
+- City: each venue is managed on its own (name, shop open/closed, parties); shop stock is shared across a
+  player's venues with their storage combined.
+
 ## 2026-10-02 · Back office, city, warehouse, clearer HUD, balance
 
 - **Back office Stock page reworked:** an empty warehouse shows a "Fill all tokens" banner; every token row has

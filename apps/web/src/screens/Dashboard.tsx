@@ -12,7 +12,6 @@ import {
   Briefcase,
   Crown,
   Disc3,
-  FolderOpen,
   PartyPopper,
   Settings,
   Sparkles,
@@ -30,21 +29,21 @@ import { Input } from "@/components/ui/input";
 import { clock, en, fmt, genres } from "@/i18n/en";
 import { cn } from "@/lib/utils";
 import { canRefill, useProfile } from "@/state/profile";
-import { readSave, type Slot } from "@/state/save";
+import { freeSlot, listClubs, type Slot } from "@/state/save";
+import { myVenues, useCity } from "@/api/city";
 import { useSettings } from "@/state/settings";
 import { guestJoin } from "@/net/session";
 import { useAccount } from "@/auth/account";
 import { player } from "@/api/player";
 import { useDocsSync } from "@/api/docs";
 import { useGame } from "@/state/store";
-import { CityCeo, CityGuest } from "./CityPanels";
+import { CityGuest, ManageVenue, RentVenue, useCityLive } from "./CityPanels";
 
-type Step = "home" | "role" | "ceo" | "city" | "guest" | "dj";
+type Step = "home" | "role" | "ceo" | "rent" | "venue" | "guest" | "dj";
 const t = en.dashboard;
-const SLOTS: Slot[] = ["auto", 1, 2, 3];
 /** One step back: a role's panel → the role picker → the dashboard home. */
 const up = (s: Step): Step =>
-  s === "city"
+  s === "rent" || s === "venue"
     ? "ceo"
     : s === "ceo" || s === "guest" || s === "dj"
       ? "role"
@@ -67,6 +66,8 @@ export function Dashboard() {
       .slice(0, 6);
   });
   const [step, setStep] = useState<Step>(invite ? "guest" : "home");
+  // The city venue being run (step "venue").
+  const [venue, setVenue] = useState(0);
   const go = useGame((x) => x.go);
   const back = () => setStep(up);
 
@@ -115,8 +116,17 @@ export function Dashboard() {
             )}
             {step === "home" && <Home onEnter={() => setStep("role")} />}
             {step === "role" && <RolePicker onPick={setStep} />}
-            {step === "ceo" && <CeoPanel onCity={() => setStep("city")} />}
-            {step === "city" && <CityCeo />}
+            {step === "ceo" && (
+              <CeoPanel
+                onRent={() => setStep("rent")}
+                onVenue={(lease) => {
+                  setVenue(lease);
+                  setStep("venue");
+                }}
+              />
+            )}
+            {step === "rent" && <RentVenue onRented={() => setStep("ceo")} />}
+            {step === "venue" && <ManageVenue lease={venue} />}
             {step === "guest" && (
               <>
                 <LiveJoin initial={invite} />
@@ -157,7 +167,8 @@ function Announcement() {
 
 function ProfileCard() {
   const p = useProfile();
-  const auto = readSave("auto");
+  const clubs = listClubs();
+  const venues = myVenues(useCity((x) => x.city));
   return (
     <aside
       className="glass enter flex flex-col gap-5 rounded-2xl p-5"
@@ -223,12 +234,8 @@ function ProfileCard() {
           <Crown className="size-3.5" /> {t.club}
         </div>
         <p className="mt-1 text-sm text-white/75">
-          {auto
-            ? t.clubLine(
-                auto.state.clubName,
-                auto.state.day,
-                levels[auto.state.level].name,
-              )
+          {venues.length + clubs.length
+            ? t.clubCount(venues.length, clubs.length)
             : t.noClub}
         </p>
       </div>
@@ -450,85 +457,178 @@ function RolePicker({ onPick }: { onPick: (s: Step) => void }) {
   );
 }
 
-function CeoPanel({ onCity }: { onCity: () => void }) {
-  const { start, go, load } = useGame();
-  const auto = readSave("auto");
-  const [loading, setLoading] = useState(false);
-  const row =
-    "flex w-full items-center justify-between gap-4 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3.5 text-left hover:border-white/30 hover:bg-white/[0.07] disabled:opacity-40";
-  const options: [string, string, () => void][] = [
-    [en.city.title, en.city.desc, onCity],
-    [t.newCareer, t.newCareerDesc, () => go("setup")],
-    [t.basement, t.basementDesc, () => start({ mode: "basement" })],
-    [t.sandbox, t.sandboxDesc, () => start({ mode: "sandbox" })],
-  ];
+/**
+ * The CEO's home: every club this player runs, in one list. City venues are rented in the shared city (shops,
+ * parties, other players); practice clubs are offline careers kept in their own save slots. Pick one to go in,
+ * or start another.
+ */
+function CeoPanel({
+  onRent,
+  onVenue,
+}: {
+  onRent: () => void;
+  onVenue: (lease: number) => void;
+}) {
+  const { start, go, load, closeClub } = useGame();
+  // Re-read the practice clubs when one is closed.
+  const [, bump] = useState(0);
+  const { city: c } = useCityLive();
+  const venues = myVenues(c);
+  const clubs = listClubs();
+  const full = !freeSlot();
+  const [closing, setClosing] = useState<Slot | null>(null);
+  const card =
+    "flex w-full items-center gap-4 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-left transition hover:border-white/30 hover:bg-white/[0.07]";
+  const now = c?.now ?? 0;
   return (
-    <div className="flex flex-col gap-3">
-      <h2 className="mb-2 text-2xl font-medium tracking-[-0.02em]">
-        {t.ceoTitle}
-      </h2>
-      {auto && (
-        <button
-          className={cn(row, "border-white/40 bg-white/[0.08]")}
-          onClick={() => load(auto.state)}
-          autoFocus
-        >
-          <span>
-            <span className="block font-medium">{t.continue}</span>
-            <span className="block text-xs text-white/60">
-              {t.clubLine(
-                auto.state.clubName,
-                auto.state.day,
-                levels[auto.state.level].name,
+    <div className="flex flex-col gap-5">
+      <div>
+        <h2 className="text-2xl font-medium tracking-[-0.02em]">
+          {t.ceoTitle}
+        </h2>
+        <p className="mt-1 text-sm text-white/55">{t.ceoNote}</p>
+      </div>
+
+      <div className="flex flex-col gap-2.5">
+        {venues.length === 0 && clubs.length === 0 && (
+          <p className="rounded-xl border border-dashed border-white/15 px-4 py-6 text-center text-sm text-white/55">
+            {t.noClubs}
+          </p>
+        )}
+
+        {venues.map((v) => {
+          const l = v.lease!;
+          const parties = c!.parties.filter((p) => p.leaseId === l.id);
+          const live = parties.some((p) => p.live);
+          return (
+            <button key={l.id} className={card} onClick={() => onVenue(l.id)}>
+              <Img
+                src={art.venue(v.level)}
+                alt=""
+                className="size-14 shrink-0 rounded-lg object-cover"
+                fallback={<span className="size-14 rounded-lg bg-white/5" />}
+              />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2">
+                  <span className="truncate font-medium">{l.club}</span>
+                  <Tag>{t.tagCity}</Tag>
+                  {live && <Tag>● {en.city.liveNow}</Tag>}
+                </span>
+                <span className="block text-xs text-white/60">
+                  {levels[v.level].name} · {l.open ? t.shopOpen : t.shopClosed}{" "}
+                  ·{" "}
+                  {t.daysLeft(Math.max(0, Math.ceil((l.endsAt - now) / 86400)))}
+                  {parties.length > 0 && !live
+                    ? ` · ${t.partiesPlanned(parties.length)}`
+                    : ""}
+                </span>
+              </span>
+              <span aria-hidden>→</span>
+            </button>
+          );
+        })}
+
+        {clubs.map(({ slot, file }) => {
+          const g = file.state;
+          return (
+            <div key={slot} className={cn(card, "hover:bg-white/[0.03]")}>
+              <Img
+                src={art.venue(g.level)}
+                alt=""
+                className="size-14 shrink-0 rounded-lg object-cover opacity-80"
+                fallback={<span className="size-14 rounded-lg bg-white/5" />}
+              />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2">
+                  <span className="truncate font-medium">{g.clubName}</span>
+                  <Tag>{t.tagPractice}</Tag>
+                  {g.outcome && <Tag>{t.outcome[g.outcome]}</Tag>}
+                </span>
+                <span className="block text-xs text-white/60">
+                  {levels[g.level].name} · {t.dayOf(g.day)} · {fmt(g.coin)} C
+                </span>
+              </span>
+              {closing === slot ? (
+                <span className="flex shrink-0 items-center gap-2 text-xs">
+                  <span className="hidden text-white/60 sm:inline">
+                    {t.closeConfirm}
+                  </span>
+                  <button
+                    className="h-8 rounded-md bg-white px-3 font-medium text-black"
+                    onClick={() => {
+                      closeClub(slot);
+                      setClosing(null);
+                      bump((n) => n + 1);
+                    }}
+                  >
+                    {t.closeYes}
+                  </button>
+                  <button
+                    className="h-8 rounded-md border border-white/15 px-3 hover:bg-white/10"
+                    onClick={() => setClosing(null)}
+                  >
+                    {t.closeNo}
+                  </button>
+                </span>
+              ) : (
+                <span className="flex shrink-0 items-center gap-2">
+                  <button
+                    className="h-8 rounded-md px-2 text-xs text-white/55 hover:bg-white/10 hover:text-white"
+                    onClick={() => setClosing(slot)}
+                  >
+                    {t.close}
+                  </button>
+                  <button
+                    className="h-8 rounded-md bg-white px-4 text-xs font-medium text-black"
+                    onClick={() => load(g, slot)}
+                  >
+                    {t.open}
+                  </button>
+                </span>
               )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+        <button className={cn(card, "border-white/30")} onClick={onRent}>
+          <span className="min-w-0 flex-1">
+            <span className="block font-medium">{t.rentNew}</span>
+            <span className="block text-xs text-white/60">{t.rentNewDesc}</span>
+          </span>
+          <span aria-hidden>→</span>
+        </button>
+        <button
+          className={cn(card, "disabled:opacity-40")}
+          disabled={full}
+          onClick={() => go("setup")}
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block font-medium">{t.newPractice}</span>
+            <span className="block text-xs text-white/60">
+              {full ? t.clubsFull : t.newPracticeDesc}
             </span>
           </span>
           <span aria-hidden>→</span>
         </button>
-      )}
-      {options.map(([label, desc, fn]) => (
-        <button key={label} className={row} onClick={fn}>
-          <span>
-            <span className="block font-medium">{label}</span>
-            <span className="block text-xs text-white/60">{desc}</span>
-          </span>
-          <span aria-hidden>→</span>
-        </button>
-      ))}
-      <button className={row} onClick={() => setLoading((v) => !v)}>
-        <span className="flex items-center gap-2 font-medium">
-          <FolderOpen className="size-4" /> {t.load}
-        </span>
-        <span aria-hidden>{loading ? "−" : "+"}</span>
+      </div>
+
+      <button
+        className="self-start text-xs text-white/55 hover:text-white"
+        onClick={() => start({ mode: "basement" })}
+      >
+        {t.challenge} →
       </button>
-      {loading &&
-        SLOTS.map((slot) => {
-          const f = readSave(slot);
-          return (
-            <button
-              key={slot}
-              disabled={!f}
-              onClick={() => f && load(f.state)}
-              className={cn(row, "py-2.5 text-sm")}
-            >
-              <span className="tracking-[0.14em] uppercase">
-                {slot === "auto" ? en.menu.autosave : en.menu.slot(slot)}
-              </span>
-              <span className="text-xs text-white/60">
-                {f
-                  ? t.clubLine(
-                      f.state.clubName,
-                      f.state.day,
-                      levels[f.state.level].name,
-                    )
-                  : en.menu.empty}
-              </span>
-            </button>
-          );
-        })}
     </div>
   );
 }
+
+const Tag = ({ children }: { children: ReactNode }) => (
+  <span className="shrink-0 rounded border border-white/20 px-1.5 py-px text-[9px] tracking-[0.15em] text-white/70 uppercase">
+    {children}
+  </span>
+);
 
 /** Walk into a real CEO's live club with the room code they shared. */
 function LiveJoin({

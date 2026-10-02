@@ -1,14 +1,33 @@
 {
   "leaseDays": 7,
   "maxWeeksAhead": 4,
+  "maxVenuesPerPlayer": 5,
   "venues": {
-    "1": { "count": 24, "weeklyRent": 2000 },
-    "2": { "count": 12, "weeklyRent": 6000 },
-    "3": { "count": 6, "weeklyRent": 20000 },
-    "4": { "count": 4, "weeklyRent": 60000 },
-    "5": { "count": 2, "weeklyRent": 150000 }
+    "1": {
+      "count": 24,
+      "weeklyRent": 2000
+    },
+    "2": {
+      "count": 12,
+      "weeklyRent": 6000
+    },
+    "3": {
+      "count": 6,
+      "weeklyRent": 20000
+    },
+    "4": {
+      "count": 4,
+      "weeklyRent": 60000
+    },
+    "5": {
+      "count": 2,
+      "weeklyRent": 150000
+    }
   },
-  "shop": { "maxMarkup": 3, "maxBuy": 50 },
+  "shop": {
+    "maxMarkup": 3,
+    "maxBuy": 50
+  },
   "party": {
     "minLevel": 3,
     "defaultMinutes": 10,

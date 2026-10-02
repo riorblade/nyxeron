@@ -50,7 +50,10 @@ a markup costs you by running or partying in a club, with friends, in real time.
   messages sync across devices.
 
 **CEO**
-- Offline practice career (Level 1 booth → Level 5 Premium Venue, 60 days), The Basement scenario, sandbox.
+- **Your clubs:** one list of every club the CEO runs (rented city venues and offline practice clubs); open one,
+  rent another venue, or start a practice club (up to four, each saved on its own).
+- Offline practice career (Level 1 booth → Level 5 Premium Venue, 60 days) and The Basement challenge. Bigger
+  starting venues are granted from the back office.
 - Deep club sim: stock and pricing, live token market with FOMO, DJs and bands, promos, staff, house rules,
   reservations, permits and inspections, crowd energy, fights and security, tax, upgrades, VIP.
 - Every top-bar stat explains itself (what it is, what it does, how it moves, what moved it lately).
@@ -91,8 +94,7 @@ a markup costs you by running or partying in a club, with friends, in real time.
 
 ### Functional
 
-- A player can rent at most one venue at a time; rent is paid weekly, up to 4 weeks ahead; an expired lease frees
-  the venue.
+- A player can rent up to 5 venues; rent is paid weekly, up to 4 weeks ahead; an expired lease frees the venue.
 - Shops sell only from stock; stock comes only from the warehouse; shelf price ≤ 3× the venue's usual price.
 - Parties only at Level 3+, inside the lease, without overlap, up to 7 days ahead; guest spend at a live party goes
   to the tenant.

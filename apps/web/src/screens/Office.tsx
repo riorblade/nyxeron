@@ -47,7 +47,6 @@ const d = (ms: number) => ({ "--d": `${ms}ms` }) as CSSProperties;
 
 function tutorial(s: GameState): string | null {
   if (s.mode === "basement") return s.day === 1 ? en.tutorial.basement1 : null;
-  if (s.mode === "sandbox") return s.day === 1 ? en.tutorial.sandbox1 : null;
   return s.day === 1
     ? en.tutorial.career1
     : s.day === 2

@@ -1,5 +1,4 @@
 import { useSettings } from "@/state/settings";
-import { levels } from "@nyxeron/core";
 import {
   Fragment,
   useEffect,
@@ -10,8 +9,7 @@ import {
 } from "react";
 import { audio, LOUNGE, useMusic } from "@/audio";
 import { Cta } from "@/components/Cta";
-import { en, fmt } from "@/i18n/en";
-import { readSave, type Slot } from "@/state/save";
+import { en } from "@/i18n/en";
 import { useGame } from "@/state/store";
 import "./landing.css";
 
@@ -54,7 +52,6 @@ const GREEK: Record<string, string> = {
   P: "Π",
 };
 
-const SLOTS: Slot[] = ["auto", 1, 2, 3];
 const clamp = (v: number) => Math.min(1, Math.max(0, v));
 const norm = (p: number, [a, b]: readonly number[]) =>
   clamp((p - a!) / (b! - a!));
@@ -156,10 +153,8 @@ function SoundToggle() {
 
 export function Landing() {
   useMusic(LOUNGE);
-  const { go, load } = useGame();
-  const [loading, setLoading] = useState(false);
+  const go = useGame((x) => x.go);
   const [ctaLive, setCtaLive] = useState(false);
-  const auto = readSave("auto");
   const clock = useVeltraClock();
   const root = useRef<HTMLDivElement>(null);
   const hero = useRef<HTMLVideoElement>(null);
@@ -351,7 +346,8 @@ export function Landing() {
   }, []);
 
   const L = en.landing;
-  const contact = () => (auto ? load(auto.state) : go("dashboard"));
+  // Everything (clubs, events, the studio) starts from the dashboard.
+  const contact = () => go("dashboard");
   const bottomWords = L.bottom.flatMap((l) => l.split(" "));
   let bw = 0;
 
@@ -453,7 +449,6 @@ export function Landing() {
           <nav className="nav" aria-label="Primary">
             {[
               [L.enter, () => go("dashboard")],
-              [L.load, () => setLoading(true)],
               [L.settings, () => useSettings.getState().setOpen(true)],
             ].map(([label, fn], i) => (
               <button
@@ -471,7 +466,7 @@ export function Landing() {
             style={vars({ "--d": "710ms" })}
             onClick={contact}
           >
-            ↳&nbsp;{auto ? L.contactContinue : L.contactNew}
+            ↳&nbsp;{L.contactNew}
           </button>
         </div>
 
@@ -495,57 +490,7 @@ export function Landing() {
         <Cta className="w-52" onClick={() => go("dashboard")}>
           {L.newCareer}
         </Cta>
-        {auto && (
-          <button
-            className="glass h-12 rounded-lg px-5 text-sm tracking-[0.14em] uppercase"
-            onClick={contact}
-          >
-            {L.contactContinue}
-          </button>
-        )}
       </div>
-
-      {loading && (
-        <div
-          className="fixed inset-0 z-20 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-          onClick={() => setLoading(false)}
-          role="dialog"
-          aria-label={L.loadTitle}
-        >
-          <div
-            className="glass enter flex w-[28rem] flex-col gap-2 rounded-2xl p-5"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="mb-2 text-xl font-medium">{L.loadTitle}</h2>
-            {SLOTS.map((slot) => {
-              const f = readSave(slot);
-              return (
-                <button
-                  key={slot}
-                  disabled={!f}
-                  onClick={() => f && load(f.state)}
-                  className="glass flex items-center justify-between rounded-lg px-4 py-3 text-left disabled:opacity-40"
-                >
-                  <span className="text-sm tracking-[0.14em] uppercase">
-                    {slot === "auto" ? en.menu.autosave : en.menu.slot(slot)}
-                  </span>
-                  <span className="text-xs text-white/60">
-                    {f
-                      ? `${f.state.clubName} · Day ${f.state.day} · ${levels[f.state.level].name} · ${fmt(f.state.coin)} C`
-                      : en.menu.empty}
-                  </span>
-                </button>
-              );
-            })}
-            <button
-              className="mt-1 self-start text-sm text-white/60 hover:text-white"
-              onClick={() => setLoading(false)}
-            >
-              ← {en.menu.back}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

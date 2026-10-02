@@ -46,6 +46,31 @@ export function writeSave(slot: Slot, state: GameState): boolean {
   }
 }
 
+/**
+ * Every practice club the player runs lives in its own slot (up to four) and saves itself after each night and
+ * when leaving the game. ponytail: a club closed on one device can come back from another device's copy at its
+ * next sign-in (no tombstones); add them if players report it.
+ */
+export const CLUB_SLOTS: Slot[] = ["auto", 1, 2, 3];
+
+export const listClubs = () =>
+  CLUB_SLOTS.flatMap((slot) => {
+    const file = readSave(slot);
+    return file ? [{ slot, file }] : [];
+  });
+
+export const freeSlot = (): Slot | null =>
+  CLUB_SLOTS.find((s) => !readSave(s)) ?? null;
+
+export function deleteSave(slot: Slot) {
+  try {
+    localStorage.removeItem(key(slot));
+  } catch {
+    /* storage blocked */
+  }
+  syncHooks.save?.(String(slot), null);
+}
+
 export function readSave(slot: Slot): SaveFile | null {
   try {
     return deserialize(localStorage.getItem(key(slot)));
