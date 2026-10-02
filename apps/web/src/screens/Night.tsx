@@ -47,7 +47,7 @@ import { useSets } from "@/dj/sets";
 import { DjStudio } from "@/dj/Studio";
 import { PyroPanel } from "@/hud/PyroPanel";
 import { RoomPanel } from "@/hud/RoomPanel";
-import { useNet } from "@/net/session";
+import { playPad, useNet } from "@/net/session";
 import { padForKey, SamplerPanel } from "@/hud/SamplerPanel";
 import { StockBars } from "@/hud/StockBars";
 import { TickerTape } from "@/hud/TickerTape";
@@ -356,7 +356,7 @@ export function Night({ s }: { s: GameState }) {
       )
         return;
       const pad = padForKey(e);
-      if (pad) return audio.pad(pad);
+      if (pad) return playPad(pad);
       if (e.key.toLowerCase() === "o") return setView("office");
       if (e.key.toLowerCase() === "l") return setView("edit");
       if (e.key === " ") {

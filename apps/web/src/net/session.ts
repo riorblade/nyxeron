@@ -17,6 +17,14 @@ import { acquireEngine, getEngine, releaseEngine } from "@/dj/session";
 import type { DjAct } from "@/dj/engine";
 import { applyMix, mixSnapshot, type MixSync } from "@/dj/mixsync";
 import { KIND, pack, Relay, unpack, type Frame } from "./relay";
+import { audio } from "@/audio";
+import type { PadId } from "@/dj/sampler";
+import { firePyro, type PyroCue } from "@/venue/pyro";
+import {
+  getShoutouts,
+  onShoutouts,
+  setHostedShoutouts,
+} from "@/venue/shoutouts";
 
 /**
  * Live multiplayer on top of the relay. The CEO's browser is the host: it runs the sim, applies players' input and
@@ -43,8 +51,14 @@ type Live =
   | { t: "dj"; on: boolean; name?: string; avatar?: number }
   | { t: "mix"; m: MixSync }
   | { t: "act"; a: DjAct };
+/** The CEO's show, played on every player's screen at the same moment: pyro bursts and sampler pads. */
+type Show =
+  | { t: "fx"; cue: PyroCue }
+  | { t: "pad"; id: PadId }
+  | { t: "shout"; list: string[] };
 type Reply =
   | Live
+  | Show
   | { t: "welcome"; ok: boolean; reason?: string; short?: number }
   | {
       t: "result";
@@ -291,6 +305,8 @@ export async function hostOpen(clubName: string) {
       broadcastSoon(); // the newcomer needs a first snapshot
       const dj = useNet.getState().dj;
       if (dj) relay?.to(c.id, pack({ t: "dj", on: true, ...dj }));
+      // The club's videotron messages, for the newcomer's board.
+      relay?.to(c.id, pack({ t: "shout", list: getShoutouts() }));
     } else {
       if (c.id === djPeer) {
         djPeer = 0;
@@ -307,12 +323,18 @@ export async function hostOpen(clubName: string) {
   try {
     const room = await relay.host(clubName);
     set({ room, status: "live" });
-    unsubscribe = useGame.subscribe((st, prev) => {
+    const offGame = useGame.subscribe((st, prev) => {
       if (st.game === prev.game) return;
       if (st.game?.phase === "night" && prev.game?.phase !== "night")
         admitWaiting();
       broadcastSoon();
     });
+    // Edited videotron messages go up on every player's board too.
+    const offShout = onShoutouts((list) => shareShow({ t: "shout", list }));
+    unsubscribe = () => {
+      offGame();
+      offShout();
+    };
     broadcastSoon();
     return room;
   } catch (e) {
@@ -336,6 +358,20 @@ export function hostClose() {
 }
 
 export const kick = (id: number) => relay?.kick(id);
+
+/**
+ * Share the CEO's show with the room (reliable, in order): every pyro burst (auto or manual) and every sampler
+ * pad. Guests and the DJ don't run pyro of their own while connected (VenueView), so everyone sees one show.
+ */
+export function shareShow(m: Show) {
+  if (useNet.getState().role === "host") relay?.event(pack(m));
+}
+
+/** A sampler pad from the CEO: plays here and in every player's club. */
+export function playPad(id: PadId) {
+  audio.pad(id);
+  shareShow({ t: "pad", id });
+}
 
 // ---------------- guest ----------------
 
@@ -388,6 +424,9 @@ export async function guestJoin(
       return;
     }
     const m = unpack<Reply>(f.payload);
+    if (m.t === "fx") return firePyro(m.cue);
+    if (m.t === "pad") return void audio.pad(m.id);
+    if (m.t === "shout") return setHostedShoutouts(m.list);
     if (m.t === "dj" || m.t === "mix" || m.t === "act") {
       // The DJ doesn't follow their own mix.
       if (useNet.getState().role === "guest" || m.t === "dj") follow(m);
@@ -432,6 +471,7 @@ export function guestLeave() {
   relay = null;
   unfollow();
   stopMixing();
+  setHostedShoutouts(null);
   set({
     role: "off",
     room: "",

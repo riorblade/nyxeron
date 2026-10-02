@@ -5,6 +5,9 @@ teammate would notice.
 
 ## 2026-10-03 · CEO: your clubs
 
+- **One show for the whole room:** every pyro burst in the CEO's club (auto on the beat, or the manual Fire / Fog /
+  Both buttons), every sampler pad and the videotron messages now reach every guest and the live DJ at the same
+  moment. Guests no longer run pyro of their own while in someone's club.
 - **Guests find clubs:** a club is open to players while its CEO is in it (no button needed) and is listed under
   "Clubs open now" for guests (club, venue, host, players inside, join in one click). Fixes: a CEO's club never
   showed up for guests.

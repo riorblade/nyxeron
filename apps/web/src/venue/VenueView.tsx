@@ -8,6 +8,7 @@ import { useSettings } from "@/state/settings";
 import { useGame } from "@/state/store";
 import { KINDS } from "./furniture";
 import { onPyro } from "./pyro";
+import { shareShow, useNet } from "@/net/session";
 import { VenueScene } from "./scene3d";
 
 export function VenueView({
@@ -43,19 +44,23 @@ export function VenueView({
   const clips = useSettings((x) => x.clips);
   const ads = useSettings((x) => x.ads);
   const pyroMode = useSettings((x) => x.pyro);
+  // In someone else's live club (guest or DJ), the show is the host's: no pyro of our own.
+  const following = useNet((n) => n.role === "guest" || n.role === "dj");
 
   useEffect(() => {
     let cancelled = false;
     const v = new VenueScene();
     v.onSelect = setSelected;
     v.onTokenClick = setDrink;
+    v.onBurst = (cue) => shareShow({ t: "fx", cue });
     v.init(el.current!).then(() => {
       // StrictMode mounts twice; a renderer torn down before init finished must not become current.
       if (cancelled) return;
       r.current = v;
       const { clips, ads, pyro } = useSettings.getState();
       v.setScreenPrefs({ clips, ads });
-      v.setPyroAuto(pyro === "auto");
+      const n = useNet.getState().role;
+      v.setPyroAuto(pyro === "auto" && n !== "guest" && n !== "dj");
       v.setGuestDj(guestRef.current ?? null);
       v.setMe(meRef.current);
       const g = useGame.getState().game;
@@ -88,8 +93,8 @@ export function VenueView({
   }, [clips, ads]);
 
   useEffect(() => {
-    r.current?.setPyroAuto(pyroMode === "auto");
-  }, [pyroMode]);
+    r.current?.setPyroAuto(pyroMode === "auto" && !following);
+  }, [pyroMode, following]);
   useEffect(() => {
     meRef.current = me;
     r.current?.setMe(me);
