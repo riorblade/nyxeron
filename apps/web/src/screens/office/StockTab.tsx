@@ -27,13 +27,13 @@ import {
   Truck,
 } from "lucide-react";
 import { useState } from "react";
-import { art } from "@/art";
+import { art } from "@/lib/art";
 import { Img } from "@/components/Img";
 import { LivePrice, TokenLink } from "@/hud/TokenDetail";
-import { useQuotes } from "@/quotes";
+import { useQuotes } from "@/api/quotes";
 import { en, fmt } from "@/i18n/en";
 import { cn } from "@/lib/utils";
-import { useGame } from "@/store";
+import { useGame } from "@/state/store";
 
 const supplierIcon = { corner: Store, wholesale: Truck, import: Ship } as const;
 

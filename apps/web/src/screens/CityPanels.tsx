@@ -10,7 +10,7 @@ import {
   type TokenId,
 } from "@nyxeron/core";
 import { useEffect, useState } from "react";
-import { art } from "@/art";
+import { art } from "@/lib/art";
 import { useAccount } from "@/auth/account";
 import {
   city,
@@ -19,12 +19,12 @@ import {
   useCity,
   type Party,
   type Venue,
-} from "@/auth/city";
+} from "@/api/city";
 import { Img } from "@/components/Img";
 import { en, fmt } from "@/i18n/en";
 import { guestJoin } from "@/net/session";
-import { useProfile } from "@/profile";
-import { useGame } from "@/store";
+import { useProfile } from "@/state/profile";
+import { useGame } from "@/state/store";
 
 const t = en.city;
 const row =

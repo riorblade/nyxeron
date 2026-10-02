@@ -1,4 +1,4 @@
-import { syncHooks, userKey } from "@/scope";
+import { syncHooks, userKey } from "@/state/scope";
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { Layout, Zone } from "./layouts";

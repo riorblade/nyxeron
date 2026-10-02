@@ -10,7 +10,7 @@ import { NightReport } from "@/screens/NightReport";
 import { Office } from "@/screens/Office";
 import { PauseMenu } from "@/screens/PauseMenu";
 import { hostClose, useNet } from "@/net/session";
-import { useGame } from "@/store";
+import { useGame } from "@/state/store";
 
 /**
  * The night screen carries three.js and the 3D venue (most of the JS). It loads on demand, and is fetched in the

@@ -73,7 +73,7 @@ import {
 const INSIDE = new Set<Guest["state"]>(["idle", "bar", "dance"]);
 export const isInside = (g: Guest) => INSIDE.has(g.state);
 
-/** Day 1 is a Sunday, so Day 7 is the Saturday event night (GDD 15.3). 0 = Sunday. */
+/** Day 1 is a Sunday, so Day 7 is the Saturday event night. 0 = Sunday. */
 export const weekday = (day: number) => (day - 1) % 7;
 
 const busyFactor = (s: GameState) =>

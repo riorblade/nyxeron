@@ -20,7 +20,7 @@ import {
 import { Minus, Plus } from "lucide-react";
 import { en, fmt } from "@/i18n/en";
 import { cn } from "@/lib/utils";
-import { useGame } from "@/store";
+import { useGame } from "@/state/store";
 
 const t = en.rules;
 const CODES: DressCode[] = ["none", "smart", "strict"];

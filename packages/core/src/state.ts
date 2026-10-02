@@ -181,7 +181,7 @@ export interface NightState {
   underageAdmitted: number;
   rejectedUnderage: number;
   fights: number;
-  /** Satisfaction factors for the Night Report ("no mysterious numbers", GDD 8). */
+  /** Satisfaction factors for the Night Report ("no mysterious numbers"). */
   outOfStockHits: number;
   slowServiceHits: number;
   djMatch: boolean | null;

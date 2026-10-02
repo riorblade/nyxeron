@@ -3,7 +3,7 @@ import { Brand } from "@/components/Brand";
 import { useEffect } from "react";
 import { stopAuto } from "@/dj/session";
 import { DjStudio } from "@/dj/Studio";
-import { useGame } from "@/store";
+import { useGame } from "@/state/store";
 
 /** The DJ role from the dashboard: a practice room with the full studio. */
 export function StudioScreen() {

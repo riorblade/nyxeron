@@ -1,5 +1,5 @@
 import { compactForSave, migrateState, type GameState } from "@nyxeron/core";
-import { syncHooks, userKey } from "./scope";
+import { syncHooks, userKey } from "@/state/scope";
 
 /** Bump when GameState shape changes; older saves are then ignored instead of crashing the game. */
 export const SAVE_VERSION = 1;

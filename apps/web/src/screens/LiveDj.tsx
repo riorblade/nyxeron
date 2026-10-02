@@ -8,8 +8,8 @@ import { DjStudio } from "@/dj/Studio";
 import { EnergyMeter } from "@/hud/CrowdMoves";
 import { clock, en } from "@/i18n/en";
 import { guestLeave, startMixing, stopMixing, useNet } from "@/net/session";
-import { useProfile } from "@/profile";
-import { useGame } from "@/store";
+import { useProfile } from "@/state/profile";
+import { useGame } from "@/state/store";
 import { VenueView } from "@/venue/VenueView";
 
 const t = en.live;

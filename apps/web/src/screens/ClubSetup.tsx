@@ -8,7 +8,7 @@ import { Cta } from "@/components/Cta";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { en, genres } from "@/i18n/en";
-import { useGame } from "@/store";
+import { useGame } from "@/state/store";
 
 export function ClubSetup() {
   useMusic(LOUNGE);

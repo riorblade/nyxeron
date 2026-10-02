@@ -5,7 +5,7 @@ import { Backdrop } from "@/components/Backdrop";
 import { Brand, HomeButton } from "@/components/Brand";
 import { Cta } from "@/components/Cta";
 import { en, fmt } from "@/i18n/en";
-import { useGame } from "@/store";
+import { useGame } from "@/state/store";
 
 const d = (ms: number) => ({ "--d": `${ms}ms` }) as CSSProperties;
 

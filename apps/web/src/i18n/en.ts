@@ -61,7 +61,7 @@ export const en = {
     main: ["Nyxeron", "Nightlife"],
     alt: ["Open the", "Doors"],
     crew: ["Sixty", "Nights"],
-    // "Nyx, goddess of the night": the name comes from Greek myth (GDD 1).
+    // "Nyx, goddess of the night": the name comes from Greek myth.
     greek: ["ΝΥΞ", "·", "ΘΕΑ ΤΗΣ ΝΥΧΤΑΣ"],
     zone: ["Veltra City", "Local Time"],
     enter: "Enter",

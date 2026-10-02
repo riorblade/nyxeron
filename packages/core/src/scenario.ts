@@ -16,7 +16,7 @@ type DayEvent = {
   forcedInspection?: boolean;
 };
 
-/** Level 4 "The Basement", Week 1 challenge (GDD 15.3). */
+/** Level 4 "The Basement", Week 1 challenge. */
 export function createBasement(seed: number): GameState {
   const s = createGameState(seed, basement.clubGenre, {
     clubName: basement.clubName,

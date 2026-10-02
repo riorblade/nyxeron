@@ -6,7 +6,7 @@ import { Brand, HomeButton } from "@/components/Brand";
 import { Cta } from "@/components/Cta";
 import { en, fmt } from "@/i18n/en";
 import { cn } from "@/lib/utils";
-import { useGame } from "@/store";
+import { useGame } from "@/state/store";
 
 const d = (ms: number) => ({ "--d": `${ms}ms` }) as CSSProperties;
 const signed = (n: number) =>
@@ -32,7 +32,7 @@ const Row = ({
   </div>
 );
 
-/** Qualitative guest reviews: every stat change should be explained (GDD 8, information clarity). */
+/** Qualitative guest reviews: every stat change should be explained. */
 function reviews(s: GameState): string[] {
   const r = s.lastReport!;
   const today = s.log.filter((e) => e.day === s.day);

@@ -12,10 +12,10 @@ import {
   type GameState,
 } from "@nyxeron/core";
 import { create } from "zustand";
-import { en, reasonText } from "./i18n/en";
-import { useProfile } from "./profile";
-import { fetchQuotes } from "./quotes";
-import { writeSave } from "./save";
+import { en, reasonText } from "@/i18n/en";
+import { useProfile } from "@/state/profile";
+import { fetchQuotes } from "@/api/quotes";
+import { writeSave } from "@/state/save";
 
 /** menu = landing page, dashboard = the player's hub (pick a role), guest = partying at an AI-hosted event. */
 export type Screen =

@@ -1,12 +1,12 @@
 import { create } from "zustand";
 import { useSets } from "@/dj/sets";
 import { en } from "@/i18n/en";
-import { saveKey } from "@/save";
-import { syncHooks } from "@/scope";
-import { useGame } from "@/store";
+import { saveKey } from "@/state/save";
+import { syncHooks } from "@/state/scope";
+import { useGame } from "@/state/store";
 import { layoutKey } from "@/venue/furniture";
 import { getShoutouts, setShoutouts } from "@/venue/shoutouts";
-import { useAccount } from "./account";
+import { useAccount } from "@/auth/account";
 
 /**
  * Everything else that belongs to the account follows it to any device: CEO career saves, planned DJ sets, venue

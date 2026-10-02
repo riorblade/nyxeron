@@ -1,9 +1,9 @@
 import type { TokenId } from "@nyxeron/core";
 import { en } from "@/i18n/en";
-import { useProfile, type Profile } from "@/profile";
+import { useProfile, type Profile } from "@/state/profile";
 import { useNet } from "@/net/session";
-import { useGame } from "@/store";
-import { useAccount } from "./account";
+import { useGame } from "@/state/store";
+import { useAccount } from "@/auth/account";
 
 /**
  * The player's profile lives on the server (api: SQLite, keyed by the verified Privy id). The local store is a

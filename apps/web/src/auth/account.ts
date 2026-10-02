@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { useSets } from "@/dj/sets";
-import { useProfile } from "@/profile";
-import { setScope } from "@/scope";
+import { useProfile } from "@/state/profile";
+import { setScope } from "@/state/scope";
 import { resetShoutouts } from "@/venue/shoutouts";
 
 /**

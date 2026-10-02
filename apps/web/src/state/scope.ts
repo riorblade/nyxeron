@@ -1,7 +1,7 @@
 /**
  * Whose data this browser is showing: the signed-in player's storage scope ("" signed out / no auth in dev).
  * Every account-owned key goes through userKey, so two players on one browser never share data, and sync hooks
- * tell the server about every change (auth/docs.ts sets them after sign-in).
+ * tell the server about every change (api/docs.ts sets them after sign-in).
  */
 let scope = "";
 export const setScope = (s: string) => {

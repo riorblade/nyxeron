@@ -2,9 +2,9 @@ import { Copy, Radio, UserX } from "lucide-react";
 import { useState } from "react";
 import { en } from "@/i18n/en";
 import { cn } from "@/lib/utils";
-import { city } from "@/auth/city";
+import { city } from "@/api/city";
 import { hostClose, hostOpen, kick, useNet } from "@/net/session";
-import { useGame } from "@/store";
+import { useGame } from "@/state/store";
 
 const t = en.live;
 

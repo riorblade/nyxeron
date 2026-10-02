@@ -1,4 +1,4 @@
-import { useSettings } from "@/settings";
+import { useSettings } from "@/state/settings";
 import { levels } from "@nyxeron/core";
 import {
   Fragment,
@@ -11,8 +11,8 @@ import {
 import { audio, LOUNGE, useMusic } from "@/audio";
 import { Cta } from "@/components/Cta";
 import { en, fmt } from "@/i18n/en";
-import { readSave, type Slot } from "@/save";
-import { useGame } from "@/store";
+import { readSave, type Slot } from "@/state/save";
+import { useGame } from "@/state/store";
 import "./landing.css";
 
 /** Scroll windows, all in 0..1 of their section's progress. */

@@ -3,7 +3,7 @@ import { useEffect, useSyncExternalStore, type ReactNode } from "react";
 import { audio } from "@/audio";
 import { en } from "@/i18n/en";
 import { cn, trapFocus } from "@/lib/utils";
-import { useSettings, type ClipMode } from "@/settings";
+import { useSettings, type ClipMode } from "@/state/settings";
 
 const t = en.settings;
 

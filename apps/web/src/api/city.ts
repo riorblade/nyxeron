@@ -1,9 +1,9 @@
 import type { Level, TokenId } from "@nyxeron/core";
 import { create } from "zustand";
 import { en } from "@/i18n/en";
-import { useGame } from "@/store";
-import { useAccount } from "./account";
-import { apply, call } from "./remote";
+import { useGame } from "@/state/store";
+import { useAccount } from "@/auth/account";
+import { apply, call } from "@/api/player";
 
 /**
  * The shared city (api: /api/city). Venues are rented by the week with the account's Coin; a tenant's shop

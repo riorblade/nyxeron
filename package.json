@@ -5,14 +5,18 @@
   "scripts": {
     "dev": "pnpm --filter web dev",
     "dev:admin": "pnpm --filter admin dev",
+    "dev:api": "cd services/api && go run .",
+    "dev:relay": "cd services/relay && go run .",
     "build": "pnpm -r build",
+    "build:web": "pnpm --filter web build",
+    "build:admin": "pnpm --filter admin build",
     "test": "vitest run",
+    "test:go": "cd services/relay && go test -race ./... && cd ../api && go test -race ./...",
     "lint": "tsc -p packages/core && tsc -p apps/web && tsc -p apps/admin && eslint . && prettier --check .",
     "format": "prettier --write .",
     "balance": "tsx packages/core/scripts/balance.ts",
-    "dev:api": "cd services/api && go run .",
-    "dev:relay": "cd services/relay && go run .",
-    "test:go": "cd services/relay && go test -race ./... && cd ../api && go test -race ./..."
+    "balance:levels": "tsx packages/core/scripts/levelstats.ts",
+    "sync:gamedata": "sh scripts/sync-gamedata.sh"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -25,5 +29,9 @@
     "typescript-eslint": "^8.71.0",
     "vitest": "^5.0.2"
   },
-  "packageManager": "pnpm@10.33.2"
+  "packageManager": "pnpm@10.33.2",
+  "description": "NYXERON: a multiplayer nightclub management game on tokenized stocks (BNB Chain).",
+  "engines": {
+    "node": ">=22"
+  }
 }

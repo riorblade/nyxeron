@@ -11,7 +11,7 @@ import {
 import { Package, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { art } from "@/art";
+import { art } from "@/lib/art";
 import { Img } from "@/components/Img";
 import { en, fmt } from "@/i18n/en";
 import { trapFocus } from "@/lib/utils";

@@ -13,9 +13,9 @@ import { acquireEngine, releaseEngine, stopAuto } from "@/dj/session";
 import { DjStudio } from "@/dj/Studio";
 import { clock, duration, en, fmt } from "@/i18n/en";
 import { cn, trapFocus } from "@/lib/utils";
-import { useProfile } from "@/profile";
-import { player } from "@/auth/remote";
-import { useGame } from "@/store";
+import { useProfile } from "@/state/profile";
+import { player } from "@/api/player";
+import { useGame } from "@/state/store";
 import { VenueView } from "@/venue/VenueView";
 
 const t = en.gig;

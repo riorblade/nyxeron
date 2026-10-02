@@ -1,14 +1,20 @@
-# Deploy (one VPS, Docker)
+# Deploy
 
-Three containers, only `edge` is public:
+Production today: **frontends on Vercel**, **backend on one VPS** (Docker Compose behind a shared Caddy).
 
-| service | what                                                                        | image                 | RAM (idle → 310 players) | cap   |
-| ------- | --------------------------------------------------------------------------- | --------------------- | ------------------------ | ----- |
-| `edge`  | Caddy: HTTPS (automatic), the game's static files, proxies `/ws` and `/api` | caddy:2-alpine + dist | ~19 → ~40 MB             | 64 MB |
-| `relay` | multiplayer: rooms + message routing only (no game logic, no DB)            | Go, `scratch`, ~9 MB  | ~5 → ~24 MB              | 48 MB |
-| `api`   | game backend: spot quotes (Binance RWA), later accounts                     | Go, `scratch`, ~9 MB  | ~7 MB                    | 32 MB |
+| Piece                      | Where                                                    | Image / size         | RAM cap |
+| -------------------------- | -------------------------------------------------------- | -------------------- | ------- |
+| game (`apps/web`)          | Vercel project `nyxeron` → `nyxeron.xyz`                 | static               | —       |
+| back office (`apps/admin`) | Vercel project (root `apps/admin`) → `admin.nyxeron.xyz` | static               | —       |
+| `relay`                    | VPS → `api.nyxeron.xyz/ws`                               | Go, `scratch`, ~4 MB | 48 MB   |
+| `api`                      | VPS → `api.nyxeron.xyz/api/*`, SQLite volume `api_data`  | Go, `scratch`, ~5 MB | 48 MB   |
 
-## First time (Hostinger VPS, Ubuntu + Docker)
+Secrets live in `deploy/.env` on the VPS (from `.env.example`: Privy, Binance, `ADMIN_EMAILS`, `AGENT_KEY`,
+`DOMAIN`, `FRONTEND_EXTRA_HOST`, `ADMIN_HOST`). Database migrations run automatically when the api starts.
+
+`compose.yml` alone can also self-host everything on one machine with its own Caddy `edge` (below).
+
+## Self-hosted: everything on one VPS (Ubuntu + Docker)
 
 1. Point your domain's A (and AAAA) record at the VPS IP. Open ports 80 and 443 (TCP) and 443 (UDP, HTTP/3).
 2. On the VPS:

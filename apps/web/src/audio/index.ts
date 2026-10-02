@@ -1,7 +1,7 @@
 import { bandPlaying, night, type GameState } from "@nyxeron/core";
 import { useEffect } from "react";
-import { playPad, type PadId } from "./dj/sampler";
-import { useSettings } from "./settings";
+import { playPad, type PadId } from "@/dj/sampler";
+import { useSettings } from "@/state/settings";
 
 /**
  * Club audio: music tracks (user-supplied files in /public/audio), a synthesized fallback beat for tracks that

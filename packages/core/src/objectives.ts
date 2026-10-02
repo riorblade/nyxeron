@@ -28,7 +28,7 @@ const guestsTonight = (s: GameState) =>
   s.night?.guests.filter((g) => g.admitted).length ?? 0;
 const nightDone = (s: GameState) => s.phase === "report";
 
-/** Today's objectives: tutorial on career Day 1–2, GDD Week 1 flow in The Basement, level-up goal otherwise. */
+/** Today's objectives: tutorial on career Day 1–2, the Week 1 flow in The Basement, level-up goal otherwise. */
 export function objectives(s: GameState): Objective[] {
   const today = s.log.filter((e) => e.day === s.day);
   const guests = (target: number): Objective => {

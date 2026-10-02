@@ -21,11 +21,11 @@ import {
   Sparkles,
   Zap,
 } from "lucide-react";
-import { art } from "@/art";
+import { art } from "@/lib/art";
 import { Img } from "@/components/Img";
 import { en, fmt, segmentNames } from "@/i18n/en";
 import { cn } from "@/lib/utils";
-import { useGame } from "@/store";
+import { useGame } from "@/state/store";
 
 const channelIcon: Record<ChannelId, typeof Camera> = {
   posters: Newspaper,

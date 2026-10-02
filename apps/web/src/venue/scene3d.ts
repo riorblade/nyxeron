@@ -19,7 +19,7 @@ import {
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { audio } from "@/audio";
-import type { ClipMode } from "@/settings";
+import type { ClipMode } from "@/state/settings";
 import {
   canvasTexture,
   loadDjVideo,
@@ -52,7 +52,7 @@ import {
   type Item,
 } from "./furniture";
 import { en } from "@/i18n/en";
-import { art } from "@/art";
+import { art } from "@/lib/art";
 import { StageFx, type FlameSpot } from "./effects";
 import type { PyroCue } from "./pyro";
 import { Videotron, VIDEOTRON_ASPECT, type VideotronData } from "./videotron";

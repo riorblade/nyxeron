@@ -6,10 +6,10 @@ import { Backdrop } from "@/components/Backdrop";
 import { Brand } from "@/components/Brand";
 import { Cta } from "@/components/Cta";
 import { en } from "@/i18n/en";
-import { useGame } from "@/store";
+import { useGame } from "@/state/store";
 import { signedIn, useAccount, type Account } from "./account";
-import { syncDocs } from "./docs";
-import { syncProfile } from "./remote";
+import { syncDocs } from "@/api/docs";
+import { syncProfile } from "@/api/player";
 
 const APP_ID = import.meta.env.VITE_PRIVY_APP_ID;
 const t = en.auth;
