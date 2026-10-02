@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "preinstall": "node scripts/only-pnpm.cjs",
     "dev": "pnpm --filter web dev",
     "dev:admin": "pnpm --filter admin dev",
     "dev:api": "cd services/api && go run .",
@@ -32,6 +33,7 @@
   "packageManager": "pnpm@10.33.2",
   "description": "NYXERON: a multiplayer nightclub management game on tokenized stocks (BNB Chain).",
   "engines": {
-    "node": ">=22"
+    "node": ">=22",
+    "pnpm": ">=10"
   }
 }

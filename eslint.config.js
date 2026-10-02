@@ -11,4 +11,18 @@ export default tseslint.config(
     plugins: { "react-hooks": reactHooks },
     rules: reactHooks.configs.recommended.rules,
   },
+  {
+    // Repo tooling runs in Node (CommonJS for actions/github-script).
+    files: [".github/scripts/**/*.{cjs,mjs}", "scripts/**/*.{js,mjs,cjs}"],
+    languageOptions: {
+      globals: {
+        require: "readonly",
+        module: "writable",
+        process: "readonly",
+        console: "readonly",
+        URL: "readonly",
+      },
+    },
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
 );

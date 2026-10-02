@@ -14,5 +14,7 @@
 - UI style: UI chrome (panels, HUD, menus, back office) stays black and white, shadcn/ui, subtle glow, no
   gradients. Game art and the venue scene are full colour (owner decision, 2026-09-29).
 - Smart contracts: Foundry + OpenZeppelin only. Never Hardhat.
+- Pull requests follow .github/pull_request_template.md and a `type(scope): summary` title (see CONTRIBUTING.md);
+  the PR checks workflow enforces it.
 - After each task: run pnpm test and pnpm lint (and pnpm test:go if services/ changed), add a docs/changelog.md
   line for anything a player or admin would notice, then summarize changes briefly.
