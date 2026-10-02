@@ -5,6 +5,10 @@ teammate would notice.
 
 ## 2026-10-02 · Back office, city, warehouse, clearer HUD, balance
 
+- **Back office Stock page reworked:** an empty warehouse shows a "Fill all tokens" banner; every token row has
+  its own Restock (quick amounts, live "→ N in the warehouse" preview, reason prefilled, optional on-chain tx);
+  corrections are a checkbox away; plain column names with a legend; the confirmation stays on screen.
+
 - **Back office** (`apps/admin`, admin.nyxeron.xyz): roles owner (`ADMIN_EMAILS`) / admin / viewer, overview KPIs,
   player search and detail (portfolio, saves, coin ledger, admin history), grant/deduct coin, venue access
   (start a career at a bigger venue), ban/unban, rename, clear saves, announcements, audit log. api migration 1
