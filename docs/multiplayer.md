@@ -45,6 +45,13 @@ Error codes: `room_not_found`, `room_full`, `server_full`, `bad_request`, `alrea
     one-shot moves (pads, brake, backspin). Everyone's own engine follows (`dj/mixsync.ts`): aim ~0.12 s ahead,
     seek only past 0.25 s drift.
 
+## Finding a club
+
+A CEO's club is open to players whenever the CEO is in it (not the Basement challenge): the browser opens a relay
+room on entering the game and announces it to the api every 20 s (`POST /api/rooms`, `apps/web/src/api/rooms.ts`);
+guests see it under "Clubs open now" (`GET /api/rooms`) and join with one click. The api keeps the list in memory
+and forgets a club 45 s after its last announcement.
+
 ## City parties
 
 A scheduled party becomes live when its host opens a room in the party window; the room code is stored on the

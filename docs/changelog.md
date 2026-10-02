@@ -5,6 +5,9 @@ teammate would notice.
 
 ## 2026-10-03 · CEO: your clubs
 
+- **Guests find clubs:** a club is open to players while its CEO is in it (no button needed) and is listed under
+  "Clubs open now" for guests (club, venue, host, players inside, join in one click). Fixes: a CEO's club never
+  showed up for guests.
 - **CEO home is one list of the clubs you run:** rented city venues (several allowed, up to 5) and offline practice
   clubs (up to 4, each in its own save slot, saved after every night and when leaving). Open one, close a practice
   club, rent a new venue or start a practice club; The Basement is a small challenge link.

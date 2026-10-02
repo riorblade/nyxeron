@@ -27,6 +27,7 @@ Base URL: `https://api.nyxeron.xyz` (dev: same origin, Vite proxies `/api` to `:
 | GET | `/api/quotes` | spot prices `{quotes: {TICKER: usd}, source, at}` (cached 30 s) |
 | GET | `/api/announcement` | the dashboard banner `{text, active, updatedAt}` (cached 60 s) |
 | GET | `/api/city` | venues, parties, rent, prices, warehouse supply (a token marks your own) |
+| GET | `/api/rooms` | clubs open right now `[{room, club, level, host, players, night, since}]` |
 | GET | `/healthz` | `ok` |
 
 ## Player
@@ -34,6 +35,8 @@ Base URL: `https://api.nyxeron.xyz` (dev: same origin, Vite proxies `/api` to `:
 | Method | Path | Body | Notes |
 | --- | --- | --- | --- |
 | GET | `/api/me` | — | verified id, email, embedded wallet |
+| POST | `/api/rooms` | `{room, club, level, players, night}` | announce / heartbeat your open club (every ~20 s; dropped 45 s after the last) |
+| DELETE | `/api/rooms/{room}` | — | your club closed |
 | GET | `/api/profile` | — | profile (created with the starter wallet on first call) |
 | POST | `/api/profile/import` | profile | once: this device's pre-account data, bounded |
 | PATCH | `/api/profile` | `{name?, avatar?}` | |
