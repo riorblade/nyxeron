@@ -1,8 +1,8 @@
-import { Copy, Radio, UserX } from "lucide-react";
+import { Copy, Globe, Lock, Radio, UserX } from "lucide-react";
 import { useState } from "react";
 import { en } from "@/i18n/en";
 import { cn } from "@/lib/utils";
-import { city } from "@/api/city";
+import { events } from "@/api/events";
 import { hostClose, hostOpen, kick, useNet } from "@/net/session";
 import { useGame } from "@/state/store";
 
@@ -10,7 +10,7 @@ const t = en.live;
 
 /** The CEO opens tonight's club to other players: room code, invite link, who is here. */
 export function RoomPanel({ clubName }: { clubName: string }) {
-  const { role, room, status, players } = useNet();
+  const { role, room, status, players, private: priv } = useNet();
   const notify = useGame((x) => x.notify);
   const [busy, setBusy] = useState(false);
   const list = Object.values(players);
@@ -28,7 +28,9 @@ export function RoomPanel({ clubName }: { clubName: string }) {
             setBusy(true);
             try {
               // A scheduled party at a rented venue: list it as live with this room.
-              await city.roomOpened(await hostOpen(clubName));
+              const code = await hostOpen(clubName);
+              if (await events.attachRoom(clubName, code))
+                useNet.setState({ private: true });
             } catch (e) {
               notify(t.error((e as Error).message), true);
             } finally {
@@ -68,6 +70,32 @@ export function RoomPanel({ clubName }: { clubName: string }) {
           <Copy className="size-3.5" /> {t.copyLink}
         </button>
       </div>
+      <div
+        role="radiogroup"
+        aria-label={t.visibility}
+        className="mt-2 flex rounded-md border border-white/15 p-0.5 text-[11px]"
+      >
+        {([false, true] as const).map((v) => (
+          <button
+            key={String(v)}
+            role="radio"
+            aria-checked={priv === v}
+            onClick={() => useNet.setState({ private: v })}
+            className={cn(
+              "flex flex-1 items-center justify-center gap-1.5 rounded px-2 py-1",
+              priv === v
+                ? "bg-white text-black"
+                : "text-white/70 hover:bg-white/10",
+            )}
+          >
+            {v ? <Lock className="size-3" /> : <Globe className="size-3" />}
+            {v ? t.private : t.public}
+          </button>
+        ))}
+      </div>
+      <p className="mt-1 text-[11px] text-white/50">
+        {priv ? t.privateHint : t.publicHint}
+      </p>
       <p className="mt-1 text-[11px] text-white/55">{t.players(list.length)}</p>
       <ul className="mt-1.5 space-y-1">
         {list.length === 0 && (

@@ -53,6 +53,7 @@ export const tabIcon = {
   permits: ScrollText,
   build: Building2,
   rules: ScrollText,
+  events: CalendarDays,
 } satisfies Record<string, LucideIcon>;
 
 const eventIcons: Record<GameEvent["kind"], LucideIcon> = {

@@ -22,6 +22,7 @@ import {
 } from "@/api/city";
 import { Img } from "@/components/Img";
 import { fetchOpenClubs, type OpenClub } from "@/api/rooms";
+import { EventsFeed, EventsPanel } from "./EventsPanel";
 import { en, fmt } from "@/i18n/en";
 import { guestJoin } from "@/net/session";
 import { useProfile } from "@/state/profile";
@@ -72,7 +73,6 @@ export function RentVenue({ onRented }: { onRented: () => void }) {
 /** CEO: run one of your city venues (name, rent, shop, parties). */
 export function ManageVenue({ lease }: { lease: number }) {
   const { city: c, error } = useCityLive();
-  useEffect(() => useCity.setState({ hosting: null }), []);
   if (!c) return <p className="text-sm text-white/60">{error || t.loading}</p>;
   const v = myVenues(c).find((x) => x.lease!.id === lease);
   if (!v) return <p className="text-sm text-white/60">{t.gone}</p>;
@@ -185,11 +185,12 @@ function MyVenue({ v }: { v: Venue }) {
         </button>
       </div>
       <Shop v={v} />
-      {canHostParty(v.level) ? (
-        <Parties v={v} />
-      ) : (
-        <p className="text-sm text-white/55">{t.partiesLocked}</p>
-      )}
+      <EventsPanel
+        club={lease.club}
+        level={v.level}
+        lease={lease.id}
+        onHost={(e) => city.host(e)}
+      />
     </>
   );
 }
@@ -341,100 +342,6 @@ function Shop({ v }: { v: Venue }) {
   );
 }
 
-/** datetime-local value for a moment (local time). */
-const localInput = (d: Date) =>
-  new Date(d.getTime() - d.getTimezoneOffset() * 60_000)
-    .toISOString()
-    .slice(0, 16);
-
-function Parties({ v }: { v: Venue }) {
-  const c = useCity((x) => x.city)!;
-  const mine = c.parties.filter((p) => p.leaseId === v.lease!.id);
-  const [when, setWhen] = useState(() =>
-    localInput(new Date(Date.now() + 3_600_000)),
-  );
-  const [minutes, setMinutes] = useState(cityData.party.defaultMinutes);
-  const [title, setTitle] = useState("");
-  const now = c.now; // the server's clock at the last refresh (every 20 s)
-  return (
-    <section className="flex flex-col gap-2">
-      <h3 className="text-[10px] tracking-[0.25em] text-white/60 uppercase">
-        {t.parties}
-      </h3>
-      <form
-        className="flex flex-wrap items-end gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void city.party(
-            v.lease!.id,
-            Math.floor(new Date(when).getTime() / 1000),
-            minutes,
-            title,
-          );
-        }}
-      >
-        <label className="flex flex-col gap-1 text-[11px] text-white/55">
-          {t.when}
-          <input
-            type="datetime-local"
-            className={field}
-            value={when}
-            onChange={(e) => setWhen(e.target.value)}
-            required
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-[11px] text-white/55">
-          {t.minutes}
-          <input
-            type="number"
-            className={field + " w-20"}
-            min={cityData.party.minMinutes}
-            max={cityData.party.maxMinutes}
-            value={minutes}
-            onChange={(e) => setMinutes(Number(e.target.value))}
-          />
-        </label>
-        <label className="flex flex-1 flex-col gap-1 text-[11px] text-white/55">
-          {t.partyTitle}
-          <input
-            className={field}
-            maxLength={20}
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-        </label>
-        <button className={btn}>{t.schedule}</button>
-      </form>
-      {mine.length === 0 && (
-        <p className="text-xs text-white/45">{t.noParties}</p>
-      )}
-      {mine.map((p) => (
-        <div key={p.id} className={row + " py-2"}>
-          <span className="min-w-0 text-sm">
-            {p.live && (
-              <span className="mr-2 text-[10px] tracking-[0.2em] uppercase">
-                ● {t.liveNow}
-              </span>
-            )}
-            {p.title || p.club} · {day(p.startsAt)} · {p.minutes} min
-          </span>
-          <span className="flex gap-2">
-            {now >= p.startsAt - 900 && (
-              <button className={btn} onClick={() => city.host(p)}>
-                {t.hostNow}
-              </button>
-            )}
-            <button className={ghost} onClick={() => void city.cancel(p.id)}>
-              {t.cancel}
-            </button>
-          </span>
-        </div>
-      ))}
-    </section>
-  );
-}
-
-/** Guest: parties on now and coming up, and shops to buy from. */
 /** Clubs open right now, refreshed every 15 s. */
 function useOpenClubs() {
   const [clubs, setClubs] = useState<OpenClub[] | null>(null);
@@ -458,7 +365,6 @@ export function CityGuest() {
   const { city: c } = useCityLive();
   const open = useOpenClubs();
   if (!c) return null;
-  const later = c.parties.filter((p) => !p.live);
   const shops = c.venues.filter(
     (v) => v.lease?.open && !v.lease.mine && v.lease.stock.length,
   );
@@ -479,25 +385,7 @@ export function CityGuest() {
           />
         ))}
       </section>
-      <section className="flex flex-col gap-2">
-        <h3 className="text-[10px] tracking-[0.25em] text-white/60 uppercase">
-          {t.upcoming}
-        </h3>
-        {later.length === 0 && (
-          <p className="text-xs text-white/45">{t.noUpcoming}</p>
-        )}
-        {later.slice(0, 8).map((p) => (
-          <div key={p.id} className={row + " py-2 text-sm"}>
-            <span className="min-w-0 truncate">
-              {p.title || p.club} ·{" "}
-              <span className="text-white/55">{levels[p.level].name}</span>
-            </span>
-            <span className="shrink-0 font-mono text-xs text-white/65">
-              {day(p.startsAt)} · {p.minutes}m
-            </span>
-          </div>
-        ))}
-      </section>
+      <EventsFeed />
       <section className="flex flex-col gap-2">
         <h3 className="text-[10px] tracking-[0.25em] text-white/60 uppercase">
           {t.shops}

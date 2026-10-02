@@ -168,7 +168,7 @@ func TestParties(t *testing.T) {
 	now := time.Now()
 	start := now.Add(time.Hour).Unix()
 	s.Lease(ctx, "small", 2, 0, "Shop", 1, now)
-	if _, err := s.Party(ctx, "small", 1, start, 0, "", now); !errors.Is(err, errRejected) {
+	if _, err := s.Event(ctx, "small", EventInput{Lease: 1, StartsAt: start, Minutes: 0, Title: ""}, now); !errors.Is(err, errRejected) {
 		t.Fatalf("party at a shop: %v", err)
 	}
 	s.Get(ctx, "host")
@@ -177,24 +177,24 @@ func TestParties(t *testing.T) {
 		t.Fatal(err)
 	}
 	hostLease := leaseOf(t, s, "host", now)
-	p, err := s.Party(ctx, "host", hostLease, start, 0, "Opening night", now)
+	p, err := s.Event(ctx, "host", EventInput{Lease: hostLease, StartsAt: start, Minutes: 0, Title: "Opening night"}, now)
 	if err != nil || p.Minutes != game.city.Party.DefaultMinutes || p.Live || p.Club != "Neon Tap" {
 		t.Fatalf("%+v %v", p, err)
 	}
-	if _, err := s.Party(ctx, "host", hostLease, start+60, 10, "", now); !errors.Is(err, errConflict) {
+	if _, err := s.Event(ctx, "host", EventInput{Lease: hostLease, StartsAt: start + 60, Minutes: 10, Title: ""}, now); !errors.Is(err, errConflict) {
 		t.Fatalf("overlap: %v", err)
 	}
-	if _, err := s.Party(ctx, "host", hostLease, now.Add(8*24*time.Hour).Unix(), 10, "", now); !errors.Is(err, errBad) {
+	if _, err := s.Event(ctx, "host", EventInput{Lease: hostLease, StartsAt: now.Add(8 * 24 * time.Hour).Unix(), Minutes: 10, Title: ""}, now); !errors.Is(err, errBad) {
 		t.Fatalf("too far ahead: %v", err)
 	}
-	if err := s.PartyRoom(ctx, "host", p.ID, "ABC123", now); !errors.Is(err, errRejected) {
+	if err := s.EventRoom(ctx, "host", p.ID, "ABC123", now); !errors.Is(err, errRejected) {
 		t.Fatalf("room before it starts: %v", err)
 	}
 	at := time.Unix(start+60, 0)
-	if err := s.PartyRoom(ctx, "intruder", p.ID, "ABC123", at); !errors.Is(err, errNotFound) {
+	if err := s.EventRoom(ctx, "intruder", p.ID, "ABC123", at); !errors.Is(err, errNotFound) {
 		t.Fatalf("someone else's party: %v", err)
 	}
-	if err := s.PartyRoom(ctx, "host", p.ID, "abc123", at); err != nil {
+	if err := s.EventRoom(ctx, "host", p.ID, "abc123", at); err != nil {
 		t.Fatal(err)
 	}
 	v, _ := s.City(ctx, "", false, at)
@@ -222,8 +222,8 @@ func TestPartyPaysHost(t *testing.T) {
 	s.GrantCoins(ctx, "test", "host", 100_000, "test")
 	s.Lease(ctx, "host", 3, 0, "Neon Tap", 1, now)
 	hostLease := leaseOf(t, s, "host", now)
-	p, _ := s.Party(ctx, "host", hostLease, now.Unix(), 10, "", now)
-	if err := s.PartyRoom(ctx, "host", p.ID, "LIVE01", now); err != nil {
+	p, _ := s.Event(ctx, "host", EventInput{Lease: hostLease, StartsAt: now.Unix(), Minutes: 10, Title: ""}, now)
+	if err := s.EventRoom(ctx, "host", p.ID, "LIVE01", now); err != nil {
 		t.Fatal(err)
 	}
 	host := wallet(t, s, "host")

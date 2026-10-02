@@ -57,8 +57,9 @@ a markup costs you by running or partying in a club, with friends, in real time.
 - Deep club sim: stock and pricing, live token market with FOMO, DJs and bands, promos, staff, house rules,
   reservations, permits and inspections, crowd energy, fights and security, tax, upgrades, VIP.
 - Every top-bar stat explains itself (what it is, what it does, how it moves, what moved it lately).
-- **City (multiplayer):** rent a venue by the week, rename it, run a shop that sells while you're away, schedule
-  parties at Level 3+ (default 10 minutes) and host them live.
+- **City (multiplayer):** rent a venue by the week, rename it, run a shop that sells while you're away.
+- **Events:** schedule a night at any club (Level 3+): date and time picker, length (default 10 minutes), public or
+  private with an invite link. Guests mark "I'm going" and get a one-click join the moment the host opens the club.
 
 **Guest**
 - Join live parties (room code, invite link or the city list); buy tokens at the club's live price; spend goes to

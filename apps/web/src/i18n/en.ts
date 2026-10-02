@@ -218,6 +218,11 @@ export const en = {
     open: "Open club to players",
     opening: "Opening…",
     copyLink: "Copy link",
+    visibility: "Who can come in",
+    public: "Public",
+    private: "Invite only",
+    publicHint: "Listed for every guest under Clubs open now.",
+    privateHint: "Hidden from the list: only players with your link get in.",
     copied: "Link copied",
     close: "Close room",
     players: (n: number) => `${n} player${n === 1 ? "" : "s"} connected`,
@@ -304,6 +309,58 @@ export const en = {
       })[code] ?? `Couldn't do that (${code}).`,
     signIn: "Sign in to rent a venue.",
     loading: "Loading the city…",
+  },
+
+  events: {
+    title: "Events",
+    locked:
+      "Events start at a Level 3 venue (bar & live music) or bigger. Smaller venues sell.",
+    when: "Date and time",
+    minutes: "Length",
+    minutesOpt: (m: number) => `${m} min`,
+    who: "Who can come",
+    public: "Public",
+    private: "Private",
+    publicHint:
+      "Public: listed for every player. Share the invite link too, if you like.",
+    privateHint:
+      "Private: only players with your invite link can see it and come in.",
+    titleLabel: "Event name",
+    titlePlaceholder: "Event name (optional)",
+    schedule: "Schedule",
+    none: "No events planned for this club yet.",
+    live: "Live",
+    going: (n: number) => `${n} going`,
+    copyInvite: "Invite link",
+    openClub: "Open club",
+    copied: "Invite link copied",
+    cancel: "Cancel",
+    now: "starting now",
+    inTime: (x: string) => `in ${x}`,
+    onNow: "on now",
+    feedTitle: "Events",
+    feedEmpty:
+      "No events yet. When a CEO schedules one (or invites you), it shows here.",
+    invited: "Invite",
+    by: (owner: string) => `by ${owner || "a CEO"}`,
+    join: "Join",
+    goingAsk: "I'm going",
+    goingYes: "Going ✓",
+    liveBanner: (host: string) =>
+      `is live: ${host || "the CEO"} opened the club.`,
+    joinNow: "Join now",
+    scheduled: "Event scheduled",
+    cancelled: "Event cancelled",
+    invitedToast: "Event added to your list",
+    failed: (code: string) =>
+      ({
+        rejected:
+          "Not possible: check the venue level, the lease dates or your event limit.",
+        conflict: "That overlaps another event at this club.",
+        not_found: "That event isn't available (cancelled, over, or private).",
+        bad_request: "Check the date, time and length.",
+        no_lease: "That venue isn't yours any more.",
+      })[code] ?? `Couldn't do that (${code}).`,
   },
 
   gig: {
@@ -531,6 +588,7 @@ export const en = {
       rules: "House Rules",
       permits: "Permits",
       build: "Build",
+      events: "Events",
     },
     lockedTab: (lv: number) => `Unlocks at Level ${lv}`,
     open: "Open Club",
@@ -565,6 +623,10 @@ export const en = {
       permits: {
         title: "Permit Office",
         desc: "Stay legal. Inspectors don't do warnings.",
+      },
+      events: {
+        title: "Events",
+        desc: "Plan a night, public or invite-only, and send the link. Guests join the moment you open the club.",
       },
       build: {
         title: "Empire Ladder",

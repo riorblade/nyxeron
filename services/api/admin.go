@@ -495,7 +495,7 @@ func (s *store) AdminCancelParty(ctx context.Context, actor string, pid int64, r
 	if strings.TrimSpace(reason) == "" {
 		return errBad
 	}
-	owner, err := s.partyOwner(ctx, pid)
+	owner, err := s.eventHost(ctx, pid)
 	if err != nil {
 		return err
 	}

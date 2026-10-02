@@ -2,13 +2,13 @@ import { useEffect } from "react";
 import { useAccount } from "@/auth/account";
 import { hostOpen, useNet } from "@/net/session";
 import { useGame, type Screen } from "@/state/store";
-import { city } from "./city";
+import { events } from "./events";
 import { call } from "./player";
 
 /**
  * Clubs open right now (api: /api/rooms). A CEO's club is open to players whenever the CEO is in it, and is
- * announced here every 20 s so guests can find it without a code; the api forgets a club 45 s after its last
- * announcement.
+ * announced here every 20 s so guests can find it without a code (a private club isn't listed: guests use the
+ * invite link); the api forgets a club 45 s after its last announcement.
  */
 export interface OpenClub {
   room: string;
@@ -29,7 +29,7 @@ export async function fetchOpenClubs(): Promise<OpenClub[]> {
 const HEARTBEAT_MS = 20_000;
 
 /**
- * While the CEO is in a club (not the Basement challenge), open it to players and keep it listed. Mounted once
+ * While the CEO is in a club, open it to players and keep it listed (unless it's private). Mounted once
  * in App; leaving the game closes the room (App's other effect), which ends the listing here.
  */
 export function useHostedClub(screen: Screen) {
@@ -37,20 +37,22 @@ export function useHostedClub(screen: Screen) {
   const signedIn = useAccount((a) => !!a.account);
   const role = useNet((n) => n.role);
   const room = useNet((n) => n.room);
-  const mode = game?.mode;
+  // A change of visibility re-announces at once.
+  const priv = useNet((n) => n.private);
   const clubName = game?.clubName;
 
   // Open the room when the CEO walks into their club.
   useEffect(() => {
-    if (screen !== "game" || !signedIn || !clubName || mode === "basement")
-      return;
+    if (screen !== "game" || !signedIn || !clubName) return;
     if (useNet.getState().role !== "off") return;
     hostOpen(clubName)
-      .then((code) => city.roomOpened(code))
+      // Tonight's event at this club (if any) goes live with this room; a private event makes the club private.
+      .then((code) => events.attachRoom(clubName, code))
+      .then((priv) => priv && useNet.setState({ private: true }))
       .catch(() => {
         /* relay unreachable: the club still plays; RoomPanel offers to retry */
       });
-  }, [screen, signedIn, clubName, mode]);
+  }, [screen, signedIn, clubName]);
 
   // Keep it listed while it's open; take it off the list when it closes.
   useEffect(() => {
@@ -64,6 +66,7 @@ export function useHostedClub(screen: Screen) {
         level: g.level,
         players: Object.keys(useNet.getState().players).length,
         night: g.phase === "night",
+        private: useNet.getState().private,
       }).catch(() => {
         /* the next heartbeat retries */
       });
@@ -74,5 +77,5 @@ export function useHostedClub(screen: Screen) {
       clearInterval(id);
       call("DELETE", `/rooms/${room}`).catch(() => {});
     };
-  }, [role, room, signedIn]);
+  }, [role, room, signedIn, priv]);
 }

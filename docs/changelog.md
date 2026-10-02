@@ -5,6 +5,11 @@ teammate would notice.
 
 ## 2026-10-03 · CEO: your clubs
 
+- **Events with invites:** CEOs schedule events at any club (Office → Events, or Events on a club card, or the city
+  venue page): date and time picker, length (default 10 min), Public or Private. Every event has an invite link
+  (`/?event=…`); guests mark "I'm going" and get a "… is live: Join now" banner once the host opens the club.
+  A private event (or the host's Invite only switch) keeps the club off the public list. The Basement can host too.
+  api migration 4 (events on any club, invites, RSVPs).
 - **One show for the whole room:** every pyro burst in the CEO's club (auto on the beat, or the manual Fire / Fog /
   Both buttons), every sampler pad and the videotron messages now reach every guest and the live DJ at the same
   moment. Guests no longer run pyro of their own while in someone's club.

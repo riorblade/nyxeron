@@ -42,6 +42,12 @@ export interface Party {
   minutes: number;
   room: string;
   live: boolean;
+  /** Private: listed only for its host and the players who opened its invite link. */
+  private: boolean;
+  /** The host's invite code (`/?event=<invite>`). */
+  invite?: string;
+  going: number;
+  iGo?: boolean;
   mine?: boolean;
 }
 export interface City {
@@ -60,13 +66,10 @@ export interface City {
 interface CityStore {
   city: City | null;
   error: string;
-  /** The party I'm hosting right now (its relay room goes to the server when I open it). */
-  hosting: number | null;
 }
 export const useCity = create<CityStore>(() => ({
   city: null,
   error: "",
-  hosting: null,
 }));
 
 const base = import.meta.env.VITE_API_BASE ?? "";
@@ -127,26 +130,8 @@ export const city = {
       () => call("POST", `/city/shops/${lease}/buy`, { token, qty }),
       en.city.bought(qty, token.toUpperCase()),
     ),
-  party: (lease: number, startsAt: number, minutes: number, title: string) =>
-    act(
-      () => call("POST", "/city/parties", { lease, startsAt, minutes, title }),
-      en.city.scheduled,
-    ),
-  cancel: (id: number) =>
-    act(() => call("DELETE", `/city/parties/${id}`), en.city.cancelled),
   /** Host a party now: a club at the venue's level, opened to players from the office. */
   host(p: Party) {
-    useCity.setState({ hosting: p.id });
     useGame.getState().start({ mode: "party", name: p.club, level: p.level });
-  },
-  /** The relay room for the party being hosted (RoomPanel calls this once the room is open). */
-  async roomOpened(room: string) {
-    const id = useCity.getState().hosting;
-    if (!id) return;
-    try {
-      await call("PUT", `/city/parties/${id}/room`, { room });
-    } catch (e) {
-      say(en.city.failed((e as Error).message), true);
-    }
   },
 };

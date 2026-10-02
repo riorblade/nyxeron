@@ -59,10 +59,13 @@ room on entering the game and announces it to the api every 20 s (`POST /api/roo
 guests see it under "Clubs open now" (`GET /api/rooms`) and join with one click. The api keeps the list in memory
 and forgets a club 45 s after its last announcement.
 
-## City parties
+## Events and invites
 
-A scheduled party becomes live when its host opens a room in the party window; the room code is stored on the
-party (`PUT /api/city/parties/{id}/room`) and shown in the city list for guests to join.
+A CEO schedules events at any of their clubs (Office → Events, or Events on a club card): date and time, length,
+public or private. Guests mark "I'm going"; a private event is reached through its invite link (`/?event=CODE`).
+When the host opens the club in the event's window, the room is attached to the event (`PUT /api/events/{id}/room`)
+and everyone going gets a "… is live: Join now" banner on the dashboard. A private event makes the club invite-only
+(not listed under Clubs open now); the host can also switch the open club between Public and Invite only.
 
 ## Testing
 

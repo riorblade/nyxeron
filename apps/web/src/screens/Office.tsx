@@ -26,6 +26,7 @@ import { fetchQuotes } from "@/api/quotes";
 import { useGame } from "@/state/store";
 import { introEnabled } from "./IntroVideo";
 import { BuildTab } from "./office/BuildTab";
+import { EventsTab } from "./office/EventsTab";
 import { HouseRulesTab } from "./office/HouseRulesTab";
 import { PermitsTab } from "./office/PermitsTab";
 import { PromoTab } from "./office/PromoTab";
@@ -41,6 +42,7 @@ const TABS = [
   { id: "rules", minLevel: 3, C: HouseRulesTab },
   { id: "permits", minLevel: 1, C: PermitsTab },
   { id: "build", minLevel: 1, C: BuildTab },
+  { id: "events", minLevel: 1, C: EventsTab },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 const d = (ms: number) => ({ "--d": `${ms}ms` }) as CSSProperties;

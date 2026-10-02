@@ -88,7 +88,7 @@ export const useGame = create<Store>((set, get) => ({
   // An invite link (…/?join=CODE) skips the landing page: straight to the dashboard's join form.
   screen:
     typeof location !== "undefined" &&
-    new URLSearchParams(location.search).has("join")
+    ["join", "event"].some((k) => new URLSearchParams(location.search).has(k))
       ? "dashboard"
       : "menu",
   game: null,
