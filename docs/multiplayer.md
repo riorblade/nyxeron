@@ -45,6 +45,13 @@ Error codes: `room_not_found`, `room_full`, `server_full`, `bad_request`, `alrea
     one-shot moves (pads, brake, backspin). Everyone's own engine follows (`dj/mixsync.ts`): aim ~0.12 s ahead,
     seek only past 0.25 s drift.
 
+## The CEO's show
+
+The host is the only source of the show: every pyro burst its venue fires (auto or manual,
+`VenueScene.onBurst`), every sampler pad (`playPad`) and the videotron messages go out as reliable events
+(`{t:"fx"}`, `{t:"pad"}`, `{t:"shout"}`; a newcomer gets the messages on joining). Guests and the DJ turn their own
+auto pyro off and play exactly what arrives.
+
 ## Finding a club
 
 A CEO's club is open to players whenever the CEO is in it (not the Basement challenge): the browser opens a relay

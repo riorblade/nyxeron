@@ -1648,11 +1648,15 @@ export class VenueScene {
     this.pyroAuto = on;
   }
 
-  /** A manual cue: flame jets, CO₂ fog, or both at once. */
+  /** Every burst that fires here (auto or manual); the live host shares them so guests see the same show. */
+  onBurst?: (cue: PyroCue) => void;
+
+  /** Flame jets, CO₂ fog, or both at once: the CEO's buttons, the beat (auto), or the host's show (guests). */
   pyro(cue: PyroCue) {
     if (!this.fx) return;
     if (cue !== "fog") this.fx.burstFire();
     if (cue !== "fire") this.fx.burstMist();
+    this.onBurst?.(cue);
   }
 
   setScreenPrefs(prefs: { clips: ClipMode; ads: boolean }) {
@@ -3024,14 +3028,12 @@ export class VenueScene {
         const warm = hot || lift > 0.97 || (!live && this.peak);
         const fireEvery = hot ? 2 : warm ? (this.peak ? 4 : 8) : 0;
         const mistEvery = hot ? 8 : warm && this.peak ? 16 : 0;
-        if (gap > 2500) {
-          // The beat drops back in (the opening, or after a breakdown): everything at once.
-          this.fx.burstFire();
-          this.fx.burstMist();
-        } else {
-          if (fireEvery && this.kicks % fireEvery === 0) this.fx.burstFire();
-          if (mistEvery && this.kicks % mistEvery === 0) this.fx.burstMist();
-        }
+        const fire = fireEvery > 0 && this.kicks % fireEvery === 0;
+        const mist = mistEvery > 0 && this.kicks % mistEvery === 0;
+        // The beat dropping back in (the opening, or after a breakdown): everything at once.
+        if (gap > 2500 || (fire && mist)) this.pyro("both");
+        else if (fire) this.pyro("fire");
+        else if (mist) this.pyro("fog");
       }
       if (
         this.pyroAuto &&
@@ -3040,8 +3042,7 @@ export class VenueScene {
         audio.dropAt !== this.dropSeen
       ) {
         this.dropSeen = audio.dropAt;
-        this.fx.burstFire();
-        this.fx.burstMist();
+        this.pyro("both");
       }
       this.prevPulse = pulse;
       this.fx.update();

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { audio } from "@/audio";
+import { playPad } from "@/net/session";
 import { PADS, type PadId } from "@/dj/sampler";
 import { en } from "@/i18n/en";
 import { cn } from "@/lib/utils";
@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 export function SamplerPanel() {
   const [hit, setHit] = useState<PadId | null>(null);
   const fire = (p: PadId) => {
-    audio.pad(p);
+    playPad(p);
     setHit(p);
     setTimeout(() => setHit((h) => (h === p ? null : h)), 180);
   };
