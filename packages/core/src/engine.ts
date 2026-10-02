@@ -79,7 +79,11 @@ export const weekday = (day: number) => (day - 1) % 7;
 const busyFactor = (s: GameState) =>
   night.busyWeekdays.includes(weekday(s.day)) ? night.busyDayBonus : 1;
 
-/** Guests expected tonight = f(hype, reputation, busy weekday, level demand). */
+/** Word gets around: an unsafe club loses up to a quarter of its walk-ins (100 safety = no loss). */
+export const safetyDemand = (s: GameState) =>
+  night.safety.demandFloor + ((1 - night.safety.demandFloor) * s.safety) / 100;
+
+/** Guests expected tonight = f(hype, reputation, safety, busy weekday, level demand). */
 export function expectedGuests(s: GameState): number {
   const { base, hypeWeight, repWeight } = night.demand;
   const busy = night.busyWeekdays.includes(weekday(s.day))
@@ -88,7 +92,11 @@ export function expectedGuests(s: GameState): number {
   const factor =
     base + (hypeWeight * s.hype) / 100 + (repWeight * s.reputation) / 100;
   return Math.round(
-    levelData(s.level).demand * factor * busy * policyDemand(s),
+    levelData(s.level).demand *
+      factor *
+      busy *
+      policyDemand(s) *
+      safetyDemand(s),
   );
 }
 
@@ -636,11 +644,17 @@ export function endNight(s: GameState): GameState {
         admitted.reduce((a, g) => a + g.satisfaction, 0) / admitted.length,
       )
     : 0;
-  if (admitted.length)
+  if (admitted.length) {
+    const delta = r11_reputationDelta(avgSatisfaction);
     st = {
       ...st,
-      reputation: clamp(st.reputation + r11_reputationDelta(avgSatisfaction)),
+      reputation: clamp(st.reputation + delta),
+      log: [
+        ...st.log,
+        { day: s.day, kind: "nightRep", delta, satisfaction: avgSatisfaction },
+      ],
     };
+  }
 
   const report: NightReport = {
     day: s.day,

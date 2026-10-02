@@ -87,6 +87,7 @@ const eventIcons: Record<GameEvent["kind"], LucideIcon> = {
   promoterBooked: Megaphone,
   upgradeBought: Speaker,
   sparklerParade: Sparkles,
+  nightRep: Star,
   gameOver: Check,
 };
 export const eventIcon = (e: GameEvent) => eventIcons[e.kind];

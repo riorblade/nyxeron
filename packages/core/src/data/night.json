@@ -8,6 +8,11 @@
     "hypeWeight": 1.0,
     "repWeight": 0.4
   },
+  "safety": {
+    "demandFloor": 0.75,
+    "riskyBelow": 40,
+    "riskyInspectionChance": 0.2
+  },
   "busyWeekdays": [3, 5, 6],
   "busyDayBonus": 1.25,
   "promoSegmentBoost": 2,

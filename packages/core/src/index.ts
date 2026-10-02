@@ -20,3 +20,4 @@ export * from "./rules/visitor";
 export * from "./rules/quotes";
 export * from "./rules/autoCeo";
 export * from "./rules/city";
+export * from "./rules/stats";

@@ -387,7 +387,122 @@ export const en = {
     violations: "Violations",
     permits: "Permits",
     level: (n: number, name: string) => `Lv ${n} · ${name}`,
+    /** Tap a stat on the top bar: what it is, what it does, how it moves, and what moved it lately. */
+    infoHint: "Tap for details",
+    whatItDoes: "What it does",
+    howItMoves: "How it moves",
+    recently: "Recently",
+    nothingYet: "No changes yet.",
+    when: (day: number, time?: string) =>
+      `Day ${day}${time ? ` · ${time}` : ""}`,
+    lastNight: (day: number, revenue: number, profit: number) =>
+      `Night of day ${day}: took in ${fmt(revenue)} C, ${profit >= 0 ? "profit" : "loss"} ${fmt(Math.abs(profit))} C after costs and tax.`,
   },
+
+  statInfo: (k: {
+    bankruptDays: number;
+    nextRep: number | null;
+    victoryRep: number;
+    good: number;
+    bad: number;
+    repGain: [number, number];
+    repLoss: number;
+    fightRep: number;
+    fightSafety: number;
+    promoRep: number;
+    shutdownRep: number;
+    hypeDecay: number;
+    safetyRecovery: number;
+    safetyLossPct: number;
+    riskyBelow: number;
+    riskyPct: number;
+    perGuard: number;
+    energyPerDay: number;
+    maxViolations: number;
+    fine: number;
+    missingPct: number;
+  }) => ({
+    coin: {
+      what: "Your club's money. You spend it on stock, staff, rent, DJs, promos and upgrades; guests bring it in at the door, the bar and the tables.",
+      does: [
+        `Below 0 for ${k.bankruptDays} days in a row: bankrupt, game over.`,
+        "Pays for the next venue (together with reputation).",
+      ],
+      moves: [
+        "Price tokens close to the market and keep the popular ones in stock.",
+        "A DJ the crowd likes keeps guests happy, and happy guests buy more.",
+        "Fill tables and VIP: Guest Relations and house rules.",
+        "Avoid fines: keep every permit valid.",
+      ],
+    },
+    rep: {
+      what: "How the city rates your club, 0–100. Each star is 20 points.",
+      does: [
+        "More guests every night.",
+        "More table and VIP bookings.",
+        k.nextRep != null
+          ? `The next venue needs ${k.nextRep}.`
+          : "You're at the top venue.",
+        `Win: Level 5 with ${k.victoryRep} or more.`,
+        "At 0: game over.",
+      ],
+      moves: [
+        `End a night with average satisfaction ${k.good}+: +${k.repGain[0]} to +${k.repGain[1]}.`,
+        `Average satisfaction under ${k.bad}: −${k.repLoss}.`,
+        `Each fight: −${k.fightRep}.`,
+        `A controversial promo that backfires: −${k.promoRep}.`,
+        `Shut down for crowding without a crowd permit: −${k.shutdownRep}.`,
+      ],
+    },
+    hype: {
+      what: "Buzz about tonight, 0–100.",
+      does: ["The biggest driver of how many guests come tonight."],
+      moves: [
+        `Fades by ${k.hypeDecay} every morning.`,
+        "Promo posts in Social Media (1 CEO Energy each).",
+        "Booking a DJ or a band brings their fans.",
+        "A rival's promo takes some away.",
+      ],
+    },
+    safety: {
+      what: "How safe your club feels, 0–100.",
+      does: [
+        `An unsafe club loses walk-ins: up to −${k.safetyLossPct}% guests at 0.`,
+        `Under ${k.riskyBelow}: inspectors are likelier to visit (${k.riskyPct}% a night).`,
+      ],
+      moves: [
+        `Each fight: −${k.fightSafety}.`,
+        `Recovers +${k.safetyRecovery} every morning.`,
+        `Fights start when tilted guests outnumber security: hire 1 guard per ${k.perGuard} guests.`,
+        "Hot (FOMO) tokens tilt guests faster.",
+      ],
+    },
+    energy: {
+      what: `Your own time as CEO: ${k.energyPerDay} actions a day.`,
+      does: [
+        "Each promo post costs 1. With none left you can't post until tomorrow.",
+      ],
+      moves: [`Refills to ${k.energyPerDay} every morning.`],
+    },
+    violations: {
+      what: "Strikes against your license. They never go away.",
+      does: [
+        `${k.maxViolations} violations: license revoked, game over.`,
+        `A failed inspection also costs a ${fmt(k.fine)} Coin fine.`,
+      ],
+      moves: [
+        "A failed inspection: a missing or expired permit, or underage guests let in without security at the door.",
+        "Forcing the door open past capacity.",
+      ],
+    },
+    permits: {
+      what: "The licenses this venue needs to open.",
+      does: [
+        `With one missing, an inspector is likely (${k.missingPct}% a night): fine and a violation.`,
+      ],
+      moves: ["Renew them in the Permits room before they expire."],
+    },
+  }),
 
   office: {
     title: "Office",
@@ -1205,6 +1320,12 @@ export const en = {
         ]
           .filter(Boolean)
           .join(" · ")}`;
+      case "nightRep":
+        return e.delta > 0
+          ? `Great night (satisfaction ${e.satisfaction}): reputation +${e.delta}`
+          : e.delta < 0
+            ? `Bad night (satisfaction ${e.satisfaction}): reputation ${e.delta}`
+            : `Okay night (satisfaction ${e.satisfaction}): reputation unchanged`;
       case "gameOver":
         return `Game over: ${e.outcome}`;
     }

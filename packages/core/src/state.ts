@@ -114,6 +114,7 @@ export type GameEvent =
   | Ev<"promoterBooked", { promoter: PromoterId }>
   | Ev<"upgradeBought", { upgrade: UpgradeId; tier: number; cost: number }>
   | Ev<"sparklerParade", { bottles: number; revenue: number }>
+  | Ev<"nightRep", { delta: number; satisfaction: number }>
   | Ev<"gameOver", { outcome: Outcome }>;
 
 export interface NightRevenue {

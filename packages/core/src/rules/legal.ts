@@ -1,4 +1,4 @@
-import { legal, permits, requiredPermits, type PermitId } from "../data";
+import { legal, night, permits, requiredPermits, type PermitId } from "../data";
 import { fail, type ActionResult } from "../result";
 import type { GameState } from "../state";
 
@@ -33,9 +33,14 @@ export function applyPermit(s: GameState, permit: PermitId): ActionResult {
 /** R6 (+R17): chance an inspector shows up tonight. */
 export function r06_inspectionChance(s: GameState): number {
   if (s.forcedInspection) return 1;
-  return missingPermits(s).length > 0
-    ? legal.inspectionChanceMissingPermit
-    : legal.baseInspectionChance;
+  const base =
+    missingPermits(s).length > 0
+      ? legal.inspectionChanceMissingPermit
+      : legal.baseInspectionChance;
+  // Fights get reported: a club with low safety draws inspectors.
+  return s.safety < night.safety.riskyBelow
+    ? Math.max(base, night.safety.riskyInspectionChance)
+    : base;
 }
 
 /**
