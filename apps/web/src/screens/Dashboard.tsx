@@ -38,12 +38,15 @@ import { player } from "@/api/player";
 import { useDocsSync } from "@/api/docs";
 import { useGame } from "@/state/store";
 import { CityGuest, ManageVenue, RentVenue, useCityLive } from "./CityPanels";
+import { EventsPanel, LiveEventBanner } from "./EventsPanel";
+import { events } from "@/api/events";
 
-type Step = "home" | "role" | "ceo" | "rent" | "venue" | "guest" | "dj";
+type Step =
+  "home" | "role" | "ceo" | "rent" | "venue" | "events" | "guest" | "dj";
 const t = en.dashboard;
 /** One step back: a role's panel → the role picker → the dashboard home. */
 const up = (s: Step): Step =>
-  s === "rent" || s === "venue"
+  s === "rent" || s === "venue" || s === "events"
     ? "ceo"
     : s === "ceo" || s === "guest" || s === "dj"
       ? "role"
@@ -65,7 +68,24 @@ export function Dashboard() {
       .replace(/[^A-Z0-9]/g, "")
       .slice(0, 6);
   });
-  const [step, setStep] = useState<Step>(invite ? "guest" : "home");
+  // An event invite link (…/?event=CODE) opens the guest step and adds the event to the player's list.
+  const [eventInvite] = useState(() => {
+    const code = new URLSearchParams(location.search).get("event") ?? "";
+    if (code) history.replaceState(null, "", location.pathname);
+    return code.replace(/[^a-z0-9]/gi, "").slice(0, 16);
+  });
+  useEffect(() => {
+    if (eventInvite) void events.openInvite(eventInvite);
+  }, [eventInvite]);
+  const [step, setStep] = useState<Step>(
+    invite || eventInvite ? "guest" : "home",
+  );
+  // The practice club whose events are open (step "events").
+  const [eventsOf, setEventsOf] = useState<{
+    name: string;
+    level: Level;
+    slot: Slot;
+  } | null>(null);
   // The city venue being run (step "venue").
   const [venue, setVenue] = useState(0);
   const go = useGame((x) => x.go);
@@ -103,6 +123,7 @@ export function Dashboard() {
         </header>
 
         <Announcement />
+        <LiveEventBanner />
         <div className="grid flex-1 grid-cols-1 gap-6 lg:grid-cols-[21rem_1fr]">
           <ProfileCard />
           <section className="glass enter flex min-h-[28rem] flex-col rounded-2xl p-5 sm:p-7">
@@ -123,10 +144,29 @@ export function Dashboard() {
                   setVenue(lease);
                   setStep("venue");
                 }}
+                onEvents={(club) => {
+                  setEventsOf(club);
+                  setStep("events");
+                }}
               />
             )}
             {step === "rent" && <RentVenue onRented={() => setStep("ceo")} />}
             {step === "venue" && <ManageVenue lease={venue} />}
+            {step === "events" && eventsOf && (
+              <div className="flex flex-col gap-4">
+                <h2 className="text-2xl font-medium tracking-[-0.02em]">
+                  {eventsOf.name}
+                </h2>
+                <EventsPanel
+                  club={eventsOf.name}
+                  level={eventsOf.level}
+                  onHost={() => {
+                    const f = listClubs().find((c) => c.slot === eventsOf.slot);
+                    if (f) useGame.getState().load(f.file.state, eventsOf.slot);
+                  }}
+                />
+              </div>
+            )}
             {step === "guest" && (
               <>
                 <LiveJoin initial={invite} />
@@ -465,9 +505,11 @@ function RolePicker({ onPick }: { onPick: (s: Step) => void }) {
 function CeoPanel({
   onRent,
   onVenue,
+  onEvents,
 }: {
   onRent: () => void;
   onVenue: (lease: number) => void;
+  onEvents: (club: { name: string; level: Level; slot: Slot }) => void;
 }) {
   const { start, go, load, closeClub } = useGame();
   // Re-read the practice clubs when one is closed.
@@ -577,6 +619,14 @@ function CeoPanel({
                     onClick={() => setClosing(slot)}
                   >
                     {t.close}
+                  </button>
+                  <button
+                    className="h-8 rounded-md border border-white/15 px-3 text-xs hover:bg-white/10"
+                    onClick={() =>
+                      onEvents({ name: g.clubName, level: g.level, slot })
+                    }
+                  >
+                    {en.events.title}
                   </button>
                   <button
                     className="h-8 rounded-md bg-white px-4 text-xs font-medium text-black"

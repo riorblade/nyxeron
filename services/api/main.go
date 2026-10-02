@@ -49,6 +49,7 @@ func routes(q *quoter, origins []string, auth *privy, db *store, adm *admin) htt
 	pl.routeDocs(mux)
 	pl.routeCity(mux)
 	pl.routeRooms(mux, newRoomList())
+	pl.routeEvents(mux)
 	// Preflight: the browser asks before sending Authorization / JSON cross-site.
 	mux.HandleFunc("OPTIONS /api/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE")

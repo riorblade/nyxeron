@@ -96,6 +96,8 @@ interface Net {
   last: { v: Visitor; value: number; pnl: number } | null;
   /** Guest: I was inside and the host's night has ended. */
   ended: boolean;
+  /** Host: the club is invite-only tonight (not listed under Clubs open now; guests come by invite link). */
+  private: boolean;
 }
 
 export const useNet = create<Net>(() => ({
@@ -110,6 +112,7 @@ export const useNet = create<Net>(() => ({
   refused: "",
   last: null,
   ended: false,
+  private: false,
 }));
 
 const set = useNet.setState;
@@ -354,7 +357,14 @@ export function hostClose() {
   relay = null;
   djPeer = 0;
   unfollow();
-  set({ role: "off", room: "", players: {}, status: "closed", dj: null });
+  set({
+    role: "off",
+    room: "",
+    players: {},
+    status: "closed",
+    dj: null,
+    private: false,
+  });
 }
 
 export const kick = (id: number) => relay?.kick(id);

@@ -531,7 +531,7 @@ export function Night({ s }: { s: GameState }) {
               className="glass enter shrink-0 space-y-6 rounded-xl p-4 lg:max-h-full lg:w-80 lg:self-start lg:overflow-y-auto"
               style={{ "--d": "80ms" } as CSSProperties}
             >
-              {s.mode !== "basement" && <RoomPanel clubName={s.clubName} />}
+              <RoomPanel clubName={s.clubName} />
               <CrowdMoves s={s} />
               {s.level >= 4 && <PyroPanel />}
               {s.level >= 4 && <SamplerPanel />}

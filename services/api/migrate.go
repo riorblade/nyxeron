@@ -100,6 +100,25 @@ var migrations = []string{
 		at      INTEGER NOT NULL
 	);
 	CREATE INDEX stock_moves_token ON stock_moves(token, kind, at);`,
+	// 4 — events: city parties become events at any club (practice clubs have no lease), public or private,
+	// with an invite code; RSVPs.
+	`ALTER TABLE parties ADD COLUMN host_id TEXT NOT NULL DEFAULT '';
+	ALTER TABLE parties ADD COLUMN club TEXT NOT NULL DEFAULT '';
+	ALTER TABLE parties ADD COLUMN level INTEGER NOT NULL DEFAULT 1;
+	ALTER TABLE parties ADD COLUMN private INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE parties ADD COLUMN invite TEXT NOT NULL DEFAULT '';
+	UPDATE parties SET
+		host_id = COALESCE((SELECT user_id FROM leases WHERE leases.id = parties.lease_id), ''),
+		level = COALESCE((SELECT level FROM leases WHERE leases.id = parties.lease_id), 1),
+		invite = lower(hex(randomblob(5)));
+	CREATE UNIQUE INDEX parties_invite ON parties(invite);
+	CREATE INDEX parties_host ON parties(host_id, starts_at);
+	CREATE TABLE rsvps (
+		party_id INTEGER NOT NULL,
+		user_id  TEXT    NOT NULL,
+		at       INTEGER NOT NULL,
+		PRIMARY KEY (party_id, user_id)
+	);`,
 }
 
 func migrate(db *sql.DB) error {

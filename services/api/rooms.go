@@ -13,7 +13,8 @@ import (
 // roomTTL, and after an api restart every open club re-announces within one heartbeat.
 //
 //	GET    /api/rooms          → [{room, club, level, host, players, night, since}] (public)
-//	POST   /api/rooms          {room, club, level, players, night} → announce / heartbeat (signed in)
+//	POST   /api/rooms          {room, club, level, players, night, private} → announce / heartbeat (signed in;
+//	                           a private club isn't listed: guests come by invite link)
 //	DELETE /api/rooms/{room}   → the host closed the club
 //
 // ponytail: one api instance holds the list; move it to the relay (or a shared store) if the api ever scales out.
@@ -30,6 +31,7 @@ type LiveRoom struct {
 	Host    string `json:"host"`
 	Players int    `json:"players"`
 	Night   bool   `json:"night"`
+	Private bool   `json:"private,omitempty"`
 	Since   int64  `json:"since"`
 	owner   string
 	seen    time.Time
@@ -60,7 +62,7 @@ func (rl *roomList) announce(owner, host string, in LiveRoom, now time.Time) err
 		if r.owner != owner {
 			return errConflict
 		}
-		r.Club, r.Level, r.Host, r.Players, r.Night, r.seen = club, in.Level, host, in.Players, in.Night, now
+		r.Club, r.Level, r.Host, r.Players, r.Night, r.Private, r.seen = club, in.Level, host, in.Players, in.Night, in.Private, now
 		return nil
 	}
 	mine := 0
@@ -73,7 +75,7 @@ func (rl *roomList) announce(owner, host string, in LiveRoom, now time.Time) err
 		return errRejected
 	}
 	rl.m[in.Room] = &LiveRoom{Room: in.Room, Club: club, Level: in.Level, Host: host, Players: in.Players,
-		Night: in.Night, Since: now.Unix(), owner: owner, seen: now}
+		Night: in.Night, Private: in.Private, Since: now.Unix(), owner: owner, seen: now}
 	return nil
 }
 
@@ -91,7 +93,9 @@ func (rl *roomList) list(now time.Time) []LiveRoom {
 	rl.sweep(now)
 	out := make([]LiveRoom, 0, len(rl.m))
 	for _, r := range rl.m {
-		out = append(out, *r)
+		if !r.Private { // private clubs are joined by invite link only
+			out = append(out, *r)
+		}
 	}
 	// Busiest first, then the newest.
 	sort.Slice(out, func(i, j int) bool {

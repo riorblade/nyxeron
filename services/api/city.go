@@ -24,9 +24,8 @@ import (
 //	PUT    /api/city/venue                 {club} → rename my venue
 //	PUT    /api/city/shop                  {lease, open?, prices?} → open/close that venue's shop, set my prices
 //	POST   /api/city/shops/{lease}/buy     {token, qty} → buy from someone's shop
-//	POST   /api/city/parties               {lease, startsAt, minutes?, title?} → schedule a party at my venue
-//	DELETE /api/city/parties/{id}          → cancel my party
-//	PUT    /api/city/parties/{id}/room     {room} → my party is live in this relay room
+//
+// Parties at city venues are events (events.go): /api/events with a lease.
 //
 // Game numbers come from gamedata/ — a copy of packages/core/src/data that a test keeps identical.
 
@@ -160,22 +159,6 @@ type VenueView struct {
 	Lease *LeaseView `json:"lease"`
 }
 
-type PartyView struct {
-	ID        int64  `json:"id"`
-	LeaseID   int64  `json:"leaseId"`
-	Level     int    `json:"level"`
-	Slot      int    `json:"slot"`
-	Club      string `json:"club"`
-	Owner     string `json:"owner"`
-	Title     string `json:"title"`
-	StartsAt  int64  `json:"startsAt"`
-	Minutes   int    `json:"minutes"`
-	Room      string `json:"room"`
-	Live      bool   `json:"live"`
-	Cancelled bool   `json:"cancelled,omitempty"`
-	Mine      bool   `json:"mine,omitempty"`
-}
-
 type CityView struct {
 	Venues  []VenueView      `json:"venues"`
 	Parties []PartyView      `json:"parties"`
@@ -275,35 +258,10 @@ func (s *store) City(ctx context.Context, viewer string, admin bool, now time.Ti
 			v.Venues = append(v.Venues, VenueView{Level: level, Slot: slot, Lease: byVenue[[2]int{level, slot}]})
 		}
 	}
-	v.Parties, err = s.parties(ctx, viewer, admin, now, `p.starts_at + p.minutes * 60 > ? AND p.cancelled = 0`, now.Unix())
+	// Upcoming and live events: public ones, plus the viewer's own (the back office sees all).
+	v.Parties, err = s.events(ctx, viewer, admin, now, `p.starts_at + p.minutes * 60 > ?1 AND p.cancelled = 0
+		AND (p.private = 0 OR p.host_id = ?2 OR ?3)`, now.Unix(), viewer, admin)
 	return v, err
-}
-
-func (s *store) parties(ctx context.Context, viewer string, admin bool, now time.Time, where string, args ...any) ([]PartyView, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT p.id, p.lease_id, l.level, l.slot, l.club, u.name, l.user_id, p.title, p.starts_at,
-		p.minutes, p.room, p.cancelled FROM parties p JOIN leases l ON l.id = p.lease_id JOIN users u ON u.id = l.user_id
-		WHERE `+where+` ORDER BY p.starts_at LIMIT 200`, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []PartyView{}
-	for rows.Next() {
-		var p PartyView
-		var owner string
-		var cancelled int
-		if err := rows.Scan(&p.ID, &p.LeaseID, &p.Level, &p.Slot, &p.Club, &p.Owner, &owner, &p.Title, &p.StartsAt,
-			&p.Minutes, &p.Room, &cancelled); err != nil {
-			return nil, err
-		}
-		p.Cancelled, p.Mine = cancelled == 1, owner == viewer
-		p.Live = !p.Cancelled && now.Unix() >= p.StartsAt && now.Unix() < p.StartsAt+int64(p.Minutes)*60
-		if !p.Live && !admin && !p.Mine {
-			p.Room = "" // the code only matters while it's on
-		}
-		out = append(out, p)
-	}
-	return out, rows.Err()
 }
 
 type activeLease struct {
@@ -580,105 +538,6 @@ func (s *store) ShopBuy(ctx context.Context, buyer string, leaseID int64, token 
 	return
 }
 
-// Party schedules a party at the player's venue (Level 3+), inside the lease, not overlapping another of theirs.
-func (s *store) Party(ctx context.Context, id string, lease int64, startsAt int64, minutes int, title string, now time.Time) (PartyView, error) {
-	pc := game.city.Party
-	if minutes == 0 {
-		minutes = pc.DefaultMinutes
-	}
-	title, ok := cleanName(title)
-	if !ok || minutes < pc.MinMinutes || minutes > pc.MaxMinutes ||
-		startsAt < now.Unix()-60 || startsAt > now.Unix()+int64(pc.MaxAheadDays)*86400 {
-		return PartyView{}, errBad
-	}
-	startsAt = max(startsAt, now.Unix())
-	end := startsAt + int64(minutes)*60
-	var pid int64
-	err := s.tx(ctx, id, func(t *sql.Tx) error {
-		l, e := ownLease(t, id, lease, now)
-		if e != nil {
-			return e
-		}
-		if l.level < pc.MinLevel || end > l.endsAt {
-			return errRejected
-		}
-		var clash int
-		if e := t.QueryRow(`SELECT COUNT(*) FROM parties WHERE lease_id = ? AND cancelled = 0
-			AND starts_at < ? AND starts_at + minutes * 60 > ?`, l.id, end, startsAt).Scan(&clash); e != nil {
-			return e
-		}
-		if clash > 0 {
-			return errConflict
-		}
-		res, e := t.Exec(`INSERT INTO parties (lease_id, title, starts_at, minutes, created_at) VALUES (?, ?, ?, ?, ?)`,
-			l.id, title, startsAt, minutes, now.Unix())
-		if e != nil {
-			return e
-		}
-		pid, e = res.LastInsertId()
-		return e
-	})
-	if err != nil {
-		return PartyView{}, err
-	}
-	list, err := s.parties(ctx, id, false, now, `p.id = ?`, pid)
-	if err != nil || len(list) == 0 {
-		return PartyView{}, err
-	}
-	return list[0], nil
-}
-
-// partyOwner: who rents the venue a party is at.
-func (s *store) partyOwner(ctx context.Context, pid int64) (string, error) {
-	var owner string
-	err := s.db.QueryRowContext(ctx, `SELECT l.user_id FROM parties p JOIN leases l ON l.id = p.lease_id WHERE p.id = ?`, pid).Scan(&owner)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", errNotFound
-	}
-	return owner, err
-}
-
-func (s *store) CancelParty(ctx context.Context, id string, pid int64) error {
-	if owner, err := s.partyOwner(ctx, pid); err != nil || owner != id {
-		return errNotFound
-	}
-	_, err := s.db.ExecContext(ctx, `UPDATE parties SET cancelled = 1 WHERE id = ?`, pid)
-	return err
-}
-
-// PartyRoom: the host opened the relay room for their party (from 15 minutes before it starts until it ends).
-func (s *store) PartyRoom(ctx context.Context, id string, pid int64, room string, now time.Time) error {
-	room = strings.ToUpper(strings.TrimSpace(room))
-	if len(room) < 4 || len(room) > 8 || strings.Trim(room, "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") != "" {
-		return errBad
-	}
-	if owner, err := s.partyOwner(ctx, pid); err != nil || owner != id {
-		return errNotFound
-	}
-	res, err := s.db.ExecContext(ctx, `UPDATE parties SET room = ? WHERE id = ? AND cancelled = 0
-		AND starts_at - 900 <= ? AND starts_at + minutes * 60 > ?`, room, pid, now.Unix(), now.Unix())
-	if err != nil {
-		return err
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return errRejected
-	}
-	return nil
-}
-
-// partyHost: whose live party a guest was at (by relay room), for paying out what they spent; "" if none.
-func partyHost(t *sql.Tx, room string, now time.Time) string {
-	if room == "" {
-		return ""
-	}
-	var host string
-	grace := int64(game.city.Party.SettleGraceMinutes) * 60
-	_ = t.QueryRow(`SELECT l.user_id FROM parties p JOIN leases l ON l.id = p.lease_id WHERE p.room = ? AND p.cancelled = 0
-		AND p.starts_at - 900 <= ? AND p.starts_at + p.minutes * 60 + ? > ? ORDER BY p.starts_at DESC LIMIT 1`,
-		strings.ToUpper(room), now.Unix(), grace, now.Unix()).Scan(&host)
-	return host
-}
-
 // ---------- spot prices for the city ----------
 
 // factors: spot factors against the server's reference prices (settings "quoteRef": the first price seen per
@@ -801,33 +660,6 @@ func (pl *players) routeCity(mux *http.ServeMux) {
 		if ok && body(w, r, &in) {
 			p, err := pl.db.ShopBuy(r.Context(), id, lease, in.Token, in.Qty, time.Now())
 			reply(w, p, err)
-		}
-	})
-	mux.HandleFunc("POST /api/city/parties", func(w http.ResponseWriter, r *http.Request) {
-		id, ok := pl.who(w, r)
-		var in struct {
-			Lease    int64
-			StartsAt int64
-			Minutes  int
-			Title    string
-		}
-		if ok && body(w, r, &in) {
-			p, err := pl.db.Party(r.Context(), id, in.Lease, in.StartsAt, in.Minutes, in.Title, time.Now())
-			reply(w, p, err)
-		}
-	})
-	mux.HandleFunc("DELETE /api/city/parties/{id}", func(w http.ResponseWriter, r *http.Request) {
-		if id, ok := pl.who(w, r); ok {
-			pid, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
-			reply(w, map[string]bool{"ok": true}, pl.db.CancelParty(r.Context(), id, pid))
-		}
-	})
-	mux.HandleFunc("PUT /api/city/parties/{id}/room", func(w http.ResponseWriter, r *http.Request) {
-		id, ok := pl.who(w, r)
-		var in struct{ Room string }
-		if ok && body(w, r, &in) {
-			pid, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
-			reply(w, map[string]bool{"ok": true}, pl.db.PartyRoom(r.Context(), id, pid, in.Room, time.Now()))
 		}
 	})
 }

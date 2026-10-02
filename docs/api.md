@@ -35,7 +35,7 @@ Base URL: `https://api.nyxeron.xyz` (dev: same origin, Vite proxies `/api` to `:
 | Method | Path | Body | Notes |
 | --- | --- | --- | --- |
 | GET | `/api/me` | — | verified id, email, embedded wallet |
-| POST | `/api/rooms` | `{room, club, level, players, night}` | announce / heartbeat your open club (every ~20 s; dropped 45 s after the last) |
+| POST | `/api/rooms` | `{room, club, level, players, night, private?}` | announce / heartbeat your open club (every ~20 s; dropped 45 s after the last; a private club isn't listed) |
 | DELETE | `/api/rooms/{room}` | — | your club closed |
 | GET | `/api/profile` | — | profile (created with the starter wallet on first call) |
 | POST | `/api/profile/import` | profile | once: this device's pre-account data, bounded |
@@ -55,9 +55,21 @@ Base URL: `https://api.nyxeron.xyz` (dev: same origin, Vite proxies `/api` to `:
 | POST | `/api/city/stock` | `{token, qty}` | buy shop stock from the warehouse at the market price |
 | PUT | `/api/city/shop` | `{lease, open?, prices?}` | open/close that venue's shop, set your shelf prices (≤ 3× usual) |
 | POST | `/api/city/shops/{lease}/buy` | `{token, qty}` | buy from someone's open shop (≤ 50) |
-| POST | `/api/city/parties` | `{lease, startsAt, minutes?, title?}` | schedule a party at one of your Level 3+ venues |
-| DELETE | `/api/city/parties/{id}` | — | cancel your party |
-| PUT | `/api/city/parties/{id}/room` | `{room}` | your party is live in this relay room |
+
+## Events
+
+A night a CEO schedules at one of their clubs (a rented venue via `lease`, or a practice club by `club` + `level`),
+public or private, Level 3+. Every event has an invite code; a private event is listed only for its host and for
+players who opened its invite link (`/?event=<code>`).
+
+| Method | Path | Body | Notes |
+| --- | --- | --- | --- |
+| GET | `/api/events` | — | upcoming and live: public ones, mine (with invite codes), the ones I'm going to |
+| GET | `/api/events/invite/{code}` | — | opens an invite: returns the event and marks me as going (lists private ones) |
+| POST | `/api/events` | `{lease?, club?, level?, startsAt, minutes?, title?, private?}` | schedule (5–60 min, default 10; up to 7 days ahead; no overlap at the same club; ≤ 20 upcoming) |
+| POST | `/api/events/{id}/rsvp` | `{going}` | going / not going (a private event needs its invite first) |
+| DELETE | `/api/events/{id}` | — | cancel my event |
+| PUT | `/api/events/{id}/room` | `{room}` | my event is live in this relay room (from 15 min before until it ends) |
 
 ## Back office
 

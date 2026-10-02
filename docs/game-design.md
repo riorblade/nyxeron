@@ -98,8 +98,9 @@ From `city.json`:
 - A player's shop stock is one pool shared by all their venues; its storage is the venues' storage combined.
 - Shops: stock bought from the platform warehouse at `buyCost × priceScale × spot factor`; shelf price up to
   3× the venue's usual price; a buyer takes up to 50 at once.
-- Parties: Level 3+, 5–60 minutes (default 10), up to 7 days ahead; the host opens the room from 15 minutes
-  before; guest spend at a live party (and up to 30 minutes after) goes to the tenant.
+- Events (parties): at any club the player runs (city venue or practice club), Level 3+, 5–60 minutes (default
+  10), up to 7 days ahead, public or private with an invite link; the host opens the club from 15 minutes before.
+  At a city venue, guest spend at a live event (and up to 30 minutes after) goes to the tenant.
 
 ## Balance
 
