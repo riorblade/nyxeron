@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useGame } from "@/store";
+import { useGame } from "@/state/store";
 import { cn } from "@/lib/utils";
 
 export function Toast() {

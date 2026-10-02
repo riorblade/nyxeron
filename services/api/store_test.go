@@ -6,6 +6,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -70,17 +71,17 @@ func TestNightOutRules(t *testing.T) {
 	s := testStore(t)
 	s.Get(ctx, "u") // 20 000
 	// Door 2 500 + 5 TSLA for 7 430: walks out with 10 070 and the tokens.
-	p, err := s.Night(ctx, "u", 10_070, map[string]Holding{"tsla": {Qty: 5, Cost: 7_430}}, -2_435)
+	p, err := s.Night(ctx, "u", 10_070, map[string]Holding{"tsla": {Qty: 5, Cost: 7_430}}, -2_435, "")
 	if err != nil || p.Wallet != 10_070 || p.Portfolio["tsla"].Qty != 5 || p.Nights != 1 || p.BestPnl != -2_435 {
 		t.Fatalf("%+v %v", p, err)
 	}
 	reject := map[string]func() error{
 		"wallet grows": func() error {
-			_, e := s.Night(ctx, "u", 50_000, nil, 0)
+			_, e := s.Night(ctx, "u", 50_000, nil, 0, "")
 			return e
 		},
 		"tokens cost more than was spent": func() error {
-			_, e := s.Night(ctx, "u", 10_000, map[string]Holding{"nvda": {Qty: 1, Cost: 500}}, 0)
+			_, e := s.Night(ctx, "u", 10_000, map[string]Holding{"nvda": {Qty: 1, Cost: 500}}, 0, "")
 			return e
 		},
 	}
@@ -90,7 +91,7 @@ func TestNightOutRules(t *testing.T) {
 		}
 	}
 	// A second night adds up.
-	p, _ = s.Night(ctx, "u", 9_000, map[string]Holding{"tsla": {Qty: 1, Cost: 1_000}}, 100)
+	p, _ = s.Night(ctx, "u", 9_000, map[string]Holding{"tsla": {Qty: 1, Cost: 1_000}}, 100, "")
 	if p.Portfolio["tsla"] != (Holding{Qty: 6, Cost: 8_430}) || p.Nights != 2 || p.BestPnl != 100 || p.TotalPnl != -2_335 {
 		t.Fatalf("%+v", p)
 	}
@@ -112,7 +113,7 @@ func TestGigAndRefillRules(t *testing.T) {
 	if _, err := s.Refill(ctx, "u"); !errors.Is(err, errRejected) {
 		t.Fatalf("refill while rich: %v", err)
 	}
-	s.Night(ctx, "u", 100, nil, 0)
+	s.Night(ctx, "u", 100, nil, 0, "")
 	if p, err := s.Refill(ctx, "u"); err != nil || p.Wallet != startWallet {
 		t.Fatalf("refill when broke: %+v %v", p, err)
 	}
@@ -179,7 +180,7 @@ func TestConstantsMatchGameData(t *testing.T) {
 func TestProfileEndpoints(t *testing.T) {
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	p := fakePrivy(t, key)
-	srv := httptest.NewServer(routes(&quoter{}, []string{"https://nyxeron.xyz"}, p, testStore(t)))
+	srv := httptest.NewServer(routes(&quoter{}, []string{"https://nyxeron.xyz"}, p, testStore(t), nil))
 	defer srv.Close()
 	tok := signJWT(t, key, map[string]any{"alg": "ES256", "kid": "k1"}, good(time.Now().Add(time.Hour)))
 	call := func(method, path, auth string, body any) (int, Profile) {
@@ -293,5 +294,41 @@ func TestDocs(t *testing.T) {
 	}
 	if _, err := s.GetDoc(ctx, "u", "layouts", "la"); !errors.Is(err, errNotFound) {
 		t.Fatalf("deleted layout still there: %v", err)
+	}
+}
+
+// A database from before the back office (the live one) upgrades in place and keeps every player's data.
+func TestMigrateLiveDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "old.db")
+	old, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = old.Exec(`
+CREATE TABLE users (id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', avatar INTEGER NOT NULL DEFAULT 1,
+	wallet INTEGER NOT NULL, nights INTEGER NOT NULL DEFAULT 0, gigs INTEGER NOT NULL DEFAULT 0,
+	total_pnl INTEGER NOT NULL DEFAULT 0, best_pnl INTEGER NOT NULL DEFAULT 0, imported INTEGER NOT NULL DEFAULT 0,
+	last_gig INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE portfolio (user_id TEXT NOT NULL, token TEXT NOT NULL, qty INTEGER NOT NULL, cost INTEGER NOT NULL,
+	PRIMARY KEY (user_id, token));
+INSERT INTO users (id, name, avatar, wallet, nights, created_at, updated_at) VALUES ('did:privy:old', 'Kiel', 3, 18914, 3, 1, 1);
+INSERT INTO portfolio VALUES ('did:privy:old', 'tsla', 1, 292);`)
+	old.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := openStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.close()
+	p, err := s.Get(ctx, "did:privy:old")
+	if err != nil || p.Name != "Kiel" || p.Wallet != 18914 || p.Nights != 3 || p.Portfolio["tsla"].Qty != 1 || p.UnlockLevel != 1 || p.Banned {
+		t.Fatalf("%+v %v", p, err)
+	}
+	// Opening again doesn't re-run migrations.
+	s.close()
+	if s, err = openStore(path); err != nil {
+		t.Fatalf("reopen: %v", err)
 	}
 }

@@ -1,5 +1,6 @@
 import bandsJson from "./data/bands.json";
 import channelsJson from "./data/channels.json";
+import cityJson from "./data/city.json";
 import djsJson from "./data/djs.json";
 import tokensJson from "./data/tokens.json";
 import economyJson from "./data/economy.json";
@@ -30,6 +31,7 @@ export const night = nightJson;
 export const scenarios = scenariosJson;
 export const strategy = strategyJson;
 export const promoters = promotersJson;
+export const city = cityJson;
 
 export type TokenId = keyof typeof tokens;
 export type SupplierId = keyof typeof suppliers;

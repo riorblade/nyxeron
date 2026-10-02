@@ -22,11 +22,11 @@ import {
   Users,
   Warehouse,
 } from "lucide-react";
-import { art } from "@/art";
+import { art } from "@/lib/art";
 import { Img } from "@/components/Img";
 import { en, fmt } from "@/i18n/en";
 import { cn } from "@/lib/utils";
-import { useGame } from "@/store";
+import { useGame } from "@/state/store";
 
 /** Permits the next level requires that the player doesn't hold: upgrading without them invites inspections. */
 const missingAfter = (s: GameState, lv: Level) =>

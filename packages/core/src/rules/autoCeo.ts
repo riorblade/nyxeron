@@ -7,6 +7,7 @@ import {
   permits,
   requiredPermits,
   scenarios,
+  staffRoles,
   tokens,
   type Level,
 } from "../data";
@@ -55,10 +56,10 @@ export function aiPrepare(s: GameState, grow = true): GameState {
       s = tryAct(s, applyPermit(s, p));
 
   // Staff: security for the ID check and the 1:40 ratio, bartenders for bar throughput.
-  if (s.level >= 4)
+  if (s.level >= staffRoles.security.minLevel)
     while (s.staff.security < Math.ceil(lv.capacity / 40) && s.coin > 20_000)
       s = tryAct(s, hireStaff(s, "security"));
-  if (s.level >= 2)
+  if (s.level >= staffRoles.bartender.minLevel)
     while (s.staff.bartender < Math.ceil(lv.capacity / 60) && s.coin > 5_000)
       s = tryAct(s, hireStaff(s, "bartender"));
 

@@ -3,7 +3,7 @@ import { Backdrop } from "@/components/Backdrop";
 import { Button } from "@/components/ui/button";
 import { en } from "@/i18n/en";
 import { guestBuy, guestLeave, useNet } from "@/net/session";
-import { useGame } from "@/store";
+import { useGame } from "@/state/store";
 import { GuestNight, type OnlineGuest } from "./GuestNight";
 
 const t = en.live;

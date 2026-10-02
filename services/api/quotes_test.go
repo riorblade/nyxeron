@@ -29,7 +29,7 @@ func TestToQuotes(t *testing.T) {
 }
 
 func TestQuotesWithoutKey(t *testing.T) {
-	srv := httptest.NewServer(routes(&quoter{}, []string{"https://nyxeron.xyz"}, newPrivy("", "", http.DefaultClient), nil))
+	srv := httptest.NewServer(routes(&quoter{}, []string{"https://nyxeron.xyz"}, newPrivy("", "", http.DefaultClient), nil, nil))
 	defer srv.Close()
 	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/quotes", nil)
 	req.Header.Set("Origin", "https://nyxeron.xyz")

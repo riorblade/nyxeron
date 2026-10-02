@@ -16,11 +16,12 @@ import (
 //	POST  /api/profile/import   Profile → Profile (once: this device's pre-account data)
 //	PATCH /api/profile          {name?, avatar?} → Profile
 //	POST  /api/wallet/refill    → Profile (only when the wallet is nearly empty)
-//	POST  /api/nights           {cash, bought, pnl} → Profile (a night out as a guest)
+//	POST  /api/nights           {cash, bought, pnl, room?} → Profile (a night out as a guest)
 //	POST  /api/gigs             {fee} → Profile (a DJ gig played to the end)
 type players struct {
 	auth *privy
 	db   *store
+	q    *quoter
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -36,6 +37,8 @@ func fail(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad_request"})
 	case errors.Is(err, errRejected):
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "rejected"})
+	case errors.Is(err, errSoldOut):
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "sold_out"})
 	case errors.Is(err, errConflict):
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "conflict"})
 	default:
@@ -58,6 +61,11 @@ func (pl *players) who(w http.ResponseWriter, r *http.Request) (string, bool) {
 	id, err := pl.auth.verify(strings.TrimSpace(token), time.Now())
 	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid_token"})
+		return "", false
+	}
+	// A banned player can still sign in and see why, but changes nothing.
+	if r.Method != http.MethodGet && pl.db.Banned(r.Context(), id) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "banned"})
 		return "", false
 	}
 	return id, true
@@ -83,6 +91,11 @@ func (pl *players) route(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/profile", func(w http.ResponseWriter, r *http.Request) {
 		if id, ok := pl.who(w, r); ok {
 			p, err := pl.db.Get(r.Context(), id)
+			if err == nil {
+				// Keep the email and wallet the back office searches by (Privy lookups are cached for minutes).
+				me, _ := pl.auth.user(id, time.Now())
+				_ = pl.db.SetIdentity(r.Context(), id, me.Email, me.Wallet, time.Now())
+			}
 			reply(w, p, err)
 		}
 	})
@@ -117,9 +130,10 @@ func (pl *players) route(mux *http.ServeMux) {
 			Cash   int64              `json:"cash"`
 			Bought map[string]Holding `json:"bought"`
 			Pnl    int64              `json:"pnl"`
+			Room   string             `json:"room"` // a live party at a rented venue: its tenant gets the spend
 		}
 		if ok && body(w, r, &in) {
-			p, err := pl.db.Night(r.Context(), id, in.Cash, in.Bought, in.Pnl)
+			p, err := pl.db.Night(r.Context(), id, in.Cash, in.Bought, in.Pnl, in.Room)
 			reply(w, p, err)
 		}
 	})

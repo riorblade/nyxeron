@@ -1,0 +1,215 @@
+{
+  "femaleShare": 0.42,
+  "ladiesNight": {
+    "femaleShareBonus": 0.14,
+    "demandBonus": 0.12
+  },
+  "dressCode": {
+    "none": {
+      "rejectMale": 0,
+      "rejectFemale": 0,
+      "budgetMultiplier": 1,
+      "premiumWeight": 0,
+      "demand": 1
+    },
+    "smart": {
+      "rejectMale": 0.1,
+      "rejectFemale": 0.03,
+      "budgetMultiplier": 1.2,
+      "premiumWeight": 1,
+      "demand": 0.95
+    },
+    "strict": {
+      "rejectMale": 0.25,
+      "rejectFemale": 0.08,
+      "budgetMultiplier": 1.4,
+      "premiumWeight": 2,
+      "demand": 0.85
+    }
+  },
+  "rounds": {
+    "base": 0.08,
+    "perFemaleShare": 0.4,
+    "perHost": 0.02,
+    "max": 0.55,
+    "satisfaction": 2
+  },
+  "hosts": {
+    "crowdEquivalent": 6,
+    "maleSatisfactionPerMinute": 0.01
+  },
+  "relations": {
+    "guestsPerStaff": 60,
+    "satisfactionPerMinute": 0.05,
+    "upsell": 0.15,
+    "tablesPerStaff": 3,
+    "tableMinSpend": 250,
+    "tablesArriveMinute": 90,
+    "vipPerStaff": 1.5,
+    "vipSpendMultiplier": 3
+  },
+  "energy": {
+    "start": 30,
+    "follow": 0.1,
+    "danceWeight": 0.55,
+    "fullWeight": 0.45,
+    "fullAtCapacityShare": 0.95,
+    "danceShareForMax": 0.85,
+    "danceMultiplier": [0.6, 1.4],
+    "barMultiplier": [0.8, 1.25],
+    "satisfactionPerMinute": 0.05,
+    "leaveBelowEnergy": 35,
+    "leaveBelowSatisfaction": 45,
+    "leaveChancePerMinute": 0.02
+  },
+  "tactics": {
+    "mcHype": {
+      "staff": "mc",
+      "duration": 20,
+      "cooldown": 60,
+      "energy": 25,
+      "satisfactionPerMinute": 0.15,
+      "fatigue": 0.3
+    },
+    "hostsFloor": {
+      "staff": "host",
+      "duration": 30,
+      "cooldown": 90,
+      "energyPerHost": 6,
+      "maxEnergy": 40,
+      "fatigue": 0.2
+    },
+    "djAnthem": {
+      "staff": "",
+      "duration": 20,
+      "cooldown": 360,
+      "energy": 35,
+      "satisfaction": 10,
+      "stayExtension": 45,
+      "matchFactor": 1.2,
+      "mismatchFactor": 0.7,
+      "fatigue": 1
+    },
+    "sparkler": {
+      "staff": "",
+      "duration": 10,
+      "cooldown": 45,
+      "energy": 15,
+      "fatigue": 0.35,
+      "copycat": 0.2,
+      "bottleShare": 0.35,
+      "satisfaction": 8,
+      "cost": 20,
+      "splurge": 0.6
+    }
+  },
+  "impress": {
+    "perFemaleShare": 0.5,
+    "perHost": 0.05,
+    "maxHost": 0.3
+  },
+  "cover": {
+    "reference": 12,
+    "elasticity": 0.2,
+    "minDemand": 0.3,
+    "maxDemand": 1.5,
+    "budgetElasticity": 0.15,
+    "minBudget": 0.8,
+    "maxBudget": 1.3
+  },
+  "happyHour": {
+    "early": {
+      "start": 0,
+      "end": 60,
+      "arrivalShift": 0.25
+    },
+    "late": {
+      "start": 300,
+      "end": 360,
+      "stayExtension": 30
+    }
+  },
+  "upgrades": {
+    "sound": {
+      "cost": [300, 900, 2000],
+      "energyPerTier": 5,
+      "danceSatisfactionPerTier": 0.1,
+      "minLevel": 3
+    },
+    "lighting": {
+      "cost": [250, 800, 1800],
+      "energyPerTier": 5,
+      "satisfactionPerTier": 0.01,
+      "minLevel": 3
+    },
+    "vip": {
+      "minLevel": 4,
+      "cost": [2500],
+      "energyPerTier": 0
+    },
+    "capacity": {
+      "minLevel": 1,
+      "cost": [400, 1000, 2200],
+      "perTier": 0.15
+    },
+    "storage": {
+      "minLevel": 1,
+      "cost": [150, 400, 900],
+      "perTier": 0.5
+    }
+  },
+  "guestList": {
+    "arriveWindow": 75
+  },
+  "encore": {
+    "energy": 75,
+    "chance": 0.5,
+    "minutes": 25
+  },
+  "seats": {
+    "vip": {
+      "defaultSpend": 750,
+      "elasticity": 0.5,
+      "perStaff": 1.5
+    },
+    "sofa": {
+      "defaultSpend": 300,
+      "elasticity": 0.5,
+      "perStaff": 1.5
+    },
+    "table": {
+      "defaultSpend": 200,
+      "elasticity": 0.5,
+      "perStaff": 1.5
+    },
+    "bar": {
+      "defaultSpend": 60,
+      "elasticity": 0.7,
+      "walkIn": 0.3
+    }
+  },
+  "platform": {
+    "feeShare": 0.05,
+    "spotFactorRange": [0.2, 5]
+  },
+  "visitor": {
+    "startWallet": 20000
+  },
+  "autoRefill": {
+    "threshold": 15,
+    "batch": 50,
+    "supplier": "corner"
+  },
+  "market": {
+    "revert": 0.015,
+    "energyDrift": 0.002,
+    "djStartPump": 0.06,
+    "anthemPumpPerMinute": 0.004,
+    "emaFollow": 0.05,
+    "momentumBuy": 3,
+    "fomoRange": [0.75, 1.4],
+    "pnlSatisfaction": 0.6,
+    "lossTilt": 8,
+    "range": [0.4, 3]
+  }
+}

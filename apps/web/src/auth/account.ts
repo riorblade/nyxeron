@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { useSets } from "@/dj/sets";
-import { useProfile } from "@/profile";
-import { setScope } from "@/scope";
+import { useProfile } from "@/state/profile";
+import { setScope } from "@/state/scope";
 import { resetShoutouts } from "@/venue/shoutouts";
 
 /**
@@ -26,6 +26,8 @@ interface AccountStore {
   logout: (() => Promise<void>) | null;
   /** Fresh Privy access token for our API (Authorization: Bearer). */
   token: (() => Promise<string | null>) | null;
+  /** Set by the back office: the highest venue a career may start at, and a ban. */
+  access: { unlockLevel: number; banned: boolean; banReason: string };
 }
 
 export const useAccount = create<AccountStore>(() => ({
@@ -33,6 +35,7 @@ export const useAccount = create<AccountStore>(() => ({
   server: null,
   logout: null,
   token: null,
+  access: { unlockLevel: 1, banned: false, banReason: "" },
 }));
 
 /** Storage-safe part of a Privy DID ("did:privy:abc" → "abc"). */

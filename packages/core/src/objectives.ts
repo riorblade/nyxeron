@@ -1,4 +1,4 @@
-import { levels, scenarios, type Level } from "./data";
+import { levels, scenarios, staffRoles, type Level } from "./data";
 import { permitActive } from "./rules/legal";
 import type { GameState } from "./state";
 
@@ -28,7 +28,7 @@ const guestsTonight = (s: GameState) =>
   s.night?.guests.filter((g) => g.admitted).length ?? 0;
 const nightDone = (s: GameState) => s.phase === "report";
 
-/** Today's objectives: tutorial on career Day 1–2, GDD Week 1 flow in The Basement, level-up goal otherwise. */
+/** Today's objectives: tutorial on career Day 1–2, the Week 1 flow in The Basement, level-up goal otherwise. */
 export function objectives(s: GameState): Objective[] {
   const today = s.log.filter((e) => e.day === s.day);
   const guests = (target: number): Objective => {
@@ -88,9 +88,15 @@ export function objectives(s: GameState): Objective[] {
 
   if (s.day === 1) return [orderStock, openClub];
   if (s.day === 2) return [postPromo, guests(15)];
-  if (s.level === 5) return [rep(80)];
+  // From the venue where security unlocks, the door needs a guard (underage ID checks, the 1:40 ratio).
+  const guard: Objective[] =
+    s.level >= staffRoles.security.minLevel && s.staff.security === 0
+      ? [{ id: "hireSecurity", done: false }]
+      : [];
+  if (s.level === 5) return [...guard, rep(80)];
   const next = levels[(s.level + 1) as Level];
   return [
+    ...guard,
     {
       id: "saveCoin",
       target: next.cost,

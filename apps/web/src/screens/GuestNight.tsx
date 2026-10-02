@@ -23,15 +23,15 @@ import {
   type ReactNode,
 } from "react";
 import { audio, nightTrack, useMusic } from "@/audio";
-import { art } from "@/art";
+import { art } from "@/lib/art";
 import { Img } from "@/components/Img";
 import { Button } from "@/components/ui/button";
 import { TickerTape } from "@/hud/TickerTape";
 import { TokenLink } from "@/hud/TokenDetail";
 import { clock, en, fmt, reasonText } from "@/i18n/en";
 import { cn, trapFocus } from "@/lib/utils";
-import { player } from "@/auth/remote";
-import { useGame } from "@/store";
+import { player } from "@/api/player";
+import { useGame } from "@/state/store";
 import { VenueView } from "@/venue/VenueView";
 import { useNet } from "@/net/session";
 

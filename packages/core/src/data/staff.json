@@ -7,7 +7,7 @@
   "security": {
     "name": "Security",
     "wagePerDay": 400,
-    "minLevel": 4
+    "minLevel": 3
   },
   "host": {
     "name": "Host",

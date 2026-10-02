@@ -1,6 +1,6 @@
 import { en } from "@/i18n/en";
 import { cn } from "@/lib/utils";
-import { useGame } from "@/store";
+import { useGame } from "@/state/store";
 
 export function Mark({ size = 26 }: { size?: number }) {
   return (

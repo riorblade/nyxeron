@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { LOUNGE, useMusic } from "@/audio";
-import { art } from "@/art";
+import { art } from "@/lib/art";
 import { Backdrop } from "@/components/Backdrop";
 import { Brand } from "@/components/Brand";
 import { Cta } from "@/components/Cta";
@@ -29,21 +29,26 @@ import { Img } from "@/components/Img";
 import { Input } from "@/components/ui/input";
 import { clock, en, fmt, genres } from "@/i18n/en";
 import { cn } from "@/lib/utils";
-import { canRefill, useProfile } from "@/profile";
-import { readSave, type Slot } from "@/save";
-import { useSettings } from "@/settings";
+import { canRefill, useProfile } from "@/state/profile";
+import { readSave, type Slot } from "@/state/save";
+import { useSettings } from "@/state/settings";
 import { guestJoin } from "@/net/session";
 import { useAccount } from "@/auth/account";
-import { player } from "@/auth/remote";
-import { useDocsSync } from "@/auth/docs";
-import { useGame } from "@/store";
+import { player } from "@/api/player";
+import { useDocsSync } from "@/api/docs";
+import { useGame } from "@/state/store";
+import { CityCeo, CityGuest } from "./CityPanels";
 
-type Step = "home" | "role" | "ceo" | "guest" | "dj";
+type Step = "home" | "role" | "ceo" | "city" | "guest" | "dj";
 const t = en.dashboard;
 const SLOTS: Slot[] = ["auto", 1, 2, 3];
 /** One step back: a role's panel → the role picker → the dashboard home. */
 const up = (s: Step): Step =>
-  s === "ceo" || s === "guest" || s === "dj" ? "role" : "home";
+  s === "city"
+    ? "ceo"
+    : s === "ceo" || s === "guest" || s === "dj"
+      ? "role"
+      : "home";
 const signed = (n: number) =>
   `${n > 0 ? "+" : n < 0 ? "−" : ""}${fmt(Math.abs(n))} C`;
 
@@ -96,6 +101,7 @@ export function Dashboard() {
           </div>
         </header>
 
+        <Announcement />
         <div className="grid flex-1 grid-cols-1 gap-6 lg:grid-cols-[21rem_1fr]">
           <ProfileCard />
           <section className="glass enter flex min-h-[28rem] flex-col rounded-2xl p-5 sm:p-7">
@@ -109,10 +115,12 @@ export function Dashboard() {
             )}
             {step === "home" && <Home onEnter={() => setStep("role")} />}
             {step === "role" && <RolePicker onPick={setStep} />}
-            {step === "ceo" && <CeoPanel />}
+            {step === "ceo" && <CeoPanel onCity={() => setStep("city")} />}
+            {step === "city" && <CityCeo />}
             {step === "guest" && (
               <>
                 <LiveJoin initial={invite} />
+                <CityGuest />
                 <EventList />
               </>
             )}
@@ -121,6 +129,29 @@ export function Dashboard() {
         </div>
       </div>
     </main>
+  );
+}
+
+/** The back office's banner (events, maintenance), if one is up. */
+function Announcement() {
+  const [text, setText] = useState("");
+  useEffect(() => {
+    fetch(`${import.meta.env.VITE_API_BASE ?? ""}/api/announcement`)
+      .then((r) => (r.ok ? (r.json() as Promise<{ text: string }>) : null))
+      .then((a) => setText(a?.text ?? ""))
+      .catch(() => {});
+  }, []);
+  if (!text) return null;
+  return (
+    <div
+      role="status"
+      className="enter flex items-start gap-3 rounded-xl border border-white/20 bg-white/[0.05] px-4 py-3 text-sm shadow-[0_0_24px_rgba(255,255,255,.08)]"
+    >
+      <span className="shrink-0 text-[10px] tracking-[0.3em] text-white/50 uppercase">
+        {en.auth.announcement}
+      </span>
+      <span className="text-white/85">{text}</span>
+    </div>
   );
 }
 
@@ -419,13 +450,14 @@ function RolePicker({ onPick }: { onPick: (s: Step) => void }) {
   );
 }
 
-function CeoPanel() {
+function CeoPanel({ onCity }: { onCity: () => void }) {
   const { start, go, load } = useGame();
   const auto = readSave("auto");
   const [loading, setLoading] = useState(false);
   const row =
     "flex w-full items-center justify-between gap-4 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3.5 text-left hover:border-white/30 hover:bg-white/[0.07] disabled:opacity-40";
   const options: [string, string, () => void][] = [
+    [en.city.title, en.city.desc, onCity],
     [t.newCareer, t.newCareerDesc, () => go("setup")],
     [t.basement, t.basementDesc, () => start({ mode: "basement" })],
     [t.sandbox, t.sandboxDesc, () => start({ mode: "sandbox" })],

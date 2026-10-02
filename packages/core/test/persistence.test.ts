@@ -12,7 +12,9 @@ import {
   storageOf,
   tickNight,
   startNight,
+  levels,
   type GameState,
+  type PermitId,
 } from "../src";
 import { botDay } from "../scripts/bot";
 
@@ -155,5 +157,26 @@ describe("save data", () => {
   it("a DJ gig's mid-night state round-trips too", () => {
     const g = createGig(scenarios.events[1]!, 3);
     expect(roundTrip(g)).toEqual(g);
+  });
+});
+
+describe("start at an unlocked venue (back office access)", () => {
+  it("opens the venue with its permits, reputation and a scaled purse, and plays", () => {
+    for (const level of [2, 3, 4, 5] as const) {
+      let s: GameState = createGameState(11, "edm", { level });
+      expect(s.level).toBe(level);
+      expect(s.reputation).toBeGreaterThanOrEqual(levels[level].repRequired);
+      expect(s.coin).toBeGreaterThan(levels[level].rentPerDay * 10);
+      for (const p of levels[level].requiredPermits as PermitId[])
+        expect(s.permits[p].valid).toBe(true);
+      for (let d = 0; d < 7 && !s.outcome; d++) {
+        s = botDay(s);
+        expect(invariants(s), `L${level} day ${s.day}`).toEqual([]);
+      }
+      expect(s.outcome, `L${level}`).not.toBe("defeat");
+    }
+    expect(createGameState(11, "edm", { level: 1 })).toEqual(
+      createGameState(11, "edm"),
+    );
   });
 });

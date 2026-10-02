@@ -11,7 +11,7 @@ import {
 import { FileText } from "lucide-react";
 import { en, fmt } from "@/i18n/en";
 import { cn } from "@/lib/utils";
-import { useGame } from "@/store";
+import { useGame } from "@/state/store";
 
 export function PermitsTab({ s }: { s: GameState }) {
   const act = useGame((x) => x.act);

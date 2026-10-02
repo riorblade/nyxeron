@@ -6,10 +6,10 @@ import { Backdrop } from "@/components/Backdrop";
 import { Brand } from "@/components/Brand";
 import { Cta } from "@/components/Cta";
 import { en } from "@/i18n/en";
-import { useGame } from "@/store";
+import { useGame } from "@/state/store";
 import { signedIn, useAccount, type Account } from "./account";
-import { syncDocs } from "./docs";
-import { syncProfile } from "./remote";
+import { syncDocs } from "@/api/docs";
+import { syncProfile } from "@/api/player";
 
 const APP_ID = import.meta.env.VITE_PRIVY_APP_ID;
 const t = en.auth;
@@ -57,6 +57,7 @@ function Gate({ children }: { children: ReactNode }) {
     usePrivy();
   // Which Privy user the per-player stores are switched to (they switch before the game shows).
   const [scoped, setScoped] = useState("");
+  const ban = useAccount((a) => a.access);
 
   useEffect(() => {
     useAccount.setState({ logout, token: getAccessToken });
@@ -103,6 +104,26 @@ function Gate({ children }: { children: ReactNode }) {
           onClick={() => useGame.getState().go("menu")}
         >
           ← {t.back}
+        </button>
+      </Screen>
+    );
+  if (ban.banned)
+    return (
+      <Screen>
+        <h1 className="text-3xl font-medium tracking-[-0.02em]">
+          {t.bannedTitle}
+        </h1>
+        <p className="mt-2 max-w-sm text-sm leading-relaxed text-white/65">
+          {t.banned(ban.banReason)}
+        </p>
+        <button
+          className="mt-6 rounded-md border border-white/15 px-3 py-1.5 text-sm hover:bg-white/10"
+          onClick={async () => {
+            await logout();
+            location.reload();
+          }}
+        >
+          {t.signOut}
         </button>
       </Screen>
     );

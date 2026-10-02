@@ -1,6 +1,6 @@
 import { compactForSave, createGameState, runNight } from "@nyxeron/core";
 import { describe, expect, it } from "vitest";
-import { deserialize, serialize } from "./save";
+import { deserialize, serialize } from "@/state/save";
 
 describe("save", () => {
   it("round-trips a game exactly (in its compact save form)", () => {

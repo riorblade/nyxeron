@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { en } from "@/i18n/en";
 import { cn } from "@/lib/utils";
-import { useSettings } from "@/settings";
-import { useGame } from "@/store";
+import { useSettings } from "@/state/settings";
+import { useGame } from "@/state/store";
 
 /** Older builds stored "don't show again" under its own key; fold it into Settings. */
 const SKIP_KEY = "nyxeron:skipIntro";

@@ -5,13 +5,31 @@ import {
   missingPermits,
   type GameState,
 } from "@nyxeron/core";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Brand, HomeButton } from "@/components/Brand";
 import { SettingsButton } from "@/components/SettingsDialog";
 import { clock, en, fmt } from "@/i18n/en";
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
 import { statIcon } from "./icons";
+import { StatInfo, type InfoKey } from "./StatInfo";
+
+/** Which stat's explanation is open (one at a time); clicking anywhere else or Escape closes it. */
+function useOpenStat() {
+  const [open, setOpen] = useState<InfoKey | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(null);
+    const key = (e: KeyboardEvent) => e.key === "Escape" && close();
+    window.addEventListener("click", close);
+    window.addEventListener("keydown", key);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("keydown", key);
+    };
+  }, [open]);
+  return [open, setOpen] as const;
+}
 
 function Stat({
   label,
@@ -21,7 +39,15 @@ function Stat({
   dense,
   tier = 0,
   roomy,
+  info,
+  s,
+  open,
+  setOpen,
 }: {
+  info: InfoKey;
+  s: GameState;
+  open: InfoKey | null;
+  setOpen: (k: InfoKey | null) => void;
   label: string;
   icon: LucideIcon;
   children: ReactNode;
@@ -32,40 +58,56 @@ function Stat({
   /** Night HUD shares the bar with the controls, so its secondary stats need more room before they show. */
   roomy?: boolean;
 }) {
+  const shown = open === info;
   return (
     <div
       className={cn(
-        "flex shrink-0 items-center gap-2.5 border-l border-white/10 pl-4 first-of-type:border-0 first-of-type:pl-0",
+        "relative flex shrink-0 items-center border-l border-white/10 pl-4 first-of-type:border-0 first-of-type:pl-0",
         !warn && tier === 1 && (roomy ? "hidden 2xl:flex" : "hidden xl:flex"),
         !warn &&
           tier === 2 &&
           (roomy ? "hidden min-[1800px]:flex" : "hidden 2xl:flex"),
       )}
     >
-      {!dense && (
-        <span
-          className={cn(
-            "flex size-8 shrink-0 items-center justify-center rounded-lg border border-white/12 bg-white/[0.04]",
-            warn && "border-white/50 bg-white/10",
-          )}
-        >
-          <Icon className="size-4" strokeWidth={1.75} />
-        </span>
-      )}
-      <div className="flex flex-col gap-0.5 leading-tight">
-        <span className="text-[10px] tracking-[0.2em] whitespace-nowrap text-white/60 uppercase">
-          {label}
-        </span>
-        <span
-          className={cn(
-            "font-mono text-sm tabular-nums",
-            warn &&
-              "animate-pulse underline decoration-dotted underline-offset-4",
-          )}
-        >
-          {children}
-        </span>
-      </div>
+      <button
+        type="button"
+        aria-expanded={shown}
+        title={en.hud.infoHint}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen(shown ? null : info);
+        }}
+        className={cn(
+          "-my-1 -ml-1.5 flex items-center gap-2.5 rounded-lg py-1 pr-2 pl-1.5 text-left transition hover:bg-white/[0.07]",
+          shown && "bg-white/10",
+        )}
+      >
+        {!dense && (
+          <span
+            className={cn(
+              "flex size-8 shrink-0 items-center justify-center rounded-lg border border-white/12 bg-white/[0.04]",
+              warn && "border-white/50 bg-white/10",
+            )}
+          >
+            <Icon className="size-4" strokeWidth={1.75} />
+          </span>
+        )}
+        <div className="flex flex-col gap-0.5 leading-tight">
+          <span className="text-[10px] tracking-[0.2em] whitespace-nowrap text-white/60 uppercase">
+            {label}
+          </span>
+          <span
+            className={cn(
+              "font-mono text-sm tabular-nums",
+              warn &&
+                "animate-pulse underline decoration-dotted underline-offset-4",
+            )}
+          >
+            {children}
+          </span>
+        </div>
+      </button>
+      {shown && <StatInfo s={s} stat={info} label={label} />}
     </div>
   );
 }
@@ -104,10 +146,12 @@ export function TopBar({
 }) {
   const missing = missingPermits(s);
   const night = s.night && s.phase === "night";
+  const [open, setOpen] = useOpenStat();
+  const stat = { s, open, setOpen };
   return (
     <header
       className={cn(
-        "glass enter flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl px-3 py-2.5 sm:px-5 lg:flex-nowrap",
+        "glass enter relative z-40 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl px-3 py-2.5 sm:px-5 lg:flex-nowrap",
         className,
       )}
     >
@@ -127,11 +171,20 @@ export function TopBar({
         dense={dense}
         icon={statIcon.coin}
         label={en.hud.coin}
+        info="coin"
+        {...stat}
         warn={s.coin < 0}
       >
         {fmt(s.coin)}
       </Stat>
-      <Stat roomy={dense} dense={dense} icon={statIcon.rep} label={en.hud.rep}>
+      <Stat
+        roomy={dense}
+        dense={dense}
+        icon={statIcon.rep}
+        label={en.hud.rep}
+        info="rep"
+        {...stat}
+      >
         <span className="tracking-tighter text-white/80">
           {stars(s.reputation)}
         </span>{" "}
@@ -143,6 +196,8 @@ export function TopBar({
         tier={2}
         icon={statIcon.hype}
         label={en.hud.hype}
+        info="hype"
+        {...stat}
       >
         <Meter value={s.hype} />
       </Stat>
@@ -152,6 +207,8 @@ export function TopBar({
         tier={1}
         icon={statIcon.safety}
         label={en.hud.safety}
+        info="safety"
+        {...stat}
         warn={s.safety < 40}
       >
         <Meter value={s.safety} warn={s.safety < 40} />
@@ -162,6 +219,8 @@ export function TopBar({
         tier={2}
         icon={statIcon.energy}
         label={en.hud.energy}
+        info="energy"
+        {...stat}
       >
         {"●".repeat(s.ceoEnergy)}
         <span className="text-white/25">
@@ -174,6 +233,8 @@ export function TopBar({
         tier={1}
         icon={statIcon.violations}
         label={en.hud.violations}
+        info="violations"
+        {...stat}
         warn={s.violations > 0}
       >
         {s.violations}/{legal.maxViolations}
@@ -184,6 +245,8 @@ export function TopBar({
         tier={2}
         icon={statIcon.permits}
         label={en.hud.permits}
+        info="permits"
+        {...stat}
         warn={missing.length > 0}
       >
         {missing.length ? `! ${missing.length}` : "✓"}

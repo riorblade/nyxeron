@@ -1,9 +1,9 @@
 import { Button } from "@/components/ui/button";
 import { en } from "@/i18n/en";
 import { trapFocus } from "@/lib/utils";
-import { writeSave } from "@/save";
-import { useSettings } from "@/settings";
-import { useGame } from "@/store";
+import { writeSave } from "@/state/save";
+import { useSettings } from "@/state/settings";
+import { useGame } from "@/state/store";
 
 export function PauseMenu() {
   const { game, setPaused, home, notify } = useGame();

@@ -1,11 +1,11 @@
 import { tokens, ids, type GameState } from "@nyxeron/core";
-import { art } from "@/art";
+import { art } from "@/lib/art";
 import { Img } from "@/components/Img";
 import { TokenLink } from "./TokenDetail";
 import { en } from "@/i18n/en";
 import { cn } from "@/lib/utils";
 
-/** Bars are relative to 150 units; below 20% the bar blinks (GDD 12: alert when stock < 20%). */
+/** Bars are relative to 150 units; below 20% the bar blinks. */
 const FULL = 150;
 
 export function StockBars({ s }: { s: GameState }) {

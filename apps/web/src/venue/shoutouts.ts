@@ -1,4 +1,4 @@
-import { syncHooks, userKey } from "@/scope";
+import { syncHooks, userKey } from "@/state/scope";
 
 /** Videotron shoutouts typed by the player: kept per account (and synced to it), no rendering here. */
 

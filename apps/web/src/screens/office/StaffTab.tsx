@@ -7,12 +7,12 @@ import {
   capacityOf,
 } from "@nyxeron/core";
 import { Lock, Minus, Plus, Users } from "lucide-react";
-import { art } from "@/art";
+import { art } from "@/lib/art";
 import { Img } from "@/components/Img";
 import { TiltCard } from "@/components/TiltCard";
 import { en } from "@/i18n/en";
 import { cn } from "@/lib/utils";
-import { useGame } from "@/store";
+import { useGame } from "@/state/store";
 
 export function StaffTab({ s }: { s: GameState }) {
   const act = useGame((x) => x.act);

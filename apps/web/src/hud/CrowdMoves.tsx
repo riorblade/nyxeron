@@ -10,7 +10,7 @@ import {
 import { Disc3, Mic, Sparkles, Users } from "lucide-react";
 import { en, fmt } from "@/i18n/en";
 import { cn } from "@/lib/utils";
-import { useGame } from "@/store";
+import { useGame } from "@/state/store";
 
 const t = en.moves;
 const MOVES: { id: TacticId; icon: typeof Mic }[] = [

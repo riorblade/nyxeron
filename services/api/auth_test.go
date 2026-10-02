@@ -98,7 +98,7 @@ func TestVerifyPrivyToken(t *testing.T) {
 func TestMeEndpoint(t *testing.T) {
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	p := fakePrivy(t, key)
-	srv := httptest.NewServer(routes(&quoter{}, []string{"https://nyxeron.xyz"}, p, nil))
+	srv := httptest.NewServer(routes(&quoter{}, []string{"https://nyxeron.xyz"}, p, nil, nil))
 	defer srv.Close()
 	call := func(auth string) (*http.Response, Me) {
 		req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/me", nil)

@@ -1,7 +1,7 @@
 import { Cloud, Flame, Zap } from "lucide-react";
 import { en } from "@/i18n/en";
 import { cn } from "@/lib/utils";
-import { useSettings } from "@/settings";
+import { useSettings } from "@/state/settings";
 import { firePyro, type PyroCue } from "@/venue/pyro";
 
 const cues: { cue: PyroCue; Icon: typeof Flame; key: string }[] = [

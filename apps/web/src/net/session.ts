@@ -11,7 +11,7 @@ import {
 } from "@nyxeron/core";
 import { create } from "zustand";
 import { en, reasonText } from "@/i18n/en";
-import { useGame } from "@/store";
+import { useGame } from "@/state/store";
 import { packState, unpackState } from "./codec";
 import { acquireEngine, getEngine, releaseEngine } from "@/dj/session";
 import type { DjAct } from "@/dj/engine";

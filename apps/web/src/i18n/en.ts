@@ -61,7 +61,7 @@ export const en = {
     main: ["Nyxeron", "Nightlife"],
     alt: ["Open the", "Doors"],
     crew: ["Sixty", "Nights"],
-    // "Nyx, goddess of the night": the name comes from Greek myth (GDD 1).
+    // "Nyx, goddess of the night": the name comes from Greek myth.
     greek: ["ΝΥΞ", "·", "ΘΕΑ ΤΗΣ ΝΥΧΤΑΣ"],
     zone: ["Veltra City", "Local Time"],
     enter: "Enter",
@@ -91,6 +91,10 @@ export const en = {
     loading: "Loading your account…",
     back: "Back to the landing page",
     signOut: "Sign out",
+    bannedTitle: "Account suspended",
+    banned: (reason: string) =>
+      `This account can't play right now${reason ? `: ${reason}` : ""}. Contact support if you think this is a mistake.`,
+    announcement: "Announcement",
     wallet: "BNB Chain",
     walletPending: "Creating your wallet…",
     copied: "Address copied",
@@ -152,7 +156,7 @@ export const en = {
     ceoTitle: "CEO · your clubs",
     continue: "Continue",
     newCareer: "New career",
-    newCareerDesc: "Start from one token booth, 60 nights to the top",
+    newCareerDesc: "Offline practice: one token booth, 60 nights to the top",
     basement: "The Basement",
     basementDesc: "Level 4 club, Week 1 challenge",
     sandbox: "Sandbox",
@@ -206,6 +210,72 @@ export const en = {
       "A CEO invited you to DJ? Enter their room code: your decks become the club's music, everyone hears your mix.",
     djJoin: "Take the decks",
     djLive: (name: string) => `DJ ${name} is on the decks`,
+  },
+
+  city: {
+    title: "City · rent a venue",
+    desc: "Rent a real venue in the shared city by the week. Run a shop, host parties.",
+    rentTitle: "Rent a venue",
+    rentNote:
+      "Paid weekly from your Coin. Any venue runs a shop that sells while you're away (as long as you have stock). From Level 3 you can host parties.",
+    free: (n: number, of: number) => `${n} of ${of} free`,
+    perWeek: (c: string) => `${c} C / week`,
+    clubName: "Venue name",
+    weeks: (n: number) => `${n} week${n === 1 ? "" : "s"}`,
+    rent: (c: string) => `Rent · ${c} C`,
+    full: "All taken",
+    yours: "Your venue",
+    until: (d: string) => `Rented until ${d}`,
+    extend: (c: string) => `Extend 1 week · ${c} C`,
+    shop: "Shop",
+    shopOpen: "Open: other players can buy",
+    storage: (n: number, of: number) => `Storage ${n} / ${of}`,
+    inStock: (n: number) => `${n} in stock`,
+    cost: (c: string) => `stock costs ${c} C`,
+    shelf: "Price",
+    maxPrice: (c: string) => `max ${c}`,
+    restock: (n: number, c: string) => `Buy ${n} · ${c} C`,
+    savePrices: "Save prices",
+    parties: "Parties",
+    partiesLocked:
+      "Parties need a Level 3 venue or bigger. Smaller venues sell.",
+    when: "Starts",
+    minutes: "Minutes",
+    partyTitle: "Title (optional)",
+    schedule: "Schedule party",
+    noParties: "No parties scheduled.",
+    hostNow: "Host now",
+    cancel: "Cancel",
+    liveNow: "Live now",
+    upcoming: "Upcoming parties",
+    noUpcoming: "Nothing scheduled yet.",
+    shops: "Open shops",
+    noShops: "No shops open right now.",
+    buy: "Buy",
+    join: "Join party",
+    by: (owner: string) => `by ${owner || "a CEO"}`,
+    at: (club: string, level: string) => `${club} · ${level}`,
+    rented: "Venue rented",
+    renamed: "Venue renamed",
+    rename: "Rename",
+    warehouse: (n: number) =>
+      n ? `platform has ${n}` : "sold out at the platform",
+    stocked: "Stock delivered",
+    saved: "Shop updated",
+    bought: (n: number, t: string) => `Bought ${n} ${t}`,
+    scheduled: "Party scheduled",
+    cancelled: "Party cancelled",
+    failed: (code: string) =>
+      ({
+        rejected: "Not enough Coin, storage or stock for that.",
+        sold_out: "The platform's warehouse doesn't have that many right now.",
+        conflict: "That's taken (or you already rent a venue).",
+        no_lease: "Rent a venue first.",
+        bad_request: "Check the values.",
+        banned: "This account is suspended.",
+      })[code] ?? `Couldn't do that (${code}).`,
+    signIn: "Sign in to rent a venue.",
+    loading: "Loading the city…",
   },
 
   gig: {
@@ -302,6 +372,9 @@ export const en = {
       string
     >,
     start: "Start Career",
+    venue: "Starting venue",
+    venueNote:
+      "Unlocked for your account: skip the climb and open at a bigger venue.",
   },
 
   hud: {
@@ -314,7 +387,122 @@ export const en = {
     violations: "Violations",
     permits: "Permits",
     level: (n: number, name: string) => `Lv ${n} · ${name}`,
+    /** Tap a stat on the top bar: what it is, what it does, how it moves, and what moved it lately. */
+    infoHint: "Tap for details",
+    whatItDoes: "What it does",
+    howItMoves: "How it moves",
+    recently: "Recently",
+    nothingYet: "No changes yet.",
+    when: (day: number, time?: string) =>
+      `Day ${day}${time ? ` · ${time}` : ""}`,
+    lastNight: (day: number, revenue: number, profit: number) =>
+      `Night of day ${day}: took in ${fmt(revenue)} C, ${profit >= 0 ? "profit" : "loss"} ${fmt(Math.abs(profit))} C after costs and tax.`,
   },
+
+  statInfo: (k: {
+    bankruptDays: number;
+    nextRep: number | null;
+    victoryRep: number;
+    good: number;
+    bad: number;
+    repGain: [number, number];
+    repLoss: number;
+    fightRep: number;
+    fightSafety: number;
+    promoRep: number;
+    shutdownRep: number;
+    hypeDecay: number;
+    safetyRecovery: number;
+    safetyLossPct: number;
+    riskyBelow: number;
+    riskyPct: number;
+    perGuard: number;
+    energyPerDay: number;
+    maxViolations: number;
+    fine: number;
+    missingPct: number;
+  }) => ({
+    coin: {
+      what: "Your club's money. You spend it on stock, staff, rent, DJs, promos and upgrades; guests bring it in at the door, the bar and the tables.",
+      does: [
+        `Below 0 for ${k.bankruptDays} days in a row: bankrupt, game over.`,
+        "Pays for the next venue (together with reputation).",
+      ],
+      moves: [
+        "Price tokens close to the market and keep the popular ones in stock.",
+        "A DJ the crowd likes keeps guests happy, and happy guests buy more.",
+        "Fill tables and VIP: Guest Relations and house rules.",
+        "Avoid fines: keep every permit valid.",
+      ],
+    },
+    rep: {
+      what: "How the city rates your club, 0–100. Each star is 20 points.",
+      does: [
+        "More guests every night.",
+        "More table and VIP bookings.",
+        k.nextRep != null
+          ? `The next venue needs ${k.nextRep}.`
+          : "You're at the top venue.",
+        `Win: Level 5 with ${k.victoryRep} or more.`,
+        "At 0: game over.",
+      ],
+      moves: [
+        `End a night with average satisfaction ${k.good}+: +${k.repGain[0]} to +${k.repGain[1]}.`,
+        `Average satisfaction under ${k.bad}: −${k.repLoss}.`,
+        `Each fight: −${k.fightRep}.`,
+        `A controversial promo that backfires: −${k.promoRep}.`,
+        `Shut down for crowding without a crowd permit: −${k.shutdownRep}.`,
+      ],
+    },
+    hype: {
+      what: "Buzz about tonight, 0–100.",
+      does: ["The biggest driver of how many guests come tonight."],
+      moves: [
+        `Fades by ${k.hypeDecay} every morning.`,
+        "Promo posts in Social Media (1 CEO Energy each).",
+        "Booking a DJ or a band brings their fans.",
+        "A rival's promo takes some away.",
+      ],
+    },
+    safety: {
+      what: "How safe your club feels, 0–100.",
+      does: [
+        `An unsafe club loses walk-ins: up to −${k.safetyLossPct}% guests at 0.`,
+        `Under ${k.riskyBelow}: inspectors are likelier to visit (${k.riskyPct}% a night).`,
+      ],
+      moves: [
+        `Each fight: −${k.fightSafety}.`,
+        `Recovers +${k.safetyRecovery} every morning.`,
+        `Fights start when tilted guests outnumber security: hire 1 guard per ${k.perGuard} guests.`,
+        "Hot (FOMO) tokens tilt guests faster.",
+      ],
+    },
+    energy: {
+      what: `Your own time as CEO: ${k.energyPerDay} actions a day.`,
+      does: [
+        "Each promo post costs 1. With none left you can't post until tomorrow.",
+      ],
+      moves: [`Refills to ${k.energyPerDay} every morning.`],
+    },
+    violations: {
+      what: "Strikes against your license. They never go away.",
+      does: [
+        `${k.maxViolations} violations: license revoked, game over.`,
+        `A failed inspection also costs a ${fmt(k.fine)} Coin fine.`,
+      ],
+      moves: [
+        "A failed inspection: a missing or expired permit, or underage guests let in without security at the door.",
+        "Forcing the door open past capacity.",
+      ],
+    },
+    permits: {
+      what: "The licenses this venue needs to open.",
+      does: [
+        `With one missing, an inspector is likely (${k.missingPct}% a night): fine and a violation.`,
+      ],
+      moves: ["Renew them in the Permits room before they expire."],
+    },
+  }),
 
   office: {
     title: "Office",
@@ -1132,6 +1320,12 @@ export const en = {
         ]
           .filter(Boolean)
           .join(" · ")}`;
+      case "nightRep":
+        return e.delta > 0
+          ? `Great night (satisfaction ${e.satisfaction}): reputation +${e.delta}`
+          : e.delta < 0
+            ? `Bad night (satisfaction ${e.satisfaction}): reputation ${e.delta}`
+            : `Okay night (satisfaction ${e.satisfaction}): reputation unchanged`;
       case "gameOver":
         return `Game over: ${e.outcome}`;
     }

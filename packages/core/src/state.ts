@@ -3,7 +3,10 @@ import {
   tokens,
   economy,
   ids,
+  levels,
   permits,
+  priceScale,
+  requiredPermits,
   staffRoles,
   type BandId,
   type ChannelId,
@@ -111,6 +114,7 @@ export type GameEvent =
   | Ev<"promoterBooked", { promoter: PromoterId }>
   | Ev<"upgradeBought", { upgrade: UpgradeId; tier: number; cost: number }>
   | Ev<"sparklerParade", { bottles: number; revenue: number }>
+  | Ev<"nightRep", { delta: number; satisfaction: number }>
   | Ev<"gameOver", { outcome: Outcome }>;
 
 export interface NightRevenue {
@@ -177,7 +181,7 @@ export interface NightState {
   underageAdmitted: number;
   rejectedUnderage: number;
   fights: number;
-  /** Satisfaction factors for the Night Report ("no mysterious numbers", GDD 8). */
+  /** Satisfaction factors for the Night Report ("no mysterious numbers"). */
   outOfStockHits: number;
   slowServiceHits: number;
   djMatch: boolean | null;
@@ -293,7 +297,38 @@ export const clamp = (v: number, min = 0, max = 100) =>
 export function createGameState(
   seed: number,
   clubGenre: Genre = "edm",
-  opts: { clubName?: string; difficulty?: Difficulty } = {},
+  opts: { clubName?: string; difficulty?: Difficulty; level?: Level } = {},
+): GameState {
+  const s = newCareer(seed, clubGenre, opts);
+  return opts.level && opts.level > 1 ? startAt(s, opts.level) : s;
+}
+
+/**
+ * A career that starts at a venue the player was given access to (back office): the venue's permits, its prices,
+ * the reputation it asks for, and a purse scaled like its prices (Level 5: 400K at normal).
+ */
+function startAt(s: GameState, level: Level): GameState {
+  return {
+    ...s,
+    level,
+    coin: Math.round((s.coin * priceScale(level)) / priceScale(1)),
+    reputation: Math.max(s.reputation, levels[level].repRequired),
+    // Like climbing there: prices move with the venue's price scale (r18).
+    prices: fill(ids(tokens), (d) =>
+      Math.round((s.prices[d] * priceScale(level)) / priceScale(1)),
+    ),
+    permits: fill(ids(permits), (p) =>
+      requiredPermits(level).includes(p)
+        ? { valid: true, expiresDay: 1 + permits[p].durationDays }
+        : { valid: false, expiresDay: 0 },
+    ),
+  };
+}
+
+function newCareer(
+  seed: number,
+  clubGenre: Genre,
+  opts: { clubName?: string; difficulty?: Difficulty },
 ): GameState {
   return {
     mode: "career",

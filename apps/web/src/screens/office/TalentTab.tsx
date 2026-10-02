@@ -9,13 +9,13 @@ import {
   type GameState,
 } from "@nyxeron/core";
 import { Check, Disc3, Headphones, Lock, Music2, Users } from "lucide-react";
-import { art } from "@/art";
+import { art } from "@/lib/art";
 import { Img } from "@/components/Img";
 import { TiltCard } from "@/components/TiltCard";
 import { useSets } from "@/dj/sets";
 import { clock, en, fmt, genres } from "@/i18n/en";
 import { cn } from "@/lib/utils";
-import { useGame } from "@/store";
+import { useGame } from "@/state/store";
 
 export function TalentTab({ s }: { s: GameState }) {
   const act = useGame((x) => x.act);
