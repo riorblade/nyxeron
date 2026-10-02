@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   createGameState,
+  createEvent,
+  scenarios,
   bookPromoter,
   bandPlaying,
   bandSet,
@@ -15,7 +17,6 @@ import {
   capacityOf,
   r01_orderStock,
   storageOf,
-  createSandbox,
   bottlePrice,
   buyUpgrade,
   commissionOf,
@@ -413,19 +414,23 @@ describe("encore", () => {
   });
 });
 
-describe("sandbox", () => {
-  it("starts at the Premium Venue ready to open, and never ends", () => {
-    const s = createSandbox(5);
-    expect(s.level).toBe(5);
-    expect(s.mode).toBe("sandbox");
-    expect(s.permits.crowd.valid).toBe(true);
-    let g = s;
-    for (let i = 0; i < 3; i++) g = nextDay(runNight(g));
-    expect(g.outcome).toBe(null);
+describe("AI-run events", () => {
+  it("are licensed for the night and never end in a win or a loss", () => {
+    const s = createEvent(scenarios.events[2]!, 5);
+    expect(s.mode).toBe("event");
+    expect(Object.values(s.permits).every((p) => p.valid)).toBe(true);
     const broke = endNight(
-      ticks(startNight({ ...s, coin: -1e9, negativeCashDays: 5 }), 9999),
+      ticks({ ...s, coin: -1e9, negativeCashDays: 5, violations: 9 }, 9999),
     );
     expect(broke.outcome).toBe(null);
+  });
+
+  it("an old player sandbox save loads as a normal career", () => {
+    const old = {
+      ...createGameState(5),
+      mode: "sandbox",
+    } as unknown as GameState;
+    expect(migrateState(old).mode).toBe("career");
   });
 });
 

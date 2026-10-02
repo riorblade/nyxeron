@@ -1,12 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { en } from "@/i18n/en";
 import { trapFocus } from "@/lib/utils";
-import { writeSave } from "@/state/save";
 import { useSettings } from "@/state/settings";
 import { useGame } from "@/state/store";
 
 export function PauseMenu() {
-  const { game, setPaused, home, notify } = useGame();
+  const { setPaused, home } = useGame();
   const openSettings = useSettings((s) => s.setOpen);
   return (
     <div
@@ -26,20 +25,9 @@ export function PauseMenu() {
         <Button autoFocus onClick={() => setPaused(false)}>
           {en.pause.resume}
         </Button>
-        <div className="grid grid-cols-3 gap-2">
-          {([1, 2, 3] as const).map((n) => (
-            <Button
-              key={n}
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                game && writeSave(n, game) && notify(en.pause.saved(n))
-              }
-            >
-              {en.pause.save} {n}
-            </Button>
-          ))}
-        </div>
+        <p className="text-center text-xs text-muted-foreground">
+          {en.pause.autosaved}
+        </p>
         <Button variant="outline" onClick={() => openSettings(true)}>
           {en.settings.open}
         </Button>

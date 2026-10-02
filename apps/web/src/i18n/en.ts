@@ -65,10 +65,8 @@ export const en = {
     greek: ["ΝΥΞ", "·", "ΘΕΑ ΤΗΣ ΝΥΧΤΑΣ"],
     zone: ["Veltra City", "Local Time"],
     enter: "Enter",
-    load: "Load",
     settings: "Settings",
     contactNew: "Open the doors",
-    contactContinue: "Continue",
     lede: "Veltra City, 22:00. One token booth, ten thousand coin and a permit that runs out in thirty days. Stock the token desk, book the DJ, keep the inspectors sweet, and build it into the venue this city can't stop talking about.",
     copyright: "©2026 Kelompok Empuy",
     scroll: "Scroll down",
@@ -78,7 +76,6 @@ export const en = {
       "No choice is free. More security means a slower door, cheap stock sells out by midnight, and one bad promo brings the inspector.",
     bottom: ["Plan by day", "Survive the night", "Own the city"],
     newCareer: "Enter",
-    loadTitle: "Load game",
     soundOn: "Sound on",
     soundOff: "Sound off",
   },
@@ -128,10 +125,15 @@ export const en = {
     portfolio: "Portfolio",
     portfolioEmpty: "Nothing yet. Tokens you buy as a guest land here.",
     paid: (c: string) => `paid ${c} C`,
-    club: "Your club",
-    noClub: "No club yet. Start one as CEO.",
-    clubLine: (name: string, day: number, level: string) =>
-      `${name} · Day ${day} · ${level}`,
+    club: "Your clubs",
+    noClub: "No club yet. Rent a venue as CEO.",
+    clubCount: (venues: number, practice: number) =>
+      [
+        venues ? `${venues} city venue${venues === 1 ? "" : "s"}` : "",
+        practice ? `${practice} practice club${practice === 1 ? "" : "s"}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · "),
     enter: "Enter game",
     chooseRole: "Choose your role",
     back: "Back",
@@ -154,14 +156,33 @@ export const en = {
       },
     },
     ceoTitle: "CEO · your clubs",
-    continue: "Continue",
-    newCareer: "New career",
-    newCareerDesc: "Offline practice: one token booth, 60 nights to the top",
-    basement: "The Basement",
-    basementDesc: "Level 4 club, Week 1 challenge",
-    sandbox: "Sandbox",
-    sandboxDesc: "Premium venue, 20M Coin, no game over",
-    load: "Load a save",
+    ceoNote: "Pick a club to go in, or open another one.",
+    noClubs:
+      "You don't run a club yet. Rent a venue in the city, or start a practice club offline.",
+    tagCity: "City",
+    tagPractice: "Practice",
+    shopOpen: "shop open",
+    shopClosed: "shop closed",
+    daysLeft: (d: number) => `${d} day${d === 1 ? "" : "s"} of rent left`,
+    partiesPlanned: (n: number) => `${n} part${n === 1 ? "y" : "ies"} planned`,
+    dayOf: (d: number) => `Day ${d} of 60`,
+    outcome: {
+      victory: "Won",
+      survived: "Finished",
+      defeat: "Closed down",
+    } as Record<string, string>,
+    open: "Open",
+    close: "Close club",
+    closeConfirm: "Delete this club for good?",
+    closeYes: "Delete",
+    closeNo: "Keep",
+    rentNew: "Rent a new venue",
+    rentNewDesc:
+      "A real venue in the shared city: shop, parties, other players",
+    newPractice: "New practice club",
+    newPracticeDesc: "Offline: start at a token booth and climb in 60 nights",
+    clubsFull: "Four practice clubs is the limit: close one to start another",
+    challenge: "Challenge: The Basement (Level 4, one week)",
     eventsTitle: "Guest · live events",
     eventsNote:
       "Hosted by AI CEOs for now. When multiplayer goes live, these are other players' clubs.",
@@ -215,7 +236,8 @@ export const en = {
   city: {
     title: "City · rent a venue",
     desc: "Rent a real venue in the shared city by the week. Run a shop, host parties.",
-    rentTitle: "Rent a venue",
+    rentTitle: "Rent a new venue",
+    gone: "This venue isn't yours any more (the lease ended).",
     rentNote:
       "Paid weekly from your Coin. Any venue runs a shop that sells while you're away (as long as you have stock). From Level 3 you can host parties.",
     free: (n: number, of: number) => `${n} of ${of} free`,
@@ -342,23 +364,11 @@ export const en = {
   nav: {
     home: "Home",
     homeTitle: "Back to the main menu (progress is saved)",
-    saved: "Progress saved. Continue from the main menu.",
+    saved: "Club saved. Find it under CEO · your clubs.",
   },
 
   menu: {
-    continue: "Continue",
-    copy: "Start with a single token booth in Veltra City.\nBuild it into a premium venue in 60 nights.\nPlan by day. Survive the night.",
-    city: "Veltra City",
-    play: "Play scenario",
-    week1: "Week 1",
-    newCareer: "New Career",
-    basement: "Scenario: The Basement",
-    basementDesc: "Level 4 nightclub, Week 1 challenge",
-    load: "Load Game",
     back: "Back",
-    empty: "Empty slot",
-    autosave: "Autosave",
-    slot: (n: number) => `Slot ${n}`,
   },
 
   setup: {
@@ -792,6 +802,7 @@ export const en = {
   } as Record<Outcome | string, string>,
 
   pause: {
+    autosaved: "Your club saves itself after every night and when you leave.",
     title: "Paused",
     resume: "Resume",
     save: "Save",
@@ -1189,8 +1200,6 @@ export const en = {
   },
 
   tutorial: {
-    sandbox1:
-      "Sandbox: the Premium Venue (Level 5) is yours. 20M Coin, every permit, a full crew and stock. No win, no game over: book a DJ, set the house rules, and try every move.",
     career1:
       "Welcome to your token booth. Stock TSLA and US500 in the Stock tab (guests buy both), then press OPEN CLUB to start the night.",
     career2:

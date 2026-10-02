@@ -28,8 +28,8 @@ import {
 
 export type Phase = "day" | "night" | "report";
 export type Outcome = "victory" | "defeat" | "survived";
-/** sandbox: free play at a chosen venue, no win or loss. */
-export type Mode = "career" | "basement" | "sandbox";
+/** event: a club night run by the AI CEO (guests' events, DJ gigs): no win or loss. */
+export type Mode = "career" | "basement" | "event";
 export type Difficulty = "easy" | "normal" | "hard";
 export type CeoCall = "happyHour" | "closeDoor";
 
@@ -424,6 +424,8 @@ export function migrateState(s: GameState): GameState {
   const n = s.night;
   return {
     ...s,
+    // The old player sandbox is gone (venue access comes from the back office): its saves play on as careers.
+    mode: (s.mode as string) === "sandbox" ? "career" : s.mode,
     staff,
     policy: { ...DEFAULT_POLICY, ...s.policy },
     promoters: s.promoters ?? [],

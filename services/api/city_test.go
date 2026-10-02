@@ -49,10 +49,7 @@ func TestLeases(t *testing.T) {
 	if err != nil || p.Wallet != startWallet-rent1 {
 		t.Fatalf("%+v %v", p, err)
 	}
-	// One venue per player; a taken venue can't be rented; nor something unaffordable.
-	if _, err := s.Lease(ctx, "a", 2, 0, "Other", 1, now); !errors.Is(err, errConflict) {
-		t.Fatalf("second venue: %v", err)
-	}
+	// A taken venue can't be rented; nor something unaffordable.
 	if _, err := s.Lease(ctx, "b", 1, 1, "Mine now", 1, now); !errors.Is(err, errConflict) {
 		t.Fatalf("taken: %v", err)
 	}
@@ -63,10 +60,11 @@ func TestLeases(t *testing.T) {
 		t.Fatal("failed rent must not charge")
 	}
 	// Extending adds weeks, up to the limit paid ahead.
-	if _, err := s.Lease(ctx, "a", 1, 0, "", 2, now); err != nil {
+	// Extending: the slot is already yours (slot 1 of Level 1).
+	if _, err := s.Lease(ctx, "a", 1, 1, "", 2, now); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Lease(ctx, "a", 1, 0, "", 2, now); !errors.Is(err, errRejected) {
+	if _, err := s.Lease(ctx, "a", 1, 1, "", 2, now); !errors.Is(err, errRejected) {
 		t.Fatalf("beyond max weeks: %v", err)
 	}
 	v, _ := s.City(ctx, "a", false, now)
@@ -76,6 +74,19 @@ func TestLeases(t *testing.T) {
 	}
 	if total, week := s.Revenue(ctx, now); total != 3*rent1 || week != 3*rent1 {
 		t.Fatalf("revenue %d %d", total, week)
+	}
+	// Several venues per player, up to the limit.
+	s.GrantCoins(ctx, "boss", "a", 1_000_000, "test")
+	for i := 1; i < game.city.MaxVenues; i++ {
+		if _, err := s.Lease(ctx, "a", 2, 0, "More", 1, now); err != nil {
+			t.Fatalf("venue %d: %v", i+1, err)
+		}
+	}
+	if _, err := s.Lease(ctx, "a", 2, 0, "One too many", 1, now); !errors.Is(err, errVenueLimit) {
+		t.Fatalf("over the limit: %v", err)
+	}
+	if v, _ := s.City(ctx, "a", false, now); countMine(v) != game.city.MaxVenues {
+		t.Fatalf("mine: %d", countMine(v))
 	}
 	// A lapsed lease frees the venue.
 	if _, err := s.Lease(ctx, "b", 1, 1, "Next tenant", 1, now.Add(22*24*time.Hour)); err != nil {
@@ -116,10 +127,10 @@ func TestShop(t *testing.T) {
 	}
 	// Prices: capped at maxMarkup × the usual.
 	top := maxShelfPrice("tsla", 1, 1)
-	if err := s.SetShop(ctx, "a", nil, map[string]int64{"tsla": top + 1}, flat, now); !errors.Is(err, errBad) {
+	if err := s.SetShop(ctx, "a", 1, nil, map[string]int64{"tsla": top + 1}, flat, now); !errors.Is(err, errBad) {
 		t.Fatalf("overpriced: %v", err)
 	}
-	if err := s.SetShop(ctx, "a", nil, map[string]int64{"tsla": top}, flat, now); err != nil {
+	if err := s.SetShop(ctx, "a", 1, nil, map[string]int64{"tsla": top}, flat, now); err != nil {
 		t.Fatal(err)
 	}
 	v, _ := s.City(ctx, "", false, now)
@@ -146,7 +157,7 @@ func TestShop(t *testing.T) {
 		}
 	}
 	closed := false
-	s.SetShop(ctx, "a", &closed, nil, flat, now)
+	s.SetShop(ctx, "a", 1, &closed, nil, flat, now)
 	if _, err := s.ShopBuy(ctx, "b", lease.ID, "tsla", 1, now); !errors.Is(err, errRejected) {
 		t.Fatalf("closed shop: %v", err)
 	}
@@ -157,7 +168,7 @@ func TestParties(t *testing.T) {
 	now := time.Now()
 	start := now.Add(time.Hour).Unix()
 	s.Lease(ctx, "small", 2, 0, "Shop", 1, now)
-	if _, err := s.Party(ctx, "small", start, 0, "", now); !errors.Is(err, errRejected) {
+	if _, err := s.Party(ctx, "small", 1, start, 0, "", now); !errors.Is(err, errRejected) {
 		t.Fatalf("party at a shop: %v", err)
 	}
 	s.Get(ctx, "host")
@@ -165,14 +176,15 @@ func TestParties(t *testing.T) {
 	if _, err := s.Lease(ctx, "host", 3, 0, "Neon Tap", 1, now); err != nil {
 		t.Fatal(err)
 	}
-	p, err := s.Party(ctx, "host", start, 0, "Opening night", now)
+	hostLease := leaseOf(t, s, "host", now)
+	p, err := s.Party(ctx, "host", hostLease, start, 0, "Opening night", now)
 	if err != nil || p.Minutes != game.city.Party.DefaultMinutes || p.Live || p.Club != "Neon Tap" {
 		t.Fatalf("%+v %v", p, err)
 	}
-	if _, err := s.Party(ctx, "host", start+60, 10, "", now); !errors.Is(err, errConflict) {
+	if _, err := s.Party(ctx, "host", hostLease, start+60, 10, "", now); !errors.Is(err, errConflict) {
 		t.Fatalf("overlap: %v", err)
 	}
-	if _, err := s.Party(ctx, "host", now.Add(8*24*time.Hour).Unix(), 10, "", now); !errors.Is(err, errBad) {
+	if _, err := s.Party(ctx, "host", hostLease, now.Add(8*24*time.Hour).Unix(), 10, "", now); !errors.Is(err, errBad) {
 		t.Fatalf("too far ahead: %v", err)
 	}
 	if err := s.PartyRoom(ctx, "host", p.ID, "ABC123", now); !errors.Is(err, errRejected) {
@@ -209,7 +221,8 @@ func TestPartyPaysHost(t *testing.T) {
 	s.Get(ctx, "host")
 	s.GrantCoins(ctx, "test", "host", 100_000, "test")
 	s.Lease(ctx, "host", 3, 0, "Neon Tap", 1, now)
-	p, _ := s.Party(ctx, "host", now.Unix(), 10, "", now)
+	hostLease := leaseOf(t, s, "host", now)
+	p, _ := s.Party(ctx, "host", hostLease, now.Unix(), 10, "", now)
 	if err := s.PartyRoom(ctx, "host", p.ID, "LIVE01", now); err != nil {
 		t.Fatal(err)
 	}
@@ -252,14 +265,14 @@ func TestPartyPaysHost(t *testing.T) {
 func TestRename(t *testing.T) {
 	s := testStore(t)
 	now := time.Now()
-	if err := s.Rename(ctx, "a", "Escala Bar", now); !errors.Is(err, errNoLease) {
+	if err := s.Rename(ctx, "a", 1, "Escala Bar", now); !errors.Is(err, errNoLease) {
 		t.Fatalf("no venue: %v", err)
 	}
 	s.Lease(ctx, "a", 1, 0, "Booth", 1, now)
-	if err := s.Rename(ctx, "a", "  ", now); !errors.Is(err, errBad) {
+	if err := s.Rename(ctx, "a", 1, "  ", now); !errors.Is(err, errBad) {
 		t.Fatalf("blank: %v", err)
 	}
-	if err := s.Rename(ctx, "a", "Escala Bar", now); err != nil {
+	if err := s.Rename(ctx, "a", 1, "Escala Bar", now); err != nil {
 		t.Fatal(err)
 	}
 	if v, _ := s.City(ctx, "a", false, now); v.Venues[0].Lease.Club != "Escala Bar" {
@@ -331,5 +344,62 @@ func TestSupplyAndAgent(t *testing.T) {
 	}
 	if sup, _ = s.Supply(ctx, now); sup.Moves[0].Actor != "agent" || sup.Moves[0].Tx != "0xabc" || sup.Moves[0].Delta != 30 {
 		t.Fatalf("%+v", sup.Moves[0])
+	}
+}
+
+func countMine(v CityView) (n int) {
+	for _, x := range v.Venues {
+		if x.Lease != nil && x.Lease.Mine {
+			n++
+		}
+	}
+	return
+}
+
+// leaseOf: the id of a player's (first) active venue.
+func leaseOf(t *testing.T, s *store, owner string, now time.Time) int64 {
+	t.Helper()
+	v, _ := s.City(ctx, owner, false, now)
+	for _, x := range v.Venues {
+		if x.Lease != nil && x.Lease.Mine {
+			return x.Lease.ID
+		}
+	}
+	t.Fatalf("%s rents nothing", owner)
+	return 0
+}
+
+// Several venues: one stock pool whose storage is the venues' combined; each venue is managed on its own, and
+// nobody can manage someone else's.
+func TestManyVenues(t *testing.T) {
+	s := testStore(t)
+	now := time.Now()
+	s.Restock(ctx, "boss", "us500", 10_000, "restock", "launch", "")
+	s.Get(ctx, "a")
+	s.GrantCoins(ctx, "boss", "a", 1_000_000, "test")
+	s.Lease(ctx, "a", 1, 1, "Booth", 1, now)
+	s.Lease(ctx, "a", 2, 1, "Shop", 1, now)
+	both := game.levels["1"].Storage + game.levels["2"].Storage
+	if _, err := s.Stock(ctx, "a", "us500", both, flat, now); err != nil {
+		t.Fatalf("combined storage: %v", err)
+	}
+	if _, err := s.Stock(ctx, "a", "us500", 1, flat, now); !errors.Is(err, errRejected) {
+		t.Fatalf("past combined storage: %v", err)
+	}
+	// Leases 1 (booth) and 2 (shop): close one shop, the other stays open.
+	closed := false
+	if err := s.SetShop(ctx, "a", 1, &closed, nil, flat, now); err != nil {
+		t.Fatal(err)
+	}
+	v, _ := s.City(ctx, "", false, now)
+	if v.Venues[0].Lease.Open || !v.Venues[24].Lease.Open {
+		t.Fatalf("open: %v %v", v.Venues[0].Lease.Open, v.Venues[24].Lease.Open)
+	}
+	s.Get(ctx, "b")
+	if err := s.Rename(ctx, "b", 2, "Stolen", now); !errors.Is(err, errNoLease) {
+		t.Fatalf("someone else's venue: %v", err)
+	}
+	if err := s.SetShop(ctx, "b", 2, &closed, nil, flat, now); !errors.Is(err, errNoLease) {
+		t.Fatalf("someone else's shop: %v", err)
 	}
 }

@@ -22,9 +22,9 @@ import (
 //	POST   /api/city/lease                 {level, slot?, club, weeks} → rent (or extend) a venue
 //	POST   /api/city/stock                 {token, qty} → buy stock for my shop from the platform's warehouse
 //	PUT    /api/city/venue                 {club} → rename my venue
-//	PUT    /api/city/shop                  {open?, prices?} → open/close my shop, set shelf prices
+//	PUT    /api/city/shop                  {lease, open?, prices?} → open/close that venue's shop, set my prices
 //	POST   /api/city/shops/{lease}/buy     {token, qty} → buy from someone's shop
-//	POST   /api/city/parties               {startsAt, minutes?, title?} → schedule a party at my venue
+//	POST   /api/city/parties               {lease, startsAt, minutes?, title?} → schedule a party at my venue
 //	DELETE /api/city/parties/{id}          → cancel my party
 //	PUT    /api/city/parties/{id}/room     {room} → my party is live in this relay room
 //
@@ -51,6 +51,7 @@ var game struct {
 	city struct {
 		LeaseDays     int `json:"leaseDays"`
 		MaxWeeksAhead int `json:"maxWeeksAhead"`
+		MaxVenues     int `json:"maxVenuesPerPlayer"`
 		Venues        map[string]struct {
 			Count      int   `json:"count"`
 			WeeklyRent int64 `json:"weeklyRent"`
@@ -311,17 +312,46 @@ type activeLease struct {
 	endsAt      int64
 }
 
-func myLease(t *sql.Tx, id string, now time.Time) (activeLease, error) {
+// myLeases: the player's active venues, biggest first.
+func myLeases(t *sql.Tx, id string, now time.Time) ([]activeLease, error) {
+	rows, err := t.Query(`SELECT id, level, slot, ends_at FROM leases WHERE user_id = ? AND ends_at > ? ORDER BY level DESC, id`,
+		id, now.Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []activeLease
+	for rows.Next() {
+		var l activeLease
+		if err := rows.Scan(&l.id, &l.level, &l.slot, &l.endsAt); err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(out) == 0 {
+		return nil, errNoLease
+	}
+	return out, nil
+}
+
+// ownLease: one of the player's active venues, by lease id.
+func ownLease(t *sql.Tx, id string, lease int64, now time.Time) (activeLease, error) {
 	var l activeLease
-	err := t.QueryRow(`SELECT id, level, slot, ends_at FROM leases WHERE user_id = ? AND ends_at > ? ORDER BY ends_at DESC LIMIT 1`,
-		id, now.Unix()).Scan(&l.id, &l.level, &l.slot, &l.endsAt)
+	err := t.QueryRow(`SELECT id, level, slot, ends_at FROM leases WHERE id = ? AND user_id = ? AND ends_at > ?`,
+		lease, id, now.Unix()).Scan(&l.id, &l.level, &l.slot, &l.endsAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return l, errNoLease
 	}
 	return l, err
 }
 
-var errNoLease = errors.New("no venue rented")
+var (
+	errNoLease    = errors.New("no venue rented")
+	errVenueLimit = errors.New("venue limit reached")
+)
 
 func pay(t *sql.Tx, id string, amount int64, kind, reason string) error {
 	var wallet int64
@@ -337,8 +367,8 @@ func pay(t *sql.Tx, id string, amount int64, kind, reason string) error {
 	return ledger(t, id, -amount, kind, "", reason)
 }
 
-// Lease rents a venue (slot 0: the first free one of that level) for whole weeks, or extends the player's own.
-// One venue per player at a time; at most maxWeeksAhead paid ahead.
+// Lease rents a venue (slot 0: the first free one of that level) for whole weeks, or, when the slot is already
+// the player's, extends it. A player may run up to maxVenuesPerPlayer venues; at most maxWeeksAhead paid ahead.
 func (s *store) Lease(ctx context.Context, id string, level, slot int, club string, weeks int, now time.Time) (p Profile, err error) {
 	club, ok := cleanName(club)
 	v, known := game.city.Venues[lv(level)]
@@ -348,25 +378,40 @@ func (s *store) Lease(ctx context.Context, id string, level, slot int, club stri
 	rent := s.Rent(ctx)[lv(level)] * int64(weeks)
 	week := int64(game.city.LeaseDays) * 86400
 	err = s.tx(ctx, id, func(t *sql.Tx) error {
-		mine, e := myLease(t, id, now)
+		var leaseID, endsAt int64
+		var owner string
+		if slot > 0 {
+			e := t.QueryRow(`SELECT id, user_id, ends_at FROM leases WHERE level = ? AND slot = ? AND ends_at > ?`,
+				level, slot, now.Unix()).Scan(&leaseID, &owner, &endsAt)
+			if e != nil && !errors.Is(e, sql.ErrNoRows) {
+				return e
+			}
+		}
 		switch {
-		case e == nil && (mine.level != level || (slot != 0 && slot != mine.slot)):
-			return errConflict // already renting another venue
-		case e == nil:
+		case owner == id:
 			// Extend: from when the current lease ends.
-			if mine.endsAt+int64(weeks)*week > now.Unix()+int64(game.city.MaxWeeksAhead)*week {
+			if endsAt+int64(weeks)*week > now.Unix()+int64(game.city.MaxWeeksAhead)*week {
 				return errRejected
 			}
 			if e := pay(t, id, rent, "rent", "extend"); e != nil {
 				return e
 			}
 			if _, e := t.Exec(`UPDATE leases SET ends_at = ends_at + ?, rent = rent + ?, club = CASE WHEN ? != '' THEN ? ELSE club END
-				WHERE id = ?`, int64(weeks)*week, rent, club, club, mine.id); e != nil {
+				WHERE id = ?`, int64(weeks)*week, rent, club, club, leaseID); e != nil {
 				return e
 			}
-		case errors.Is(e, errNoLease):
+		case owner != "":
+			return errConflict // someone else's venue
+		default:
 			if club == "" {
 				return errBad
+			}
+			var mine int
+			if e := t.QueryRow(`SELECT COUNT(*) FROM leases WHERE user_id = ? AND ends_at > ?`, id, now.Unix()).Scan(&mine); e != nil {
+				return e
+			}
+			if mine >= game.city.MaxVenues {
+				return errVenueLimit
 			}
 			if slot == 0 {
 				e := t.QueryRow(`WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n WHERE x < ?)
@@ -378,14 +423,6 @@ func (s *store) Lease(ctx context.Context, id string, level, slot int, club stri
 					return e
 				}
 			}
-			var taken int
-			if e := t.QueryRow(`SELECT COUNT(*) FROM leases WHERE level = ? AND slot = ? AND ends_at > ?`,
-				level, slot, now.Unix()).Scan(&taken); e != nil {
-				return e
-			}
-			if taken > 0 {
-				return errConflict
-			}
 			if e := pay(t, id, rent, "rent", game.levels[lv(level)].Name); e != nil {
 				return e
 			}
@@ -393,26 +430,25 @@ func (s *store) Lease(ctx context.Context, id string, level, slot int, club stri
 				level, slot, id, club, rent, now.Unix(), now.Unix()+int64(weeks)*week); e != nil {
 				return e
 			}
-		default:
-			return e
 		}
 		if e := touch(t, id); e != nil {
 			return e
 		}
+		var e error
 		p, e = read(t, id)
 		return e
 	})
 	return
 }
 
-// Rename: the tenant names their venue (e.g. "Escala Bar").
-func (s *store) Rename(ctx context.Context, id, club string, now time.Time) error {
+// Rename: the tenant names one of their venues (e.g. "Escala Bar").
+func (s *store) Rename(ctx context.Context, id string, lease int64, club string, now time.Time) error {
 	club, ok := cleanName(club)
 	if !ok || club == "" {
 		return errBad
 	}
 	return s.tx(ctx, id, func(t *sql.Tx) error {
-		l, e := myLease(t, id, now)
+		l, e := ownLease(t, id, lease, now)
 		if e != nil {
 			return e
 		}
@@ -421,25 +457,32 @@ func (s *store) Rename(ctx context.Context, id, club string, now time.Time) erro
 	})
 }
 
-// Stock buys units for the player's shop at the market's price; they must fit the venue's storage.
+// Stock buys units for the player's shops from the warehouse. Stock belongs to the player and every one of their
+// open venues sells from it; it must fit their venues' storage combined, and a token must be allowed at their
+// biggest venue.
+// ponytail: one stock pool and one price list per player; per-venue shelves if tenants ask for them.
 func (s *store) Stock(ctx context.Context, id, token string, qty int64, f factorFn, now time.Time) (p Profile, err error) {
 	tok, known := game.tokens[token]
 	if !known || qty < 1 || qty > 10_000 {
 		return p, errBad
 	}
 	err = s.tx(ctx, id, func(t *sql.Tx) error {
-		l, e := myLease(t, id, now)
+		leases, e := myLeases(t, id, now)
 		if e != nil {
 			return e
 		}
+		l := leases[0] // the biggest
 		if tok.MinLevel > l.level {
 			return errRejected
 		}
-		var held int64
+		var held, storage int64
 		if e := t.QueryRow(`SELECT COALESCE(SUM(qty), 0) FROM shop_stock WHERE user_id = ?`, id).Scan(&held); e != nil {
 			return e
 		}
-		if held+qty > game.levels[lv(l.level)].Storage {
+		for _, x := range leases {
+			storage += game.levels[lv(x.level)].Storage
+		}
+		if held+qty > storage {
 			return errRejected
 		}
 		factor := f(token)
@@ -464,10 +507,11 @@ func (s *store) Stock(ctx context.Context, id, token string, qty int64, f factor
 	return
 }
 
-// SetShop opens or closes the player's shop and sets shelf prices (up to maxMarkup times the usual price).
-func (s *store) SetShop(ctx context.Context, id string, open *bool, prices map[string]int64, f factorFn, now time.Time) error {
+// SetShop opens or closes one venue's shop and sets the player's shelf prices (up to maxMarkup times the usual
+// price at that venue).
+func (s *store) SetShop(ctx context.Context, id string, lease int64, open *bool, prices map[string]int64, f factorFn, now time.Time) error {
 	return s.tx(ctx, id, func(t *sql.Tx) error {
-		l, e := myLease(t, id, now)
+		l, e := ownLease(t, id, lease, now)
 		if e != nil {
 			return e
 		}
@@ -537,7 +581,7 @@ func (s *store) ShopBuy(ctx context.Context, buyer string, leaseID int64, token 
 }
 
 // Party schedules a party at the player's venue (Level 3+), inside the lease, not overlapping another of theirs.
-func (s *store) Party(ctx context.Context, id string, startsAt int64, minutes int, title string, now time.Time) (PartyView, error) {
+func (s *store) Party(ctx context.Context, id string, lease int64, startsAt int64, minutes int, title string, now time.Time) (PartyView, error) {
 	pc := game.city.Party
 	if minutes == 0 {
 		minutes = pc.DefaultMinutes
@@ -551,7 +595,7 @@ func (s *store) Party(ctx context.Context, id string, startsAt int64, minutes in
 	end := startsAt + int64(minutes)*60
 	var pid int64
 	err := s.tx(ctx, id, func(t *sql.Tx) error {
-		l, e := myLease(t, id, now)
+		l, e := ownLease(t, id, lease, now)
 		if e != nil {
 			return e
 		}
@@ -683,6 +727,8 @@ func (pl *players) routeCity(mux *http.ServeMux) {
 		switch {
 		case errors.Is(err, errNoLease):
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "no_lease"})
+		case errors.Is(err, errVenueLimit):
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "venue_limit"})
 		case errors.Is(err, errNotFound):
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found"})
 		case err != nil:
@@ -714,9 +760,12 @@ func (pl *players) routeCity(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("PUT /api/city/venue", func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pl.who(w, r)
-		var in struct{ Club string }
+		var in struct {
+			Lease int64
+			Club  string
+		}
 		if ok && body(w, r, &in) {
-			reply(w, map[string]bool{"ok": true}, pl.db.Rename(r.Context(), id, in.Club, time.Now()))
+			reply(w, map[string]bool{"ok": true}, pl.db.Rename(r.Context(), id, in.Lease, in.Club, time.Now()))
 		}
 	})
 	mux.HandleFunc("POST /api/city/stock", func(w http.ResponseWriter, r *http.Request) {
@@ -733,11 +782,12 @@ func (pl *players) routeCity(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/city/shop", func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pl.who(w, r)
 		var in struct {
+			Lease  int64
 			Open   *bool
 			Prices map[string]int64
 		}
 		if ok && body(w, r, &in) {
-			err := pl.db.SetShop(r.Context(), id, in.Open, in.Prices, pl.factor(r.Context()), time.Now())
+			err := pl.db.SetShop(r.Context(), id, in.Lease, in.Open, in.Prices, pl.factor(r.Context()), time.Now())
 			reply(w, map[string]bool{"ok": true}, err)
 		}
 	})
@@ -756,12 +806,13 @@ func (pl *players) routeCity(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/city/parties", func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pl.who(w, r)
 		var in struct {
+			Lease    int64
 			StartsAt int64
 			Minutes  int
 			Title    string
 		}
 		if ok && body(w, r, &in) {
-			p, err := pl.db.Party(r.Context(), id, in.StartsAt, in.Minutes, in.Title, time.Now())
+			p, err := pl.db.Party(r.Context(), id, in.Lease, in.StartsAt, in.Minutes, in.Title, time.Now())
 			reply(w, p, err)
 		}
 	})

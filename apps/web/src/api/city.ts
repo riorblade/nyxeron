@@ -84,8 +84,9 @@ export async function loadCity() {
   }
 }
 
-export const myLease = (c: City | null) =>
-  c?.venues.find((v) => v.lease?.mine) ?? null;
+/** The venues the signed-in player rents (a player may run several). */
+export const myVenues = (c: City | null) =>
+  c?.venues.filter((v) => v.lease?.mine) ?? [];
 
 const say = (msg: string, bad = false) => useGame.getState().notify(msg, bad);
 
@@ -108,20 +109,27 @@ export const city = {
       () => call("POST", "/city/lease", { level, slot, club, weeks }),
       en.city.rented,
     ),
-  rename: (club: string) =>
-    act(() => call("PUT", "/city/venue", { club }), en.city.renamed),
+  rename: (lease: number, club: string) =>
+    act(() => call("PUT", "/city/venue", { lease, club }), en.city.renamed),
   stock: (token: TokenId, qty: number) =>
     act(() => call("POST", "/city/stock", { token, qty }), en.city.stocked),
-  shop: (open?: boolean, prices?: Partial<Record<TokenId, number>>) =>
-    act(() => call("PUT", "/city/shop", { open, prices }), en.city.saved),
+  shop: (
+    lease: number,
+    open?: boolean,
+    prices?: Partial<Record<TokenId, number>>,
+  ) =>
+    act(
+      () => call("PUT", "/city/shop", { lease, open, prices }),
+      en.city.saved,
+    ),
   buy: (lease: number, token: TokenId, qty: number) =>
     act(
       () => call("POST", `/city/shops/${lease}/buy`, { token, qty }),
       en.city.bought(qty, token.toUpperCase()),
     ),
-  party: (startsAt: number, minutes: number, title: string) =>
+  party: (lease: number, startsAt: number, minutes: number, title: string) =>
     act(
-      () => call("POST", "/city/parties", { startsAt, minutes, title }),
+      () => call("POST", "/city/parties", { lease, startsAt, minutes, title }),
       en.city.scheduled,
     ),
   cancel: (id: number) =>
@@ -129,13 +137,7 @@ export const city = {
   /** Host a party now: a club at the venue's level, opened to players from the office. */
   host(p: Party) {
     useCity.setState({ hosting: p.id });
-    useGame.getState().start({
-      mode: "career",
-      name: p.club,
-      genre: "edm",
-      difficulty: "normal",
-      level: p.level,
-    });
+    useGame.getState().start({ mode: "party", name: p.club, level: p.level });
   },
   /** The relay room for the party being hosted (RoomPanel calls this once the room is open). */
   async roomOpened(room: string) {

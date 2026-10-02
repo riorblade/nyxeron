@@ -49,32 +49,6 @@ export function createBasement(seed: number): GameState {
   });
 }
 
-/** Sandbox: jump straight into the Premium Venue (Level 5) with money, permits, staff and stock. No win or loss. */
-export function createSandbox(seed: number): GameState {
-  const sb = scenarios.sandbox;
-  const s = createGameState(seed, sb.clubGenre, { clubName: sb.clubName });
-  const level = sb.level as GameState["level"];
-  return {
-    ...s,
-    mode: "sandbox",
-    level,
-    coin: sb.coin,
-    reputation: sb.reputation,
-    hype: sb.hype,
-    prices: Object.fromEntries(
-      ids(tokens).map((d) => [d, defaultPrice(d, level)]),
-    ) as GameState["prices"],
-    stock: { ...s.stock, ...(sb.stock as Record<TokenId, number>) },
-    staff: { ...s.staff, ...sb.staff },
-    permits: Object.fromEntries(
-      ids(permits).map((p) => [
-        p,
-        { valid: true, expiresDay: 1 + sb.permitDays },
-      ]),
-    ) as GameState["permits"],
-  };
-}
-
 /** Scripted events for the current day (rival promo, late supplier, surprise inspector). */
 export function applyDayEvents(s: GameState): GameState {
   if (s.mode !== "basement") return s;

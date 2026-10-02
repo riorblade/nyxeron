@@ -11,7 +11,7 @@ const d = (ms: number) => ({ "--d": `${ms}ms` }) as CSSProperties;
 
 export function GameOver({ s }: { s: GameState }) {
   useMusic(LOUNGE, true); // the club, heard through the wall
-  const { origin, start, home } = useGame();
+  const { origin, slot, start, home } = useGame();
   const o = s.outcome ?? "survived";
   const stats: [string, string][] = [
     ["Day", String(s.day)],
@@ -57,7 +57,7 @@ export function GameOver({ s }: { s: GameState }) {
           style={d(900)}
         >
           {origin && (
-            <Cta className="w-full sm:w-48" onClick={() => start(origin)}>
+            <Cta className="w-full sm:w-48" onClick={() => start(origin, slot)}>
               {en.outcome.retry}
             </Cta>
           )}

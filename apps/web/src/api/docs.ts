@@ -94,7 +94,10 @@ export async function syncDocs() {
   } catch {
     warn();
   }
-  syncHooks.save = (slot, raw) => void put(`saves/${slot}`, raw).catch(warn);
+  syncHooks.save = (slot, raw) =>
+    void (
+      raw ? put(`saves/${slot}`, raw) : api("DELETE", `saves/${slot}`)
+    ).catch(warn);
   syncHooks.layout = (name, json) =>
     void (
       json ? put(`layouts/${name}`, json) : api("DELETE", `layouts/${name}`)

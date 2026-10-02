@@ -9,6 +9,7 @@ import {
   scenarios,
   staffRoles,
   tokens,
+  type Genre,
   type Level,
 } from "../data";
 import {
@@ -18,8 +19,7 @@ import {
   tickNight,
 } from "../engine";
 import type { ActionResult } from "../result";
-import { createSandbox } from "../scenario";
-import type { GameState } from "../state";
+import { createGameState, type GameState } from "../state";
 import { r01_orderStock } from "./inventory";
 import { setQuotes, standardPrice } from "./quotes";
 import { r05_promote } from "./marketing";
@@ -104,13 +104,20 @@ export function createEvent(
   seed: number,
   quotes: Record<string, number> = {},
 ): GameState {
-  const base = createSandbox(seed);
   const level = spec.level as Level;
+  const fresh = createGameState(seed, spec.genre as Genre);
+  // The AI CEO's club is licensed for the night: every permit valid.
+  const base: GameState = {
+    ...fresh,
+    permits: Object.fromEntries(
+      ids(permits).map((p) => [p, { valid: true, expiresDay: 30 }]),
+    ) as GameState["permits"],
+  };
   const q = setQuotes(base, quotes);
   const s: GameState = {
     ...q,
     coin: spec.coin,
-    mode: "sandbox",
+    mode: "event",
     clubName: spec.clubName,
     clubGenre: spec.genre,
     level,

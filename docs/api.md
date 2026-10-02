@@ -14,7 +14,7 @@ Base URL: `https://api.nyxeron.xyz` (dev: same origin, Vite proxies `/api` to `:
 | 401 | `missing_token`, `invalid_token` | no/invalid credentials |
 | 403 | `forbidden`, `banned` | role too low / account suspended (writes only) |
 | 404 | `not_found` | no such player, lease, party, document |
-| 409 | `conflict`, `no_lease`, `sold_out` | already done/taken, no venue rented, warehouse short |
+| 409 | `conflict`, `no_lease`, `sold_out`, `venue_limit` | already done/taken, no venue rented, warehouse short |
 | 422 | `rejected` | breaks a game rule (can't afford, over storage, out of stock…) |
 | 503 | `not_configured` | the service is missing a secret or database |
 
@@ -47,12 +47,12 @@ Base URL: `https://api.nyxeron.xyz` (dev: same origin, Vite proxies `/api` to `:
 
 | Method | Path | Body | Notes |
 | --- | --- | --- | --- |
-| POST | `/api/city/lease` | `{level, slot?, club, weeks}` | rent (slot 0 = first free) or extend your venue |
-| PUT | `/api/city/venue` | `{club}` | rename your venue |
+| POST | `/api/city/lease` | `{level, slot?, club, weeks}` | rent (slot 0 = first free; up to 5 venues) or extend yours at that slot |
+| PUT | `/api/city/venue` | `{lease, club}` | rename one of your venues |
 | POST | `/api/city/stock` | `{token, qty}` | buy shop stock from the warehouse at the market price |
-| PUT | `/api/city/shop` | `{open?, prices?}` | open/close your shop, set shelf prices (≤ 3× usual) |
+| PUT | `/api/city/shop` | `{lease, open?, prices?}` | open/close that venue's shop, set your shelf prices (≤ 3× usual) |
 | POST | `/api/city/shops/{lease}/buy` | `{token, qty}` | buy from someone's open shop (≤ 50) |
-| POST | `/api/city/parties` | `{startsAt, minutes?, title?}` | schedule a party at your Level 3+ venue |
+| POST | `/api/city/parties` | `{lease, startsAt, minutes?, title?}` | schedule a party at one of your Level 3+ venues |
 | DELETE | `/api/city/parties/{id}` | — | cancel your party |
 | PUT | `/api/city/parties/{id}/room` | `{room}` | your party is live in this relay room |
 

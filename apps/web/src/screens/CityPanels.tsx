@@ -15,7 +15,7 @@ import { useAccount } from "@/auth/account";
 import {
   city,
   loadCity,
-  myLease,
+  myVenues,
   useCity,
   type Party,
   type Venue,
@@ -45,7 +45,7 @@ const day = (unix: number) =>
   });
 
 /** Keep the city fresh while a panel shows it. */
-function useCityLive() {
+export function useCityLive() {
   useEffect(() => {
     void loadCity();
     const id = setInterval(() => void loadCity(), 20_000);
@@ -54,23 +54,35 @@ function useCityLive() {
   return useCity();
 }
 
-/** CEO: rent a venue, or run the one you rent (shop + parties). */
-export function CityCeo() {
+/** CEO: rent another venue in the city. `onRented` goes back to the club list once it's yours. */
+export function RentVenue({ onRented }: { onRented: () => void }) {
   const { city: c, error } = useCityLive();
   const signedIn = useAccount((a) => !!a.account);
-  useEffect(() => useCity.setState({ hosting: null }), []);
   if (!signedIn) return <p className="text-sm text-white/60">{t.signIn}</p>;
   if (!c) return <p className="text-sm text-white/60">{error || t.loading}</p>;
-  const mine = myLease(c);
   return (
     <div className="flex flex-col gap-4">
-      <h2 className="text-2xl font-medium tracking-[-0.02em]">{t.title}</h2>
-      {mine ? <MyVenue v={mine} /> : <RentList />}
+      <h2 className="text-2xl font-medium tracking-[-0.02em]">{t.rentTitle}</h2>
+      <RentList onRented={onRented} />
     </div>
   );
 }
 
-function RentList() {
+/** CEO: run one of your city venues (name, rent, shop, parties). */
+export function ManageVenue({ lease }: { lease: number }) {
+  const { city: c, error } = useCityLive();
+  useEffect(() => useCity.setState({ hosting: null }), []);
+  if (!c) return <p className="text-sm text-white/60">{error || t.loading}</p>;
+  const v = myVenues(c).find((x) => x.lease!.id === lease);
+  if (!v) return <p className="text-sm text-white/60">{t.gone}</p>;
+  return (
+    <div className="flex flex-col gap-4">
+      <MyVenue v={v} />
+    </div>
+  );
+}
+
+function RentList({ onRented }: { onRented: () => void }) {
   const c = useCity((x) => x.city)!;
   const wallet = useProfile((p) => p.wallet);
   const [club, setClub] = useState("");
@@ -128,7 +140,12 @@ function RentList() {
                 <button
                   className={btn + " mt-auto self-start"}
                   disabled={!free || !club.trim() || wallet < cost}
-                  onClick={() => void city.lease(lv, club.trim(), weeks)}
+                  onClick={async () => {
+                    const before = myVenues(useCity.getState().city).length;
+                    await city.lease(lv, club.trim(), weeks);
+                    if (myVenues(useCity.getState().city).length > before)
+                      onRented();
+                  }}
                 >
                   {free ? t.rent(fmt(cost)) : t.full}
                 </button>
@@ -153,7 +170,7 @@ function MyVenue({ v }: { v: Venue }) {
           <div className="text-[10px] tracking-[0.25em] text-white/50 uppercase">
             {t.yours}
           </div>
-          <Rename club={lease.club} level={v.level} />
+          <Rename lease={lease.id} club={lease.club} level={v.level} />
           <div className="text-xs text-white/55">
             {t.until(day(lease.endsAt))}
           </div>
@@ -177,7 +194,15 @@ function MyVenue({ v }: { v: Venue }) {
 }
 
 /** The tenant's venue name, editable in place (e.g. "Escala Bar"). */
-function Rename({ club, level }: { club: string; level: Level }) {
+function Rename({
+  lease,
+  club,
+  level,
+}: {
+  lease: number;
+  club: string;
+  level: Level;
+}) {
   const [name, setName] = useState<string | null>(null);
   if (name === null)
     return (
@@ -198,7 +223,8 @@ function Rename({ club, level }: { club: string; level: Level }) {
       className="mt-1 flex items-center gap-2"
       onSubmit={(e) => {
         e.preventDefault();
-        if (name.trim() && name.trim() !== club) void city.rename(name.trim());
+        if (name.trim() && name.trim() !== club)
+          void city.rename(lease, name.trim());
         setName(null);
       }}
     >
@@ -221,20 +247,22 @@ function Shop({ v }: { v: Venue }) {
   const prices = c.prices?.[v.level] ?? {};
   const stock = Object.fromEntries(lease.stock.map((s) => [s.token, s]));
   const held = lease.stock.reduce((n, s) => n + s.qty, 0);
+  // Stock is shared by all of the player's venues; so is their storage.
+  const storage = myVenues(c).reduce((n, x) => n + levels[x.level].storage, 0);
   const [edit, setEdit] = useState<Partial<Record<TokenId, number>>>({});
   const [qty, setQty] = useState(10);
   return (
     <section className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-[10px] tracking-[0.25em] text-white/60 uppercase">
-          {t.shop} · {t.storage(held, levels[v.level].storage)}
+          {t.shop} · {t.storage(held, storage)}
         </h3>
         <label className="flex items-center gap-2 text-xs">
           <input
             type="checkbox"
             className="accent-white"
             checked={lease.open}
-            onChange={(e) => void city.shop(e.target.checked)}
+            onChange={(e) => void city.shop(lease.id, e.target.checked)}
           />
           {t.shopOpen}
         </label>
@@ -301,7 +329,7 @@ function Shop({ v }: { v: Venue }) {
           className={btn}
           disabled={!Object.keys(edit).length}
           onClick={() => {
-            void city.shop(undefined, edit);
+            void city.shop(lease.id, undefined, edit);
             setEdit({});
           }}
         >
@@ -337,6 +365,7 @@ function Parties({ v }: { v: Venue }) {
         onSubmit={(e) => {
           e.preventDefault();
           void city.party(
+            v.lease!.id,
             Math.floor(new Date(when).getTime() / 1000),
             minutes,
             title,

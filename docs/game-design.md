@@ -93,7 +93,9 @@ From `city.json`:
 | 4 | 4 | 60,000 |
 | 5 | 2 | 150,000 |
 
-- One venue per player, rented in whole weeks, up to 4 ahead. Rent can be changed in the back office.
+- Up to 5 venues per player (`maxVenuesPerPlayer`), rented in whole weeks, up to 4 ahead. Rent can be changed in
+  the back office.
+- A player's shop stock is one pool shared by all their venues; its storage is the venues' storage combined.
 - Shops: stock bought from the platform warehouse at `buyCost × priceScale × spot factor`; shelf price up to
   3× the venue's usual price; a buyer takes up to 50 at once.
 - Parties: Level 3+, 5–60 minutes (default 10), up to 7 days ahead; the host opens the room from 15 minutes
