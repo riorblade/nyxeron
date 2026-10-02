@@ -51,7 +51,22 @@ api.nyxeron.xyz {
 }
 ```
 
-Frontend deploy: `vercel deploy --prod` from the repo root (project `nyxeron`).
+Frontend deploys, from the repo root:
+
+```sh
+vercel deploy --prod                                   # game (project `nyxeron`, linked in .vercel/)
+VERCEL_ORG_ID=team_cko9ZAcGcicfQ0g8cxsLyuLW VERCEL_PROJECT_ID=prj_DJcEwp93WG1PdYK1NYbDESGxlrW9 \
+  vercel deploy --prod                                 # back office (project `nyxeron-admin`, root apps/admin)
+```
+
+Backend deploys ship a clean tree (files removed from the repo don't linger) and keep `deploy/.env`:
+
+```sh
+git archive HEAD | ssh root@<vps> 'rm -rf /opt/nyxeron.new && mkdir /opt/nyxeron.new && tar -x -C /opt/nyxeron.new'
+ssh root@<vps> 'cp -p /opt/nyxeron/deploy/.env /opt/nyxeron.new/deploy/ && rm -rf /opt/nyxeron.prev &&
+  mv /opt/nyxeron /opt/nyxeron.prev && mv /opt/nyxeron.new /opt/nyxeron && cd /opt/nyxeron &&
+  docker compose -f deploy/compose.yml -f deploy/compose.backend.yml up -d --build relay api'
+```
 
 ## Update
 

@@ -21,6 +21,8 @@ teammate would notice.
 - **Balance:** security unlocks at Level 3 (was 4; bot careers had ~1 fight a night at the bar); tax tiered
   L3 20% / L4 30% / L5 40% (was a flat 40%). Bot (300 runs): Level 5 ≈ day 44 (was 55), 0 fights at L3, 100%
   victory. Level 3+ clubs without a guard get a "Hire security" objective.
+- **Deployed:** api with SQLite (migrations 1–3, volume `nyxeron_api_data`), game on Vercel, back office on
+  `admin.nyxeron.xyz` (Vercel project `nyxeron-admin`, root `apps/admin`).
 - **Repo:** docs split into `docs/` (PRD, architecture, game design, API, multiplayer, roadmap, changelog), root
   README and CONTRIBUTING, CI on GitHub Actions, web client grouped into `api/`, `state/`, `auth/`, `audio/`,
   `lib/`; `pnpm sync:gamedata`.

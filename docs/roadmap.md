@@ -4,7 +4,7 @@ Ordered by priority. Each item ends with passing tests and a short demo.
 
 ## Now: launch readiness
 
-- [ ] Deploy the back office, city and warehouse (api migrations 1–3, `ADMIN_EMAILS`, `AGENT_KEY`, admin on
+- [x] Deploy the back office, city and warehouse (2026-10-02: api migrations 1–3, admin on
       `admin.nyxeron.xyz`).
 - [ ] Seed the warehouse from the back office so CEOs can stock shops.
 - [ ] Privy app to production mode (removes the user cap).
