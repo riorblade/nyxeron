@@ -48,7 +48,7 @@ Each app, package and service has its own README.
 
 ## Quick start
 
-Requirements: Node ≥ 22, pnpm 10 (`corepack enable`), Go 1.26.
+Requirements: Node 22 (`.nvmrc`), **pnpm 10 only** (`corepack enable`; npm/yarn/bun are refused), Go 1.26.
 
 ```sh
 pnpm install

@@ -1,0 +1,32 @@
+# Labels PRs by the parts of the repo they change (actions/labeler, run by pr-checks.yml).
+"area: core":
+  - changed-files:
+      - any-glob-to-any-file: packages/core/**
+"area: web":
+  - changed-files:
+      - any-glob-to-any-file: apps/web/**
+"area: admin":
+  - changed-files:
+      - any-glob-to-any-file: apps/admin/**
+"area: api":
+  - changed-files:
+      - any-glob-to-any-file: services/api/**
+"area: relay":
+  - changed-files:
+      - any-glob-to-any-file: services/relay/**
+"area: deploy":
+  - changed-files:
+      - any-glob-to-any-file: [deploy/**, vercel.json, apps/admin/vercel.json]
+"area: docs":
+  - changed-files:
+      - any-glob-to-any-file: [docs/**, "**/*.md"]
+"area: ci":
+  - changed-files:
+      - any-glob-to-any-file: .github/**
+"data / balance":
+  - changed-files:
+      - any-glob-to-any-file:
+          [packages/core/src/data/**, services/api/gamedata/**]
+"db migration":
+  - changed-files:
+      - any-glob-to-any-file: services/api/migrate.go
