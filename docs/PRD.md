@@ -5,6 +5,8 @@
 | Product | NYXERON, a multiplayer nightclub management game on tokenized stocks |
 | Chain | BNB Chain (tokenized equities via the RWA market) |
 | Status | Live beta at nyxeron.xyz (Privy app in development mode) |
+| Tagline | Nightclub Empire: build your nightclub empire on BNB Chain |
+| Channels | [nyxeron.xyz](https://nyxeron.xyz) · X [@nyxeron_xyz](https://x.com/nyxeron_xyz) |
 | Last updated | 2026-10-02 |
 
 ## 1. Problem and vision

@@ -1,13 +1,15 @@
-# NYXERON
+# NYXERON · Nightclub Empire
 
-**A multiplayer nightclub management game where the drinks are tokenized stocks.**
+**Build your nightclub empire on BNB Chain.** A multiplayer nightclub management game where the drinks are
+tokenized stocks.
 
 Players run clubs, host parties and trade tokenized equities (TSLA, NVDA, US500 baskets…) priced live from
 BNB Chain's RWA market. CEOs rent venues in a shared city, stock their shops from the platform's warehouse and
 throw parties; guests walk in, buy tokens at the club's price and keep what they buy; DJs play live sets for the
 whole room. Coin is how value changes hands, tokens are the utility.
 
-Live: **[nyxeron.xyz](https://nyxeron.xyz)** · Back office: **admin.nyxeron.xyz** · API: `api.nyxeron.xyz`
+Live: **[nyxeron.xyz](https://nyxeron.xyz)** · X: **[@nyxeron_xyz](https://x.com/nyxeron_xyz)** · Back office:
+**admin.nyxeron.xyz** · API: `api.nyxeron.xyz`
 
 ---
 
