@@ -1,0 +1,31 @@
+{
+  "chainId": 56,
+  "agenticWallet": "0xcDFa725242E29921468a7482E8F3990fc40E170f",
+  "creditsPerUsd": 100,
+  "sharesPerUnit": 0.001,
+  "topup": {
+    "feePercent": 1,
+    "minUsd": 3,
+    "capUsdPerDay": 20,
+    "capUsdTotal": 100,
+    "tokens": {
+      "USDC": "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+      "USDT": "0x55d398326f99059fF775485246999027B3197955"
+    }
+  },
+  "agent": {
+    "maxUsdPerSwap": 50,
+    "maxUsdPerDay": 500
+  },
+  "tokens": {
+    "tsla": {
+      "symbol": "TSLAB",
+      "contract": "0x5b1910eaad6450e50f816082aa078c41f10c292f",
+      "quote": {
+        "usdc": 3,
+        "received": "0.008089823483577623",
+        "at": "2026-10-03T16:34Z"
+      }
+    }
+  }
+}
