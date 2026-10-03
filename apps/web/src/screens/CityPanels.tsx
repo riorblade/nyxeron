@@ -9,7 +9,7 @@ import {
   type Level,
   type TokenId,
 } from "@nyxeron/core";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { art } from "@/lib/art";
 import { useAccount } from "@/auth/account";
 import {
@@ -22,7 +22,8 @@ import {
 } from "@/api/city";
 import { Img } from "@/components/Img";
 import { fetchOpenClubs, type OpenClub } from "@/api/rooms";
-import { EventsFeed, EventsPanel } from "./EventsPanel";
+import { events } from "@/api/events";
+import { EventsFeed, EventsPanel, useEventsLive } from "./EventsPanel";
 import { en, fmt } from "@/i18n/en";
 import { guestJoin } from "@/net/session";
 import { useProfile } from "@/state/profile";
@@ -162,36 +163,151 @@ function RentList({ onRented }: { onRented: () => void }) {
 function MyVenue({ v }: { v: Venue }) {
   const c = useCity((x) => x.city)!;
   const wallet = useProfile((p) => p.wallet);
+  const { events: list } = useEventsLive();
+  const [busy, setBusy] = useState(false);
   const lease = v.lease!;
   const rent = c.rent[v.level] ?? 0;
+  const held = lease.stock.reduce((n, s) => n + s.qty, 0);
+  const party = canHostParty(v.level);
+  const next = list
+    .filter((e) => e.mine && e.leaseId === lease.id)
+    .sort((a, b) => a.startsAt - b.startsAt)[0];
+  const S = t.steps;
+  // Party now: a public party starting this minute, then straight into the club in 3D.
+  const partyNow = async () => {
+    setBusy(true);
+    const ok = await events.create({
+      lease: lease.id,
+      club: lease.club,
+      level: v.level,
+      startsAt: Math.floor(Date.now() / 1000),
+      minutes: cityData.party.defaultMinutes,
+      title: "",
+      private: false,
+    });
+    setBusy(false);
+    if (ok) city.host({ club: lease.club, level: v.level } as Party);
+  };
   return (
     <>
-      <div className={row}>
-        <div className="min-w-0">
-          <div className="text-[10px] tracking-[0.25em] text-white/50 uppercase">
-            {t.yours}
+      <div className="flex flex-col overflow-hidden rounded-2xl border border-white/12 bg-white/[0.03] sm:flex-row">
+        <Img
+          src={art.venue(v.level)}
+          alt=""
+          className="aspect-[21/9] w-full object-cover sm:aspect-auto sm:w-56"
+          fallback={<span className="block aspect-[21/9] bg-white/5 sm:w-56" />}
+        />
+        <div className="flex min-w-0 flex-1 flex-col gap-3 p-4">
+          <div className="min-w-0">
+            <div className="text-[10px] tracking-[0.25em] text-white/50 uppercase">
+              {t.yours} · {t.venueLevel(v.level, levels[v.level].name)}
+            </div>
+            <Rename lease={lease.id} club={lease.club} level={v.level} />
+            <div className="text-xs text-white/55">
+              {t.until(day(lease.endsAt))}
+            </div>
           </div>
-          <Rename lease={lease.id} club={lease.club} level={v.level} />
-          <div className="text-xs text-white/55">
-            {t.until(day(lease.endsAt))}
+          <div className="mt-auto flex flex-wrap items-center gap-2">
+            {party && (
+              <button
+                className={btn + " h-9 px-4 text-sm"}
+                disabled={busy}
+                onClick={() => void partyNow()}
+                title={t.partyNowHint}
+              >
+                {t.partyNow}
+              </button>
+            )}
+            {party && (
+              <a
+                className={ghost + " flex h-9 items-center"}
+                href="#venue-events"
+              >
+                {t.scheduleLater}
+              </a>
+            )}
+            <button
+              className={ghost + " h-9"}
+              disabled={wallet < rent}
+              onClick={() => void city.lease(v.level, "", 1, v.slot)}
+            >
+              {t.extend(fmt(rent))}
+            </button>
           </div>
         </div>
-        <button
-          className={ghost}
-          disabled={wallet < rent}
-          onClick={() => void city.lease(v.level, "", 1, v.slot)}
-        >
-          {t.extend(fmt(rent))}
-        </button>
       </div>
+
+      <section className="flex flex-col gap-2">
+        <h3 className="text-[10px] tracking-[0.25em] text-white/60 uppercase">
+          {t.howTitle}
+        </h3>
+        <ol className="grid grid-cols-1 gap-2 md:grid-cols-3">
+          <Step n={1} title={S.stock.title} desc={S.stock.desc}>
+            {S.stock.status(held)}
+          </Step>
+          <Step n={2} title={S.sell.title} desc={S.sell.desc}>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                className="accent-white"
+                checked={lease.open}
+                onChange={(e) => void city.shop(lease.id, e.target.checked)}
+              />
+              {lease.open ? S.sell.open : S.sell.closed}
+            </label>
+          </Step>
+          <Step n={3} title={S.party.title} desc={S.party.desc} dim={!party}>
+            {!party
+              ? S.party.locked
+              : next
+                ? S.party.next(day(next.startsAt))
+                : S.party.none}
+          </Step>
+        </ol>
+      </section>
+
       <Shop v={v} />
-      <EventsPanel
-        club={lease.club}
-        level={v.level}
-        lease={lease.id}
-        onHost={(e) => city.host(e)}
-      />
+      <div id="venue-events">
+        <EventsPanel
+          club={lease.club}
+          level={v.level}
+          lease={lease.id}
+          onHost={(e) => city.host(e)}
+        />
+      </div>
     </>
+  );
+}
+
+function Step({
+  n,
+  title,
+  desc,
+  dim,
+  children,
+}: {
+  n: number;
+  title: string;
+  desc: string;
+  dim?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <li
+      className={
+        "flex flex-col gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] p-3" +
+        (dim ? " opacity-50" : "")
+      }
+    >
+      <span className="flex items-center gap-2 text-sm font-medium">
+        <span className="flex size-5 items-center justify-center rounded-full border border-white/30 font-mono text-[11px]">
+          {n}
+        </span>
+        {title}
+      </span>
+      <span className="text-xs leading-relaxed text-white/55">{desc}</span>
+      <span className="mt-auto pt-1 text-xs text-white/85">{children}</span>
+    </li>
   );
 }
 
@@ -253,26 +369,36 @@ function Shop({ v }: { v: Venue }) {
   const storage = myVenues(c).reduce((n, x) => n + levels[x.level].storage, 0);
   const [edit, setEdit] = useState<Partial<Record<TokenId, number>>>({});
   const [qty, setQty] = useState(10);
+  // What's on the shelf first, then what you could add.
+  const list = [...shopTokens(v.level)].sort(
+    (a, b) => Number(!!stock[b]) - Number(!!stock[a]),
+  );
   return (
     <section className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-[10px] tracking-[0.25em] text-white/60 uppercase">
           {t.shop} · {t.storage(held, storage)}
         </h3>
-        <label className="flex items-center gap-2 text-xs">
-          <input
-            type="checkbox"
-            className="accent-white"
-            checked={lease.open}
-            onChange={(e) => void city.shop(lease.id, e.target.checked)}
-          />
-          {t.shopOpen}
+        <label className="flex items-center gap-2 text-xs text-white/60">
+          {t.restockQty}
+          <select
+            className={field}
+            value={qty}
+            onChange={(e) => setQty(Number(e.target.value))}
+          >
+            {[1, 10, 50, 100].map((n) => (
+              <option key={n} value={n}>
+                ×{n}
+              </option>
+            ))}
+          </select>
         </label>
       </div>
       <ul className="flex flex-col gap-1.5">
-        {shopTokens(v.level).map((tok) => {
+        {list.map((tok) => {
           const p = prices[tok];
           const s = stock[tok];
+          const price = edit[tok] ?? s?.price ?? 0;
           return (
             <li key={tok} className={row + " flex-wrap py-2"}>
               <span className="min-w-36">
@@ -284,14 +410,14 @@ function Shop({ v }: { v: Venue }) {
                   {` · ${t.warehouse(c.supply?.[tok] ?? 0)}`}
                 </span>
               </span>
-              <span className="flex items-center gap-2">
+              <span className="flex flex-wrap items-center gap-2">
                 {s && (
-                  <label className="flex items-center gap-1 text-[11px] text-white/55">
+                  <label className="flex items-center gap-1.5 text-[11px] text-white/55">
                     {t.shelf}
                     <input
                       className={field + " w-20 font-mono"}
                       inputMode="numeric"
-                      value={edit[tok] ?? s.price}
+                      value={price}
                       onChange={(e) =>
                         setEdit({
                           ...edit,
@@ -300,10 +426,15 @@ function Shop({ v }: { v: Venue }) {
                       }
                       title={p ? t.maxPrice(fmt(p.max)) : undefined}
                     />
+                    {p && price > p.wholesale && (
+                      <span className="text-white/75">
+                        {t.margin(fmt(price - p.wholesale))}
+                      </span>
+                    )}
                   </label>
                 )}
                 <button
-                  className={ghost}
+                  className={s ? ghost : btn}
                   disabled={!p || (c.supply?.[tok] ?? 0) < qty}
                   onClick={() => void city.stock(tok, qty)}
                 >
@@ -314,22 +445,9 @@ function Shop({ v }: { v: Venue }) {
           );
         })}
       </ul>
-      <div className="flex items-center gap-2">
-        <select
-          className={field}
-          value={qty}
-          onChange={(e) => setQty(Number(e.target.value))}
-          aria-label={t.restock(qty, "")}
-        >
-          {[1, 10, 50, 100].map((n) => (
-            <option key={n} value={n}>
-              ×{n}
-            </option>
-          ))}
-        </select>
+      {Object.keys(edit).length > 0 && (
         <button
-          className={btn}
-          disabled={!Object.keys(edit).length}
+          className={btn + " self-end"}
           onClick={() => {
             void city.shop(lease.id, undefined, edit);
             setEdit({});
@@ -337,7 +455,7 @@ function Shop({ v }: { v: Venue }) {
         >
           {t.savePrices}
         </button>
-      </div>
+      )}
     </section>
   );
 }
