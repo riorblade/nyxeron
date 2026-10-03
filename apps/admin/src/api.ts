@@ -127,6 +127,7 @@ export interface CityView {
     live: boolean;
   }[];
   rent: Record<string, number>;
+  counts: Record<string, number>;
   now: number;
 }
 

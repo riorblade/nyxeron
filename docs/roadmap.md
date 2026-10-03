@@ -20,7 +20,8 @@ Ordered by priority. Each item ends with passing tests and a short demo.
 
 ## Then: city depth
 
-- [ ] Venue supply in the back office (slots per level) and a waitlist when a level is full.
+- [x] Venue supply in the back office (venues per level).
+- [ ] A waitlist when a level is full.
 - [ ] DJ fees paid by the hosting CEO; booking a player DJ for a scheduled party.
 - [ ] The crowd reacting to a live player DJ's mix in the simulation.
 - [ ] Party discovery: reminders, favourites, a city map.

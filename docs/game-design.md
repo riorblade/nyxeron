@@ -93,8 +93,8 @@ From `city.json`:
 | 4 | 4 | 60,000 |
 | 5 | 2 | 150,000 |
 
-- Up to 5 venues per player (`maxVenuesPerPlayer`), rented in whole weeks, up to 4 ahead. Rent can be changed in
-  the back office.
+- Up to 5 venues per player (`maxVenuesPerPlayer`), rented in whole weeks, up to 4 ahead. The back office can
+  change both the number of venues per level (never below a level's highest rented slot) and the weekly rent.
 - A player's shop stock is one pool shared by all their venues; its storage is the venues' storage combined.
 - Shops: stock bought from the platform warehouse at `buyCost × priceScale × spot factor`; shelf price up to
   3× the venue's usual price; a buyer takes up to 50 at once.

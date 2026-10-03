@@ -89,6 +89,7 @@ Every change requires `reason` (except announcement/admin role changes) and is w
 | POST | `/api/admin/leases/{id}/end` | `{reason}` | admin |
 | POST | `/api/admin/parties/{id}/cancel` | `{reason}` | admin |
 | PUT | `/api/admin/rent` | `{rent: {"1": n, …}, reason}` | admin |
+| PUT | `/api/admin/venues` | `{counts: {"1": n, …}, reason}` (not below a level's highest rented slot; ≤ 500) | admin |
 | GET | `/api/admin/stock` | — | viewer |
 | PUT | `/api/admin/stock/{token}` | `{delta, reason, tx?}` | admin |
 | GET | `/api/admin/audit?target&before&limit` | — | viewer |

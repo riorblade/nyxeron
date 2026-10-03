@@ -54,6 +54,8 @@ export interface City {
   venues: Venue[];
   parties: Party[];
   rent: Record<string, number>;
+  /** How many venues each level has (the back office can change it). */
+  counts?: Record<string, number>;
   now: number;
   prices?: Record<
     string,
