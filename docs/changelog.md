@@ -5,6 +5,8 @@ teammate would notice.
 
 ## 2026-10-03 · CEO: your clubs
 
+- **Brand identity:** the NYXERON mark (the VIP diamond, no letters), app icons and favicons for the game and the
+  back office, an X profile picture and an X header rendered from the Premium Venue (`docs/brand.md`).
 - **Back office: venues per level.** Venues → "Venues per level" sets how many venues each level has, next to its
   weekly rent, in one save with a reason (audited). A level can't go below its highest rented venue; new venues can
   be rented at once and the game's rent list follows.
