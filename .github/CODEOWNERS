@@ -1,0 +1,10 @@
+# Production is held by the repo owner: anything that changes how NYXERON is deployed, the production database
+# schema, or the repo's rules needs their review. (Advisory until branch protection is on; PRs still request it.)
+
+/deploy/                      @riorblade
+/services/api/migrate.go      @riorblade
+/services/api/Dockerfile      @riorblade
+/services/relay/Dockerfile    @riorblade
+/vercel.json                  @riorblade
+/apps/admin/vercel.json       @riorblade
+/.github/                     @riorblade
