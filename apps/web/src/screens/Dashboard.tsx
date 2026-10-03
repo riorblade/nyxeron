@@ -575,7 +575,9 @@ function CeoPanel({
                     : ""}
                 </span>
               </span>
-              <span aria-hidden>→</span>
+              <span className="h-8 shrink-0 rounded-md bg-white px-4 text-xs leading-8 font-medium text-black">
+                {t.manage}
+              </span>
             </button>
           );
         })}
