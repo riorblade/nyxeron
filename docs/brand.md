@@ -4,6 +4,27 @@ The NYXERON mark is the **VIP diamond**: four sweeping wings meet at two sharp p
 inside a slanted blade between two facets rises like a chart (tokenized stocks going up). Mirror-symmetric outside,
 point-symmetric inside. No letters: the mark stands on its own.
 
+## Name and voice
+
+- **Name:** NYXERON (after Nyx, the goddess of the night). Tagline: **Nightclub Empire**.
+- **One-liner:** Build your nightclub empire on BNB Chain.
+
+## Channels
+
+| Channel | Handle | Notes |
+| --- | --- | --- |
+| Website | [nyxeron.xyz](https://nyxeron.xyz) | the game |
+| X | [@nyxeron_xyz](https://x.com/nyxeron_xyz) | profile picture `x-avatar.png`, header `x-banner.png` |
+
+X profile:
+
+| Field | Value |
+| --- | --- |
+| Name | `NYXERON · Nightclub Empire` |
+| Bio | `Build your nightclub empire on BNB Chain. Rent the venue, drop the beat, trade tokenized stocks while the crowd goes wild. 🌙` |
+| Location | `Veltra City` (the game's city) |
+| Website | `nyxeron.xyz` |
+
 ## Files (`apps/web/public/brand/`)
 
 | File | Use |
