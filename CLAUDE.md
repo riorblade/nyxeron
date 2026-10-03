@@ -16,5 +16,7 @@
 - Smart contracts: Foundry + OpenZeppelin only. Never Hardhat.
 - Pull requests follow .github/pull_request_template.md and a `type(scope): summary` title (see CONTRIBUTING.md);
   the PR checks workflow enforces it.
+- Production (VPS, deploys, deploy/.env secrets, applying migrations) is the owner's (@riorblade); contributors'
+  PRs list what production needs under Deploy notes. See CONTRIBUTING.md → Ownership.
 - After each task: run pnpm test and pnpm lint (and pnpm test:go if services/ changed), add a docs/changelog.md
   line for anything a player or admin would notice, then summarize changes briefly.

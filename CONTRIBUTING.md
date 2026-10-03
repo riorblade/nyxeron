@@ -13,6 +13,21 @@ Add a dependency with `pnpm --filter <web|admin|@nyxeron/core> add <pkg>` (or `-
 the lockfile. New runtime dependencies need a reason in the PR (bundle size matters: the landing page must stay
 light).
 
+## Ownership
+
+| Area                                                                              | Who                 | How                      |
+| --------------------------------------------------------------------------------- | ------------------- | ------------------------ |
+| Product, review, merge                                                            | @riorblade (owner)  | every PR                 |
+| On-chain: agent, BSC reader, top-ups, real stock                                  | @AdityaWisnuu       | PRs per issue (epic #13) |
+| **Production:** VPS, deploys, `deploy/.env` secrets, applying database migrations | **@riorblade only** | see below                |
+
+Contributors write code, migrations and tests in PRs; they never deploy, never touch the VPS and never hold
+production secrets. A PR that needs production work says so in **Deploy notes**: new env vars (names only, never
+values), the migration number, the deploy order (api before web), and anything to check after. The owner applies it:
+backup the database, deploy, run the checks, and comment on the PR. Secrets the agent needs (e.g. `AGENT_KEY`) are
+handed over privately by the owner, never in an issue, a PR or the repo. `.github/CODEOWNERS` requests the owner's
+review on deploy files, migrations and repo rules.
+
 ## Workflow
 
 1. Branch from `main`: `feat/<topic>`, `fix/<topic>`, `chore/<topic>`, `docs/<topic>`.
