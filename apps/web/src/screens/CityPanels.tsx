@@ -9,7 +9,7 @@ import {
   type Level,
   type TokenId,
 } from "@nyxeron/core";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { art } from "@/lib/art";
 import { useAccount } from "@/auth/account";
 import {
@@ -38,14 +38,6 @@ const ghost =
   "h-8 shrink-0 rounded-md border border-white/15 px-3 text-xs hover:bg-white/10 disabled:opacity-40";
 const field =
   "h-8 rounded-md border border-white/15 bg-black/30 px-2 text-sm outline-none focus:border-white/50";
-const day = (unix: number) =>
-  new Date(unix * 1000).toLocaleString([], {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 
 /** Keep the city fresh while a panel shows it. */
 export function useCityLive() {
@@ -165,16 +157,14 @@ function MyVenue({ v }: { v: Venue }) {
   const wallet = useProfile((p) => p.wallet);
   const { events: list } = useEventsLive();
   const [busy, setBusy] = useState(false);
+  const [planning, setPlanning] = useState(false);
   const lease = v.lease!;
   const rent = c.rent[v.level] ?? 0;
-  const held = lease.stock.reduce((n, s) => n + s.qty, 0);
   const party = canHostParty(v.level);
-  const next = list
-    .filter((e) => e.mine && e.leaseId === lease.id)
-    .sort((a, b) => a.startsAt - b.startsAt)[0];
-  const S = t.steps;
-  // Party now: a public party starting this minute, then straight into the club in 3D.
-  const partyNow = async () => {
+  const days = Math.max(0, Math.ceil((lease.endsAt - c.now) / 86_400));
+  const planned = list.some((e) => e.mine && e.leaseId === lease.id);
+  // One button in: a public party starting this minute, straight into the club in 3D.
+  const enter = async () => {
     setBusy(true);
     const ok = await events.create({
       lease: lease.id,
@@ -190,143 +180,81 @@ function MyVenue({ v }: { v: Venue }) {
   };
   return (
     <>
-      <div className="flex flex-col overflow-hidden rounded-2xl border border-white/12 bg-white/[0.03] sm:flex-row">
+      <div className="relative overflow-hidden rounded-2xl border border-white/12">
         <Img
           src={art.venue(v.level)}
           alt=""
-          className="aspect-[21/9] w-full object-cover sm:aspect-auto sm:w-56"
-          fallback={<span className="block aspect-[21/9] bg-white/5 sm:w-56" />}
+          className="absolute inset-0 size-full object-cover opacity-55"
+          fallback={<span className="absolute inset-0 bg-white/5" />}
         />
-        <div className="flex min-w-0 flex-1 flex-col gap-3 p-4">
+        <div className="relative flex min-h-64 flex-col justify-end gap-4 bg-black/45 p-5 sm:p-7">
           <div className="min-w-0">
-            <div className="text-[10px] tracking-[0.25em] text-white/50 uppercase">
-              {t.yours} · {t.venueLevel(v.level, levels[v.level].name)}
+            <div className="text-[10px] tracking-[0.25em] text-white/60 uppercase">
+              {t.venueLevel(v.level, levels[v.level].name)}
             </div>
-            <Rename lease={lease.id} club={lease.club} level={v.level} />
-            <div className="text-xs text-white/55">
-              {t.until(day(lease.endsAt))}
-            </div>
+            <Rename lease={lease.id} club={lease.club} />
           </div>
-          <div className="mt-auto flex flex-wrap items-center gap-2">
-            {party && (
+          {party ? (
+            <div className="flex flex-wrap items-center gap-3">
               <button
-                className={btn + " h-9 px-4 text-sm"}
+                className="h-12 rounded-xl bg-white px-7 text-base font-medium text-black shadow-[0_0_30px_rgba(255,255,255,.25)] disabled:opacity-50"
                 disabled={busy}
-                onClick={() => void partyNow()}
-                title={t.partyNowHint}
+                onClick={() => void enter()}
               >
-                {t.partyNow}
+                {t.enter}
               </button>
-            )}
-            {party && (
-              <a
-                className={ghost + " flex h-9 items-center"}
-                href="#venue-events"
-              >
-                {t.scheduleLater}
-              </a>
-            )}
+              <span className="text-xs text-white/60">{t.enterHint}</span>
+            </div>
+          ) : (
+            <p className="text-sm text-white/70">{t.partyLocked}</p>
+          )}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-white/60">
+            <span>{t.daysLeft(days)}</span>
             <button
-              className={ghost + " h-9"}
+              className={
+                days <= 2
+                  ? btn
+                  : "underline-offset-2 hover:text-white hover:underline disabled:opacity-40"
+              }
               disabled={wallet < rent}
               onClick={() => void city.lease(v.level, "", 1, v.slot)}
             >
-              {t.extend(fmt(rent))}
+              {t.extendShort(fmt(rent))}
             </button>
+            {party && (
+              <button
+                className="underline-offset-2 hover:text-white hover:underline"
+                onClick={() => setPlanning((x) => !x)}
+              >
+                {t.scheduleLater}
+              </button>
+            )}
           </div>
         </div>
       </div>
 
-      <section className="flex flex-col gap-2">
-        <h3 className="text-[10px] tracking-[0.25em] text-white/60 uppercase">
-          {t.howTitle}
-        </h3>
-        <ol className="grid grid-cols-1 gap-2 md:grid-cols-3">
-          <Step n={1} title={S.stock.title} desc={S.stock.desc}>
-            {S.stock.status(held)}
-          </Step>
-          <Step n={2} title={S.sell.title} desc={S.sell.desc}>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                className="accent-white"
-                checked={lease.open}
-                onChange={(e) => void city.shop(lease.id, e.target.checked)}
-              />
-              {lease.open ? S.sell.open : S.sell.closed}
-            </label>
-          </Step>
-          <Step n={3} title={S.party.title} desc={S.party.desc} dim={!party}>
-            {!party
-              ? S.party.locked
-              : next
-                ? S.party.next(day(next.startsAt))
-                : S.party.none}
-          </Step>
-        </ol>
-      </section>
-
-      <Shop v={v} />
-      <div id="venue-events">
+      {party && (planning || planned) && (
         <EventsPanel
           club={lease.club}
           level={v.level}
           lease={lease.id}
+          form={planning}
           onHost={(e) => city.host(e)}
         />
-      </div>
+      )}
+      <Shop v={v} />
     </>
   );
 }
 
-function Step({
-  n,
-  title,
-  desc,
-  dim,
-  children,
-}: {
-  n: number;
-  title: string;
-  desc: string;
-  dim?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <li
-      className={
-        "flex flex-col gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] p-3" +
-        (dim ? " opacity-50" : "")
-      }
-    >
-      <span className="flex items-center gap-2 text-sm font-medium">
-        <span className="flex size-5 items-center justify-center rounded-full border border-white/30 font-mono text-[11px]">
-          {n}
-        </span>
-        {title}
-      </span>
-      <span className="text-xs leading-relaxed text-white/55">{desc}</span>
-      <span className="mt-auto pt-1 text-xs text-white/85">{children}</span>
-    </li>
-  );
-}
-
 /** The tenant's venue name, editable in place (e.g. "Escala Bar"). */
-function Rename({
-  lease,
-  club,
-  level,
-}: {
-  lease: number;
-  club: string;
-  level: Level;
-}) {
+function Rename({ lease, club }: { lease: number; club: string }) {
   const [name, setName] = useState<string | null>(null);
   if (name === null)
     return (
       <div className="flex min-w-0 items-center gap-2">
-        <span className="truncate text-lg font-medium">
-          {t.at(club, levels[level].name)}
+        <span className="truncate text-3xl font-medium tracking-[-0.02em]">
+          {club}
         </span>
         <button
           className="text-xs text-white/55 underline hover:text-white"
@@ -359,102 +287,136 @@ function Rename({
   );
 }
 
+/** The shop in one line (status, open switch); Manage opens the shelf. */
 function Shop({ v }: { v: Venue }) {
   const c = useCity((x) => x.city)!;
   const lease = v.lease!;
   const prices = c.prices?.[v.level] ?? {};
-  const stock = Object.fromEntries(lease.stock.map((s) => [s.token, s]));
   const held = lease.stock.reduce((n, s) => n + s.qty, 0);
-  // Stock is shared by all of the player's venues; so is their storage.
-  const storage = myVenues(c).reduce((n, x) => n + levels[x.level].storage, 0);
+  const [openShelf, setOpenShelf] = useState(held === 0);
   const [edit, setEdit] = useState<Partial<Record<TokenId, number>>>({});
-  const [qty, setQty] = useState(10);
-  // What's on the shelf first, then what you could add.
-  const list = [...shopTokens(v.level)].sort(
-    (a, b) => Number(!!stock[b]) - Number(!!stock[a]),
+  const [adding, setAdding] = useState(false);
+  const onShelf = new Set(lease.stock.map((s) => s.token));
+  const more = shopTokens(v.level).filter(
+    (tok) => !onShelf.has(tok) && prices[tok] && (c.supply?.[tok] ?? 0) >= 10,
   );
+  // The first stock on an empty, closed shelf opens the shop too: nothing else to learn.
+  const restock = async (tok: TokenId) => {
+    await city.stock(tok, 10);
+    if (!held && !lease.open) await city.shop(lease.id, true);
+  };
   return (
-    <section className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-[10px] tracking-[0.25em] text-white/60 uppercase">
-          {t.shop} · {t.storage(held, storage)}
-        </h3>
-        <label className="flex items-center gap-2 text-xs text-white/60">
-          {t.restockQty}
-          <select
-            className={field}
-            value={qty}
-            onChange={(e) => setQty(Number(e.target.value))}
-          >
-            {[1, 10, 50, 100].map((n) => (
-              <option key={n} value={n}>
-                ×{n}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <ul className="flex flex-col gap-1.5">
-        {list.map((tok) => {
-          const p = prices[tok];
-          const s = stock[tok];
-          const price = edit[tok] ?? s?.price ?? 0;
-          return (
-            <li key={tok} className={row + " flex-wrap py-2"}>
-              <span className="min-w-36">
-                <span className="font-mono text-xs">{tokens[tok].ticker}</span>{" "}
-                <span className="text-sm">{tokens[tok].name}</span>
-                <span className="block text-[11px] text-white/50">
-                  {t.inStock(s?.qty ?? 0)}
-                  {p ? ` · ${t.cost(fmt(p.wholesale))}` : ""}
-                  {` · ${t.warehouse(c.supply?.[tok] ?? 0)}`}
-                </span>
-              </span>
-              <span className="flex flex-wrap items-center gap-2">
-                {s && (
-                  <label className="flex items-center gap-1.5 text-[11px] text-white/55">
-                    {t.shelf}
-                    <input
-                      className={field + " w-20 font-mono"}
-                      inputMode="numeric"
-                      value={price}
-                      onChange={(e) =>
-                        setEdit({
-                          ...edit,
-                          [tok]: Number(e.target.value.replace(/\D/g, "")),
-                        })
-                      }
-                      title={p ? t.maxPrice(fmt(p.max)) : undefined}
-                    />
-                    {p && price > p.wholesale && (
-                      <span className="text-white/75">
-                        {t.margin(fmt(price - p.wholesale))}
-                      </span>
-                    )}
-                  </label>
-                )}
-                <button
-                  className={s ? ghost : btn}
-                  disabled={!p || (c.supply?.[tok] ?? 0) < qty}
-                  onClick={() => void city.stock(tok, qty)}
-                >
-                  {t.restock(qty, fmt((p?.wholesale ?? 0) * qty))}
-                </button>
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-      {Object.keys(edit).length > 0 && (
+    <section className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+      <div className="flex items-center gap-3">
         <button
-          className={btn + " self-end"}
-          onClick={() => {
-            void city.shop(lease.id, undefined, edit);
-            setEdit({});
-          }}
+          role="switch"
+          aria-checked={lease.open}
+          aria-label={t.shopOpen}
+          onClick={() => void city.shop(lease.id, !lease.open)}
+          className={
+            "relative h-6 w-11 shrink-0 rounded-full border transition " +
+            (lease.open
+              ? "border-white bg-white"
+              : "border-white/25 bg-white/5")
+          }
         >
-          {t.savePrices}
+          <span
+            className={
+              "absolute top-0.5 size-4.5 rounded-full transition-all " +
+              (lease.open ? "left-[22px] bg-black" : "left-0.5 bg-white/60")
+            }
+          />
         </button>
+        <span className="min-w-0 flex-1 text-sm">
+          {t.shopLine(lease.open, held)}
+        </span>
+        <button className={ghost} onClick={() => setOpenShelf((x) => !x)}>
+          {openShelf ? t.done : t.manage}
+        </button>
+      </div>
+
+      {openShelf && (
+        <div className="mt-2 flex flex-col gap-1.5">
+          {held === 0 && (
+            <p className="text-xs text-white/55">{t.emptyShelf}</p>
+          )}
+          {lease.stock.map((s) => {
+            const p = prices[s.token];
+            const price = edit[s.token] ?? s.price;
+            return (
+              <div key={s.token} className={row + " flex-wrap py-2"}>
+                <span className="min-w-28">
+                  <span className="font-mono text-xs">
+                    {tokens[s.token].ticker}
+                  </span>{" "}
+                  <span className="text-xs text-white/50">×{s.qty}</span>
+                </span>
+                <span className="flex flex-wrap items-center gap-2">
+                  <input
+                    className={field + " w-24 font-mono"}
+                    inputMode="numeric"
+                    aria-label={t.shelf}
+                    value={price}
+                    onChange={(e) =>
+                      setEdit({
+                        ...edit,
+                        [s.token]: Number(e.target.value.replace(/\D/g, "")),
+                      })
+                    }
+                    title={p ? t.maxPrice(fmt(p.max)) : undefined}
+                  />
+                  {p && price > p.wholesale && (
+                    <span className="text-xs text-white/60">
+                      {t.margin(fmt(price - p.wholesale))}
+                    </span>
+                  )}
+                  <button
+                    className={ghost}
+                    disabled={!p || (c.supply?.[s.token] ?? 0) < 10}
+                    onClick={() => void restock(s.token)}
+                  >
+                    {t.restock(10, fmt((p?.wholesale ?? 0) * 10))}
+                  </button>
+                </span>
+              </div>
+            );
+          })}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            {Object.keys(edit).length > 0 && (
+              <button
+                className={btn}
+                onClick={() => {
+                  void city.shop(lease.id, undefined, edit);
+                  setEdit({});
+                }}
+              >
+                {t.savePrices}
+              </button>
+            )}
+            {more.length > 0 &&
+              (adding ? (
+                more.map((tok) => (
+                  <button
+                    key={tok}
+                    className={ghost}
+                    onClick={() => {
+                      void restock(tok);
+                      setAdding(false);
+                    }}
+                  >
+                    {tokens[tok].ticker} · {fmt(prices[tok]!.wholesale * 10)} C
+                  </button>
+                ))
+              ) : (
+                <button
+                  className={held === 0 ? btn : ghost}
+                  onClick={() => setAdding(true)}
+                >
+                  + {t.addStock}
+                </button>
+              ))}
+          </div>
+        </div>
       )}
     </section>
   );
