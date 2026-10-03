@@ -57,7 +57,7 @@ export function HouseRulesTab({ s }: { s: GameState }) {
               <Minus className="size-4" />
             </button>
             <span className="w-24 text-center font-mono text-xl tabular-nums">
-              {fmt(cover)} C
+              {fmt(cover)} {en.unit}
             </span>
             <button
               aria-label="Raise cover"
@@ -238,7 +238,7 @@ function MinSpend({ s }: { s: GameState }) {
               <div className="flex items-baseline justify-between gap-2">
                 <span className="text-sm font-medium">{m.types[t]}</span>
                 <span className="font-mono text-sm tabular-nums">
-                  {fmt(price)} C
+                  {fmt(price)} {en.unit}
                 </span>
               </div>
               <input

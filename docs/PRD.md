@@ -52,14 +52,21 @@ a markup costs you by running or partying in a club, with friends, in real time.
   messages sync across devices.
 
 **CEO**
-- **Your clubs:** one list of every club the CEO runs (rented city venues and offline practice clubs); open one,
-  rent another venue, or start a practice club (up to four, each saved on its own).
-- Offline practice career (Level 1 booth → Level 5 Premium Venue, 60 days) and The Basement challenge. Bigger
-  starting venues are granted from the back office.
+- **Two modes, two currencies (owner decision, 2026-10-03):**
+  - **Classic:** the club career with **NYX Points (NP)**, the play currency (farmed now for the NYX launch, never
+    real money). Always starts at Level 1 (token booth) and climbs level by level; no level picker, no Basement
+    shortcut. Bigger starting venues only through a back-office grant (for development). AI-hosted events are
+    Classic too.
+  - **City:** rented venues paid in **Credit** (real money only, see `payments.md`), real guests only. Bots may fill
+    the room but never buy (they have no money). **Shut until Credit top-ups are live**: the api answers
+    `city_closed` (`CITY_OPEN=1` opens it) and the client shows "City · coming soon".
+- **Your clubs:** the CEO's Classic clubs (up to four, each saved on its own); City venues join the list once the
+  city opens.
 - Deep club sim: stock and pricing, live token market with FOMO, DJs and bands, promos, staff, house rules,
   reservations, permits and inspections, crowd energy, fights and security, tax, upgrades, VIP.
 - Every top-bar stat explains itself (what it is, what it does, how it moves, what moved it lately).
-- **City (multiplayer):** rent a venue by the week, rename it, run a shop that sells while you're away.
+- **City (multiplayer, shut until Credit is live):** rent a venue by the week, rename it, run a shop that sells
+  while you're away.
 - **Events:** schedule a night at any club (Level 3+): date and time picker, length (default 10 minutes), public or
   private with an invite link. Guests mark "I'm going" and get a one-click join the moment the host opens the club.
 
@@ -67,7 +74,7 @@ a markup costs you by running or partying in a club, with friends, in real time.
 - Join live parties (room code, invite link or the city list); buy tokens at the club's live price; spend goes to
   the venue's tenant.
 - Shop at open stores in the city; tokens go to the portfolio at what you paid.
-- AI-hosted events for solo play.
+- AI-hosted events for solo play (Classic, NYX Points).
 
 **DJ**
 - Studio: two decks (cue, hot cues, loops, sync, pitch, scratch, brake, backspin), mixer with EQ/filter/FX,

@@ -63,6 +63,8 @@ export interface City {
   >;
   /** What the platform's warehouse holds per token (shops restock from it). */
   supply?: Partial<Record<TokenId, number>>;
+  /** Renting, shops and city parties are on (they run on Credit; shut until top-ups are live). */
+  open?: boolean;
 }
 
 interface CityStore {

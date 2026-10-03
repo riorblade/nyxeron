@@ -1008,7 +1008,11 @@ export class VenueScene {
     ctx.globalAlpha = locked ? 0.5 : 1;
     ctx.font = "700 46px ui-monospace, Menlo, monospace";
     ctx.fillText(
-      locked ? `LV ${tokens[id].minLevel}` : s ? `${marketPrice(s, id)} C` : "",
+      locked
+        ? `LV ${tokens[id].minLevel}`
+        : s
+          ? `${marketPrice(s, id)} ${en.unit}`
+          : "",
       22,
       122,
     );

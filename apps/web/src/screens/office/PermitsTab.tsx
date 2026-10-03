@@ -73,7 +73,7 @@ export function PermitsTab({ s }: { s: GameState }) {
               </div>
               {p === "crowd" && <div>{en.permits.crowdNote}</div>}
               <div className="font-mono">
-                {fmt(pm.cost)} C / {pm.durationDays} days
+                {fmt(pm.cost)} {en.unit} / {pm.durationDays} days
               </div>
             </div>
             <button

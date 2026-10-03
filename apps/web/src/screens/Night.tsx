@@ -728,7 +728,9 @@ export function Night({ s }: { s: GameState }) {
             <h3 className="mb-1 text-[10px] tracking-[0.2em] text-white/60">
               {en.night.tonight}
             </h3>
-            <p className="font-mono text-lg tabular-nums">{fmt(revenue)} C</p>
+            <p className="font-mono text-lg tabular-nums">
+              {fmt(revenue)} {en.unit}
+            </p>
             <p className="text-xs text-white/55">
               {en.night.guestsTonight(
                 n.guests.filter((g) => g.admitted).length,

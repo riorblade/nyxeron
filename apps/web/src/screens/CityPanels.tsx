@@ -445,9 +445,12 @@ export function CityGuest() {
   const { city: c } = useCityLive();
   const open = useOpenClubs();
   if (!c) return null;
-  const shops = c.venues.filter(
-    (v) => v.lease?.open && !v.lease.mine && v.lease.stock.length,
-  );
+  // City shops run on Credit: none while the city is shut.
+  const shops = c.open
+    ? c.venues.filter(
+        (v) => v.lease?.open && !v.lease.mine && v.lease.stock.length,
+      )
+    : [];
   return (
     <div className="flex flex-col gap-5">
       <section className="flex flex-col gap-2">
@@ -471,7 +474,9 @@ export function CityGuest() {
           {t.shops}
         </h3>
         {shops.length === 0 && (
-          <p className="text-xs text-white/45">{t.noShops}</p>
+          <p className="text-xs text-white/45">
+            {c.open ? t.noShops : en.dashboard.cityTitle}
+          </p>
         )}
         {shops.map((v) => (
           <ShopFront key={v.lease!.id} v={v} />

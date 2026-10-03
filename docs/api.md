@@ -48,6 +48,10 @@ Base URL: `https://api.nyxeron.xyz` (dev: same origin, Vite proxies `/api` to `:
 
 ## City
 
+The city runs on Credit (real money) only, so it is **shut until top-ups are live**: every write below (and
+`POST /api/events` with a `lease`) answers 403 `{"error":"city_closed"}`, and `GET /api/city` reports `open:
+false`. `CITY_OPEN=1` in the api's environment opens it.
+
 | Method | Path | Body | Notes |
 | --- | --- | --- | --- |
 | POST | `/api/city/lease` | `{level, slot?, club, weeks}` | rent (slot 0 = first free; up to 5 venues) or extend yours at that slot |

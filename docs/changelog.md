@@ -5,6 +5,11 @@ teammate would notice.
 
 ## 2026-10-03 · CEO: your clubs
 
+- **Classic and City (owner decision):** the play currency is now **NYX Points (NP)** everywhere (was "Coin" / C);
+  practice clubs are **Classic** clubs, which always start at Level 1 (the Basement shortcut is gone; level grants
+  from the back office stay for development). The **City** runs on Credit (real money) with real guests only, so it
+  is **shut until top-ups are live**: the api answers 403 `city_closed` to every city write and city party
+  (`CITY_OPEN=1` opens it, `GET /api/city` reports `open`), and the dashboard shows "City · coming soon".
 - **Rented venue, one button:** the venue page is the venue's picture, its name and one big **Enter club** (a public
   party starting this minute, straight into the club in 3D; Level 1–2 venues say parties open at Level 3). Rent left,
   Extend (a button only in the last two days) and Schedule sit in one quiet line. The shop is one line with an

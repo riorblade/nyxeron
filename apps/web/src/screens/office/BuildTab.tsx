@@ -88,7 +88,7 @@ export function BuildTab({ s }: { s: GameState }) {
                 </p>
                 {!current && !done && (
                   <div className="font-mono text-xs text-white/75">
-                    {fmt(l.cost)} C · Rep {l.repRequired}
+                    {fmt(l.cost)} {en.unit} · Rep {l.repRequired}
                   </div>
                 )}
                 {next && missingAfter(s, lv).length > 0 && (

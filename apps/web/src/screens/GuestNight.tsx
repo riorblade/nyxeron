@@ -37,7 +37,7 @@ import { useNet } from "@/net/session";
 
 const t = en.guest;
 const signed = (n: number) =>
-  `${n > 0 ? "+" : n < 0 ? "−" : ""}${fmt(Math.abs(n))} C`;
+  `${n > 0 ? "+" : n < 0 ? "−" : ""}${fmt(Math.abs(n))} ${en.unit}`;
 
 /** The club runs itself (AI CEO); the guest only watches the clock. 1 tick = 1 in-game minute. */
 function useGuestLoop(stopped: boolean) {
@@ -150,8 +150,12 @@ export function GuestNight({
           </div>
           {v && (
             <>
-              <Figure label={t.cash}>{fmt(v.cash)} C</Figure>
-              <Figure label={t.value}>{fmt(value)} C</Figure>
+              <Figure label={t.cash}>
+                {fmt(v.cash)} {en.unit}
+              </Figure>
+              <Figure label={t.value}>
+                {fmt(value)} {en.unit}
+              </Figure>
               <Figure label={t.pnl}>{signed(pnl)}</Figure>
             </>
           )}
@@ -342,7 +346,7 @@ function Desk({
                   </span>
                 </TokenLink>
                 <span className="text-right font-mono text-sm leading-tight tabular-nums">
-                  {fmt(price)} C
+                  {fmt(price)} {en.unit}
                   <span className="block text-[11px] text-white/55">
                     {change > 0 ? "▲" : change < 0 ? "▼" : "·"}{" "}
                     {Math.abs(change)}%
@@ -427,9 +431,15 @@ function Summary({
         )}
         {v && (
           <dl className="mt-4 space-y-1.5 text-sm">
-            <Row label={t.broughtIn}>{fmt(v.startCash)} C</Row>
-            <Row label={t.cashLeft}>{fmt(v.cash)} C</Row>
-            <Row label={t.tokensHome}>{fmt(value - v.cash)} C</Row>
+            <Row label={t.broughtIn}>
+              {fmt(v.startCash)} {en.unit}
+            </Row>
+            <Row label={t.cashLeft}>
+              {fmt(v.cash)} {en.unit}
+            </Row>
+            <Row label={t.tokensHome}>
+              {fmt(value - v.cash)} {en.unit}
+            </Row>
             <Row label={t.pnl}>
               <span className="font-semibold">{signed(pnl)}</span>
             </Row>
