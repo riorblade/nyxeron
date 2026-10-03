@@ -10,6 +10,7 @@
 | [roadmap.md](roadmap.md) | you're picking what to build next |
 | [changelog.md](changelog.md) | you want to know what shipped and why |
 | [brand.md](brand.md) | you need the logo, icons or social images |
+| [payments.md](payments.md) | you work on top-ups, credits, real stock or settlement |
 
 Running and deploying: [../README.md](../README.md) and [../deploy/README.md](../deploy/README.md).
 Team workflow: [../CONTRIBUTING.md](../CONTRIBUTING.md).

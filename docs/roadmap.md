@@ -10,7 +10,14 @@ Ordered by priority. Each item ends with passing tests and a short demo.
 - [ ] Privy app to production mode (removes the user cap).
 - [ ] Verified identity on multiplayer joins (the relay/host trusts the api's verified player, not a name).
 
-## Next: on-chain stock
+## Next: real money and real stock (spec: [payments.md](payments.md))
+
+- [ ] Top-ups (USDC/USDT on BSC) mint credits; Coin stays play money.
+- [ ] Warehouse on real bStock (TSLA first), restocked by the agent with verified swaps.
+- [ ] Party sales held during the party and settled at the end (CEO as reseller); shops settle at once.
+- [ ] Hourly reconciliation against BSC balances.
+
+## Later: on-chain stock
 
 - [ ] Stock agent (BNB Agent Studio): reads `/api/agent/demand`, buys tokenized stock with the platform's agentic
       wallet on BNB Chain, reports each purchase to `/api/agent/restock`.
