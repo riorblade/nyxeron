@@ -5,11 +5,12 @@ teammate would notice.
 
 ## 2026-10-03 · CEO: your clubs
 
-- **Rented venue, explained:** the venue page opens with the venue's picture and a **Party now** button (a public
-  party starting this minute, straight into the club in 3D), then "How your venue earns" in three steps with live
-  status: stock the shelf, set prices and open the shop, throw a party. The shop lists what's on the shelf first,
-  says "Your price" and "Restock +10", and shows the margin per sale. On the CEO list, city venues have a Manage
-  button and practice clubs are tagged "Practice · solo", with a line on how the two differ.
+- **Rented venue, one button:** the venue page is the venue's picture, its name and one big **Enter club** (a public
+  party starting this minute, straight into the club in 3D; Level 1–2 venues say parties open at Level 3). Rent left,
+  Extend (a button only in the last two days) and Schedule sit in one quiet line. The shop is one line with an
+  on/off switch; Manage opens the shelf (only what's on it, a price and Restock +10 each, "+ Add a stock" for more).
+  The first stock opens a closed shop by itself. On the CEO list, city venues have a Manage button and practice clubs
+  are tagged "Practice · solo".
 - **Follow us on X:** a "Follow on 𝕏" link on the landing page and a "Follow @nyxeron_xyz" button in the dashboard
   header (the only outbound link in the client). Link previews (Open Graph / X card) show the Premium Venue.
 - **Tab icon everywhere:** PNG and ICO favicons next to the SVG (Safari and old caches showed the default icon);

@@ -83,11 +83,14 @@ export function EventsPanel({
   club,
   level,
   lease = 0,
+  form = true,
   onHost,
 }: {
   club: string;
   level: Level;
   lease?: number;
+  /** false: only the planned events, no scheduling form (it opens on demand). */
+  form?: boolean;
   /** Shown on an event that's due (from 15 minutes before): go into the club to run it. */
   onHost?: (e: ClubEvent) => void;
 }) {
@@ -113,7 +116,7 @@ export function EventsPanel({
   return (
     <section className="flex flex-col gap-3">
       <h3 className={label}>{t.title}</h3>
-      {locked ? (
+      {!form ? null : locked ? (
         <p className="text-sm text-white/55">{t.locked}</p>
       ) : (
         <form
@@ -212,7 +215,7 @@ export function EventsPanel({
       )}
 
       {mine.length === 0 ? (
-        <p className="text-xs text-white/45">{t.none}</p>
+        form && <p className="text-xs text-white/45">{t.none}</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {mine.map((e) => (
