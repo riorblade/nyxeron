@@ -124,9 +124,12 @@ function Shell({
   return (
     <div className="flex min-h-dvh flex-col md:flex-row">
       <aside className="flex shrink-0 flex-col gap-1 border-b border-white/10 p-3 md:w-56 md:border-r md:border-b-0 md:p-4">
-        <div className="mb-3 px-2 text-sm font-medium tracking-[0.3em]">
-          NYXERON
-          <div className="label mt-1 tracking-[0.2em]">Back office</div>
+        <div className="mb-3 flex items-center gap-2.5 px-2 text-sm font-medium tracking-[0.3em]">
+          <img src="/favicon.svg" alt="" className="size-7 rounded-md" />
+          <span>
+            NYXERON
+            <div className="label mt-1 tracking-[0.2em]">Back office</div>
+          </span>
         </div>
         <nav className="flex gap-1 overflow-x-auto md:flex-col">
           {NAV.map(({ path, label, Icon }) => (

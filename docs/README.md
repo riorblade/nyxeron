@@ -9,6 +9,7 @@
 | [multiplayer.md](multiplayer.md) | you work on live sessions or the relay |
 | [roadmap.md](roadmap.md) | you're picking what to build next |
 | [changelog.md](changelog.md) | you want to know what shipped and why |
+| [brand.md](brand.md) | you need the logo, icons or social images |
 
 Running and deploying: [../README.md](../README.md) and [../deploy/README.md](../deploy/README.md).
 Team workflow: [../CONTRIBUTING.md](../CONTRIBUTING.md).
