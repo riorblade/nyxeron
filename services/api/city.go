@@ -8,6 +8,7 @@ import (
 	"errors"
 	"math"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -169,6 +170,21 @@ type CityView struct {
 	Prices map[string]map[string]PriceRow `json:"prices,omitempty"`
 	// Supply[token]: what the platform's warehouse holds (shops restock from it).
 	Supply map[string]int64 `json:"supply,omitempty"`
+	// Open: renting, shops and city parties are on. Off until Credit (real money) top-ups are live.
+	Open bool `json:"open"`
+}
+
+// cityOpen: the city runs on Credit (real money) only, so it stays shut until top-ups are live (CITY_OPEN=1).
+// ponytail: one process-wide switch; a setting in the back office if it ever needs flipping without a restart.
+var cityOpen = os.Getenv("CITY_OPEN") == "1"
+
+// cityClosed answers 403 city_closed while the city is shut.
+func cityClosed(w http.ResponseWriter) bool {
+	if cityOpen {
+		return false
+	}
+	writeJSON(w, http.StatusForbidden, map[string]string{"error": "city_closed"})
+	return true
 }
 
 type PriceRow struct {
@@ -627,9 +643,13 @@ func (pl *players) routeCity(mux *http.ServeMux) {
 		v, err := pl.db.City(r.Context(), pl.viewer(r), false, time.Now())
 		v.Prices = priceTable(pl.factor(r.Context()))
 		v.Supply = pl.db.supplyFor(r.Context())
+		v.Open = cityOpen
 		reply(w, v, err)
 	})
 	mux.HandleFunc("POST /api/city/lease", func(w http.ResponseWriter, r *http.Request) {
+		if cityClosed(w) {
+			return
+		}
 		id, ok := pl.who(w, r)
 		var in struct {
 			Level, Slot, Weeks int
@@ -641,6 +661,9 @@ func (pl *players) routeCity(mux *http.ServeMux) {
 		}
 	})
 	mux.HandleFunc("PUT /api/city/venue", func(w http.ResponseWriter, r *http.Request) {
+		if cityClosed(w) {
+			return
+		}
 		id, ok := pl.who(w, r)
 		var in struct {
 			Lease int64
@@ -651,6 +674,9 @@ func (pl *players) routeCity(mux *http.ServeMux) {
 		}
 	})
 	mux.HandleFunc("POST /api/city/stock", func(w http.ResponseWriter, r *http.Request) {
+		if cityClosed(w) {
+			return
+		}
 		id, ok := pl.who(w, r)
 		var in struct {
 			Token string
@@ -662,6 +688,9 @@ func (pl *players) routeCity(mux *http.ServeMux) {
 		}
 	})
 	mux.HandleFunc("PUT /api/city/shop", func(w http.ResponseWriter, r *http.Request) {
+		if cityClosed(w) {
+			return
+		}
 		id, ok := pl.who(w, r)
 		var in struct {
 			Lease  int64
@@ -674,6 +703,9 @@ func (pl *players) routeCity(mux *http.ServeMux) {
 		}
 	})
 	mux.HandleFunc("POST /api/city/shops/{lease}/buy", func(w http.ResponseWriter, r *http.Request) {
+		if cityClosed(w) {
+			return
+		}
 		id, ok := pl.who(w, r)
 		lease, _ := strconv.ParseInt(r.PathValue("lease"), 10, 64)
 		var in struct {

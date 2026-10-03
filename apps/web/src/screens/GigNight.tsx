@@ -82,7 +82,9 @@ export function GigNight({ s }: { s: GameState }) {
           <EnergyMeter s={s} />
         </div>
         <Figure label={t.crowd}>{inside}</Figure>
-        <Figure label={t.fee}>{fmt(gig?.fee ?? 0)} C</Figure>
+        <Figure label={t.fee}>
+          {fmt(gig?.fee ?? 0)} {en.unit}
+        </Figure>
         <div className="ml-auto flex items-center gap-2">
           <button
             className="flex size-10 items-center justify-center rounded-lg border border-white/25 bg-black/30 hover:bg-white/10"
@@ -145,7 +147,9 @@ export function GigNight({ s }: { s: GameState }) {
                   {n.guests.filter((g) => g.admitted).length}
                 </Row>
                 <Row label={t.peak}>{Math.round(n.peakEnergy)}</Row>
-                <Row label={t.fee}>+{fmt(gig?.fee ?? 0)} C</Row>
+                <Row label={t.fee}>
+                  +{fmt(gig?.fee ?? 0)} {en.unit}
+                </Row>
               </dl>
             )}
             <div className="mt-5 flex justify-end gap-2">

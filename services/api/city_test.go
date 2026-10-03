@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -454,5 +455,39 @@ func TestVenueCounts(t *testing.T) {
 	}
 	if rows, _ := s.Audit(ctx, "", 10, 0); rows[0].Action != "venue-counts" || rows[0].Actor != "boss" {
 		t.Fatalf("audit: %+v", rows[0])
+	}
+}
+
+// The city runs on Credit only: until top-ups are live every city write answers 403 city_closed and GET says
+// open: false.
+func TestCityClosed(t *testing.T) {
+	pl := &players{db: testStore(t)}
+	mux := http.NewServeMux()
+	pl.routeCity(mux)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	for _, c := range []struct{ method, path string }{
+		{"POST", "/api/city/lease"}, {"PUT", "/api/city/venue"}, {"POST", "/api/city/stock"},
+		{"PUT", "/api/city/shop"}, {"POST", "/api/city/shops/1/buy"},
+	} {
+		req, _ := http.NewRequest(c.method, srv.URL+c.path, strings.NewReader(`{}`))
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != http.StatusForbidden {
+			t.Fatalf("%s %s: %d", c.method, c.path, res.StatusCode)
+		}
+	}
+	res, err := http.Get(srv.URL + "/api/city")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v CityView
+	json.NewDecoder(res.Body).Decode(&v)
+	res.Body.Close()
+	if v.Open {
+		t.Fatal("city should be closed")
 	}
 }

@@ -16,7 +16,7 @@ export function GameOver({ s }: { s: GameState }) {
   const stats: [string, string][] = [
     ["Day", String(s.day)],
     ["Level", levels[s.level].name],
-    ["Coin", fmt(s.coin)],
+    [en.dashboard.wallet, fmt(s.coin)],
     ["Reputation", String(s.reputation)],
     ["Violations", String(s.violations)],
   ];

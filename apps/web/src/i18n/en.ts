@@ -34,7 +34,7 @@ export const segmentNames: Record<string, string> = {
 
 type FailReason = Extract<ActionResult, { ok: false }>["reason"];
 const reasons: Record<FailReason, (short?: number) => string> = {
-  notEnoughCoin: (s) => `Not enough Coin: ${fmt(s ?? 0)} short`,
+  notEnoughCoin: (s) => `Not enough NYX Points: ${fmt(s ?? 0)} short`,
   storageFull: (s) =>
     `Stock room full: room for ${fmt(s ?? 0)} more (upgrade storage in Build)`,
   notEnoughEnergy: () => "Not enough CEO Energy",
@@ -52,6 +52,8 @@ const reasons: Record<FailReason, (short?: number) => string> = {
 export const reasonText = (r: FailReason, short?: number) => reasons[r](short);
 
 export const en = {
+  /** Classic mode's play currency (farmed now, for the token launch later). Real money is Credit. */
+  unit: "NP",
   title: "NYXERON",
   subtitle: "Nightclub Empire",
   tagline: "Plan by day. Survive the night.",
@@ -73,7 +75,7 @@ export const en = {
     settings: "Settings",
     followX: "Follow on 𝕏",
     contactNew: "Open the doors",
-    lede: "Veltra City, 22:00. One token booth, ten thousand coin and a permit that runs out in thirty days. Stock the token desk, book the DJ, keep the inspectors sweet, and build it into the venue this city can't stop talking about.",
+    lede: "Veltra City, 22:00. One token booth, ten thousand NYX Points and a permit that runs out in thirty days. Stock the token desk, book the DJ, keep the inspectors sweet, and build it into the venue this city can't stop talking about.",
     copyright: "©2026 NYXERON",
     scroll: "Scroll down",
     statement: "From one token booth to a premium venue in sixty nights.",
@@ -122,21 +124,22 @@ export const en = {
     men: "Men",
     women: "Women",
     avatarPick: (n: number) => `Avatar ${n}`,
-    wallet: "Guest wallet",
-    walletNote: "Play money for now. On-chain (BNB Chain) later.",
+    wallet: "NYX Points",
+    walletNote:
+      "Classic mode's play currency, farmed for the NYX launch. Not real money.",
     refill: "Claim starter wallet",
     nights: "Nights out",
     totalPnl: "Total P&L",
     bestPnl: "Best night",
     portfolio: "Portfolio",
     portfolioEmpty: "Nothing yet. Tokens you buy as a guest land here.",
-    paid: (c: string) => `paid ${c} C`,
+    paid: (c: string) => `paid ${c} NP`,
     club: "Your clubs",
     noClub: "No club yet. Rent a venue as CEO.",
     clubCount: (venues: number, practice: number) =>
       [
         venues ? `${venues} city venue${venues === 1 ? "" : "s"}` : "",
-        practice ? `${practice} practice club${practice === 1 ? "" : "s"}` : "",
+        practice ? `${practice} Classic club${practice === 1 ? "" : "s"}` : "",
       ]
         .filter(Boolean)
         .join(" · "),
@@ -163,11 +166,11 @@ export const en = {
     },
     ceoTitle: "CEO · your clubs",
     ceoNote:
-      "City venues are real: other players buy from your shop and come to your parties. Practice clubs are a solo career, offline.",
+      "Classic: grow your club from a token booth, level by level, and farm NYX Points.",
     noClubs:
-      "You don't run a club yet. Rent a venue in the city, or start a practice club offline.",
+      "No club yet. Start a Classic club: a token booth first, then level by level.",
     tagCity: "City",
-    tagPractice: "Practice · solo",
+    tagPractice: "Classic",
     manage: "Manage",
     shopOpen: "shop open",
     shopClosed: "shop closed",
@@ -187,16 +190,17 @@ export const en = {
     rentNew: "Rent a new venue",
     rentNewDesc:
       "A real venue in the shared city: shop, parties, other players",
-    newPractice: "New practice club",
-    newPracticeDesc: "Offline: start at a token booth and climb in 60 nights",
-    clubsFull: "Four practice clubs is the limit: close one to start another",
-    challenge: "Challenge: The Basement (Level 4, one week)",
+    newPractice: "New Classic club",
+    newPracticeDesc: "Start at a token booth and climb level by level",
+    clubsFull: "Four Classic clubs is the limit: close one to start another",
+    cityTitle: "City · coming soon",
+    cityDesc: "Rent a real venue with Credit (real money). Real guests only.",
     eventsTitle: "Guest · live events",
     eventsNote:
       "Hosted by AI CEOs for now. When multiplayer goes live, these are other players' clubs.",
     hostedBy: "Hosted by AI CEO",
     live: "Live",
-    cover: (c: string) => `Door ${c} C`,
+    cover: (c: string) => `Door ${c} NP`,
     join: "Join",
     menu: (n: number) => `${n} tokens on the desk`,
   },
@@ -329,6 +333,7 @@ export const en = {
         sold_out: "The platform's warehouse doesn't have that many right now.",
         conflict: "That's taken (or you already rent a venue).",
         no_lease: "Rent a venue first.",
+        city_closed: "The city opens with Credit (real money). Coming soon.",
         bad_request: "Check the values.",
         banned: "This account is suspended.",
       })[code] ?? `Couldn't do that (${code}).`,
@@ -440,7 +445,7 @@ export const en = {
     soldOut: "Sold out",
     you: "YOU",
     bought: (q: number, ticker: string, cost: number) =>
-      `Bought ${q} ${ticker} · ${fmt(cost)} C`,
+      `Bought ${q} ${ticker} · ${fmt(cost)} NP`,
   },
 
   intro: {
@@ -477,7 +482,7 @@ export const en = {
 
   hud: {
     day: (d: number) => `Day ${d}`,
-    coin: "Coin",
+    coin: "NP",
     rep: "Rep",
     hype: "Hype",
     safety: "Safety",
@@ -494,7 +499,7 @@ export const en = {
     when: (day: number, time?: string) =>
       `Day ${day}${time ? ` · ${time}` : ""}`,
     lastNight: (day: number, revenue: number, profit: number) =>
-      `Night of day ${day}: took in ${fmt(revenue)} C, ${profit >= 0 ? "profit" : "loss"} ${fmt(Math.abs(profit))} C after costs and tax.`,
+      `Night of day ${day}: took in ${fmt(revenue)} NP, ${profit >= 0 ? "profit" : "loss"} ${fmt(Math.abs(profit))} NP after costs and tax.`,
   },
 
   statInfo: (k: {
@@ -521,7 +526,7 @@ export const en = {
     missingPct: number;
   }) => ({
     coin: {
-      what: "Your club's money. You spend it on stock, staff, rent, DJs, promos and upgrades; guests bring it in at the door, the bar and the tables.",
+      what: "NYX Points (NP): your club's money in Classic, farmed for the NYX launch. You spend it on stock, staff, rent, DJs, promos and upgrades; guests bring it in at the door, the bar and the tables.",
       does: [
         `Below 0 for ${k.bankruptDays} days in a row: bankrupt, game over.`,
         "Pays for the next venue (together with reputation).",
@@ -586,7 +591,7 @@ export const en = {
       what: "Strikes against your license. They never go away.",
       does: [
         `${k.maxViolations} violations: license revoked, game over.`,
-        `A failed inspection also costs a ${fmt(k.fine)} Coin fine.`,
+        `A failed inspection also costs a ${fmt(k.fine)} NP fine.`,
       ],
       moves: [
         "A failed inspection: a missing or expired permit, or underage guests let in without security at the door.",
@@ -702,7 +707,7 @@ export const en = {
     opener:
       "With a DJ booked, the band opens the night on stage, 22:00–23:00, then hands over to the decks.",
     fans: (n: number) => `${n} fans`,
-    book: (fee: string) => `Book · ${fee} C`,
+    book: (fee: string) => `Book · ${fee} NP`,
     booked: "Booked",
     live: "LIVE ON STAGE",
   },
@@ -737,7 +742,7 @@ export const en = {
   },
 
   staff: {
-    wage: (n: number) => `${fmt(n)} C/day`,
+    wage: (n: number) => `${fmt(n)} NP/day`,
     hire: "Hire",
     fire: "Fire",
     securityHint: (cap: number) =>
@@ -769,7 +774,7 @@ export const en = {
     title: "Empire Ladder",
     current: "Current",
     upgrade: "UPGRADE",
-    needs: (coin: number, rep: number) => `${fmt(coin)} C · Rep ${rep}`,
+    needs: (coin: number, rep: number) => `${fmt(coin)} NP · Rep ${rep}`,
     unlocks: [
       "Stock, pricing, posters",
       "Staff, suppliers, OTC trading licence",
@@ -795,7 +800,7 @@ export const en = {
     tonight: "TONIGHT'S REVENUE",
     guestsTonight: (n: number) =>
       `${fmt(n)} ${n === 1 ? "guest" : "guests"} tonight`,
-    revenue: (n: number) => `Tonight's revenue: ${fmt(n)} Coin`,
+    revenue: (n: number) => `Tonight's revenue: ${fmt(n)} NP`,
     ceoCall: "CEO CALL",
     ceoCallHint: "[Q] 1× / night",
     happyHour: "Happy Hour",
@@ -959,7 +964,7 @@ export const en = {
     cover: "Cover charge",
     coverDesc:
       "A cheaper door pulls more people in, but a thriftier crowd. A pricier door keeps the numbers down and the spenders in.",
-    coverStandard: (n: string) => `Standard ${n} C`,
+    coverStandard: (n: string) => `Standard ${n} NP`,
     coverReset: "Use standard",
     happy: "Happy hour",
     happyDesc:
@@ -985,7 +990,7 @@ export const en = {
     title: "Promoters · guest list",
     desc: "A promoter fills tonight's guest list with their crowd. List guests arrive early and skip the cover; you pay per head who gets in.",
     heads: (n: number) => `~${n} guests`,
-    perHead: (n: string) => `${n} C per head`,
+    perHead: (n: string) => `${n} NP per head`,
     book: "Book",
     booked: "Booked",
     segment: (s: string) => `Crowd: ${s}`,
@@ -993,7 +998,7 @@ export const en = {
 
   rig: {
     title: "Venue upgrades",
-    desc: "Spend Coin on the building. Everything here belongs to this venue: a new venue starts from scratch.",
+    desc: "Spend NYX Points on the building. Everything here belongs to this venue: a new venue starts from scratch.",
     capacity: "Venue capacity",
     capacityDesc: (n: number) =>
       `Knock through walls and extend the licence: +15% guests per tier. Now ${fmt(n)}.`,
@@ -1005,14 +1010,14 @@ export const en = {
     lighting: "Lighting rig",
     lightingDesc: "More beams and lasers: more energy, happier guests",
     tier: (t: number) => `Tier ${t} / 3`,
-    buy: (c: string) => `Upgrade · ${c} C`,
+    buy: (c: string) => `Upgrade · ${c} NP`,
     maxed: "Maxed out",
     vip: "VIP lounge",
     vipDesc: (n: number) =>
       n
         ? `Opens the roped-off VIP area: up to ${n} VIP tables a night (3× a table's minimum spend), booked by Guest Relations.`
         : "Needs a Nightclub (Level 4) or bigger.",
-    build: (c: string) => `Build · ${c} C`,
+    build: (c: string) => `Build · ${c} NP`,
     built: "Built",
     notBuilt: "Not built",
   },
@@ -1148,7 +1153,7 @@ export const en = {
     djAnthem: "DJ anthem",
     djAnthemDesc: "Signature set: everyone stays",
     sparkler: "Sparkler parade",
-    sparklerDesc: (cost: string) => `Whale-table show · ${cost} C`,
+    sparklerDesc: (cost: string) => `Whale-table show · ${cost} NP`,
     needTables: "Tables seated first",
     active: (m: number) => `Live · ${m} min`,
     ready: "Ready",
@@ -1318,7 +1323,7 @@ export const en = {
       noOutOfStock: "Don't run out of stock tonight",
       crowdPermit: "Hold a crowd permit",
       reachRep: `Reach Rep ${o.target}`,
-      saveCoin: `Save ${fmt(o.target ?? 0)} Coin for the next level`,
+      saveCoin: `Save ${fmt(o.target ?? 0)} NP for the next level`,
       noViolations: "Zero violations this week",
     };
     return (
@@ -1339,15 +1344,15 @@ export const en = {
   ): string => {
     switch (e.kind) {
       case "orderPlaced":
-        return `Ordered ${e.qty} ${names.drink(e.drink)} for ${fmt(e.cost)} C`;
+        return `Ordered ${e.qty} ${names.drink(e.drink)} for ${fmt(e.cost)} NP`;
       case "orderDelivered":
         return `${e.qty} ${names.drink(e.drink)} delivered`;
       case "outOfStock":
         return `Out of stock: ${names.drink(e.drink)}!`;
       case "upkeepPaid":
-        return `Paid wages ${fmt(e.wages)} C and rent ${fmt(e.rent)} C`;
+        return `Paid wages ${fmt(e.wages)} NP and rent ${fmt(e.rent)} NP`;
       case "taxPaid":
-        return `Entertainment tax ${fmt(e.tax)} C`;
+        return `Entertainment tax ${fmt(e.tax)} NP`;
       case "djBooked":
         return `${names.dj(e.dj)} booked: Hype +${e.hype}`;
       case "promoPosted":
@@ -1375,7 +1380,7 @@ export const en = {
       case "inspection":
         return e.passed
           ? "Inspector visited: all clear"
-          : `Inspector found problems${e.underage ? " (underage guests)" : ""}${e.missing.length ? ` (missing: ${e.missing.map(names.permit).join(", ")})` : ""}: fine ${fmt(e.fine)} C, violation`;
+          : `Inspector found problems${e.underage ? " (underage guests)" : ""}${e.missing.length ? ` (missing: ${e.missing.map(names.permit).join(", ")})` : ""}: fine ${fmt(e.fine)} NP, violation`;
       case "venueSealed":
         return "Venue sealed tonight";
       case "crowdShutdown":
@@ -1400,20 +1405,20 @@ export const en = {
           djAnthem: "The DJ drops the anthem: nobody is going home",
         }[e.tactic];
       case "tablesSeated":
-        return `${e.tables} reservation${e.tables > 1 ? "s" : ""} seated (tables, VIP, bar seats): +${fmt(e.revenue)} C minimum spend`;
+        return `${e.tables} reservation${e.tables > 1 ? "s" : ""} seated (tables, VIP, bar seats): +${fmt(e.revenue)} NP minimum spend`;
       case "crowdThinning":
         return `The room is going flat (energy ${e.energy}): guests are starting to leave`;
       case "promoterBooked":
         return `Promoter booked: ${names.promoter(e.promoter)} is filling the guest list`;
       case "upgradeBought":
-        return `${e.upgrade === "sound" ? "Sound system" : "Lighting rig"} upgraded to tier ${e.tier} (−${fmt(e.cost)} C)`;
+        return `${e.upgrade === "sound" ? "Sound system" : "Lighting rig"} upgraded to tier ${e.tier} (−${fmt(e.cost)} NP)`;
       case "sparklerParade":
         return e.bottles
-          ? `Sparkler parade! ${e.bottles} more table${e.bottles > 1 ? "s" : ""} made a block buy: +${fmt(e.revenue)} C`
+          ? `Sparkler parade! ${e.bottles} more table${e.bottles > 1 ? "s" : ""} made a block buy: +${fmt(e.revenue)} NP`
           : "Sparkler parade lit up the room";
       case "policyChanged":
         return `House rules: ${[
-          e.policy.cover != null ? `cover ${fmt(e.policy.cover)} C` : null,
+          e.policy.cover != null ? `cover ${fmt(e.policy.cover)} NP` : null,
           e.policy.happyHour !== "off"
             ? `${e.policy.happyHour} happy hour`
             : null,

@@ -74,7 +74,7 @@ export function PromoTab({ s }: { s: GameState }) {
               <div>
                 <div className="font-medium">{c.name}</div>
                 <div className="text-xs text-white/50">
-                  {segmentNames[c.segment]} · {fmt(c.cost)} C
+                  {segmentNames[c.segment]} · {fmt(c.cost)} {en.unit}
                 </div>
               </div>
               <button

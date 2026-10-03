@@ -92,9 +92,17 @@ export function TokenDetail({
             <Stat label={t.inStock}>
               {tk.minLevel > s.level ? t.unlock(tk.minLevel) : s.stock[id]}
             </Stat>
-            {!guest && <Stat label={t.cost}>{fmt(cost)} C</Stat>}
-            <Stat label={t.list}>{fmt(list)} C</Stat>
-            <Stat label={t.live}>{fmt(live)} C</Stat>
+            {!guest && (
+              <Stat label={t.cost}>
+                {fmt(cost)} {en.unit}
+              </Stat>
+            )}
+            <Stat label={t.list}>
+              {fmt(list)} {en.unit}
+            </Stat>
+            <Stat label={t.live}>
+              {fmt(live)} {en.unit}
+            </Stat>
             <Stat label={t.change}>
               {change > 0 ? "▲ +" : change < 0 ? "▼ " : ""}
               {change}%
@@ -192,7 +200,7 @@ export function LivePrice({ s, id }: { s: GameState; id: TokenId }) {
   const change = Math.round((marketOf(s.night, id) - 1) * 1000) / 10;
   return (
     <span className="tabular-nums">
-      {fmt(marketPrice(s, id))} C
+      {fmt(marketPrice(s, id))} {en.unit}
       {change !== 0 && (
         <span className="ml-1 text-white/55">
           {change > 0 ? "▲" : "▼"}

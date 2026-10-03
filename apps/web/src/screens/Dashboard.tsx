@@ -52,7 +52,7 @@ const up = (s: Step): Step =>
       ? "role"
       : "home";
 const signed = (n: number) =>
-  `${n > 0 ? "+" : n < 0 ? "−" : ""}${fmt(Math.abs(n))} C`;
+  `${n > 0 ? "+" : n < 0 ? "−" : ""}${fmt(Math.abs(n))} ${en.unit}`;
 
 /** The player's hub between the landing page and the game: profile, wallet, then pick a role (CEO or guest). */
 export function Dashboard() {
@@ -521,11 +521,13 @@ function CeoPanel({
   onVenue: (lease: number) => void;
   onEvents: (club: { name: string; level: Level; slot: Slot }) => void;
 }) {
-  const { start, go, load, closeClub } = useGame();
+  const { go, load, closeClub } = useGame();
   // Re-read the practice clubs when one is closed.
   const [, bump] = useState(0);
   const { city: c } = useCityLive();
-  const venues = myVenues(c);
+  // The city runs on Credit (real money): shut until top-ups are live, so only Classic clubs show.
+  const cityOpen = !!c?.open;
+  const venues = cityOpen ? myVenues(c) : [];
   const clubs = listClubs();
   const full = !freeSlot();
   const [closing, setClosing] = useState<Slot | null>(null);
@@ -599,7 +601,8 @@ function CeoPanel({
                   {g.outcome && <Tag>{t.outcome[g.outcome]}</Tag>}
                 </span>
                 <span className="block text-xs text-white/60">
-                  {levels[g.level].name} · {t.dayOf(g.day)} · {fmt(g.coin)} C
+                  {levels[g.level].name} · {t.dayOf(g.day)} · {fmt(g.coin)}{" "}
+                  {en.unit}
                 </span>
               </span>
               {closing === slot ? (
@@ -654,15 +657,8 @@ function CeoPanel({
       </div>
 
       <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-        <button className={cn(card, "border-white/30")} onClick={onRent}>
-          <span className="min-w-0 flex-1">
-            <span className="block font-medium">{t.rentNew}</span>
-            <span className="block text-xs text-white/60">{t.rentNewDesc}</span>
-          </span>
-          <span aria-hidden>→</span>
-        </button>
         <button
-          className={cn(card, "disabled:opacity-40")}
+          className={cn(card, "border-white/30 disabled:opacity-40")}
           disabled={full}
           onClick={() => go("setup")}
         >
@@ -674,14 +670,32 @@ function CeoPanel({
           </span>
           <span aria-hidden>→</span>
         </button>
+        {cityOpen ? (
+          <button className={card} onClick={onRent}>
+            <span className="min-w-0 flex-1">
+              <span className="block font-medium">{t.rentNew}</span>
+              <span className="block text-xs text-white/60">
+                {t.rentNewDesc}
+              </span>
+            </span>
+            <span aria-hidden>→</span>
+          </button>
+        ) : (
+          <div
+            className={cn(
+              card,
+              "cursor-default border-dashed hover:bg-white/[0.03]",
+            )}
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block font-medium text-white/70">
+                {t.cityTitle}
+              </span>
+              <span className="block text-xs text-white/50">{t.cityDesc}</span>
+            </span>
+          </div>
+        )}
       </div>
-
-      <button
-        className="self-start text-xs text-white/55 hover:text-white"
-        onClick={() => start({ mode: "basement" })}
-      >
-        {t.challenge} →
-      </button>
     </div>
   );
 }
@@ -899,7 +913,7 @@ function GigList() {
                   </div>
                   <div className="mt-auto flex items-center justify-between gap-2">
                     <span className="font-mono text-sm">
-                      {fmt(("djFee" in e && e.djFee) || 0)} C
+                      {fmt(("djFee" in e && e.djFee) || 0)} {en.unit}
                     </span>
                     <button
                       className="h-9 rounded-lg bg-white px-4 text-xs font-semibold tracking-[0.14em] text-black uppercase"

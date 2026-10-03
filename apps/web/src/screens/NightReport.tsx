@@ -105,7 +105,7 @@ export function NightReport({ s }: { s: GameState }) {
               {en.report.profit}
             </div>
             <div className="font-mono text-4xl tabular-nums">
-              {signed(r.profit)} C
+              {signed(r.profit)} {en.unit}
             </div>
             <div className="text-sm text-white/55">
               {en.report.rep} {signed(r.repDelta)} → {s.reputation}

@@ -60,7 +60,7 @@ export class Videotron {
         text: data.top
           .map(
             (g, i) =>
-              `#${i + 1} ${g.name} ${g.spent.toLocaleString("en-US")} C`,
+              `#${i + 1} ${g.name} ${g.spent.toLocaleString("en-US")} ${en.unit}`,
           )
           .join("   ·   "),
         hue: 45,

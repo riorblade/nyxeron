@@ -342,6 +342,9 @@ func (pl *players) routeEvents(mux *http.ServeMux) {
 		id, ok := pl.who(w, r)
 		var in EventInput
 		if ok && body(w, r, &in) {
+			if in.Lease > 0 && cityClosed(w) {
+				return
+			}
 			e, err := pl.db.Event(r.Context(), id, in, time.Now())
 			reply(w, e, err)
 		}

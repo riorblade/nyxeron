@@ -79,7 +79,9 @@ export function TalentTab({ s }: { s: GameState }) {
                     </div>
                   </div>
                   <div className="flex items-center justify-between gap-2 border-t border-white/10 p-2.5">
-                    <span className="font-mono text-sm">{fmt(d.fee)} C</span>
+                    <span className="font-mono text-sm">
+                      {fmt(d.fee)} {en.unit}
+                    </span>
                     <button
                       disabled={locked || booked}
                       onClick={() => act((g) => r03_bookDj(g, id))}
