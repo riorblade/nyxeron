@@ -403,3 +403,56 @@ func TestManyVenues(t *testing.T) {
 		t.Fatalf("someone else's shop: %v", err)
 	}
 }
+
+// The back office sets how many venues each level has; a level can't shrink below its highest rented slot.
+func TestVenueCounts(t *testing.T) {
+	s := testStore(t)
+	now := time.Now()
+	s.Get(ctx, "a")
+	s.GrantCoins(ctx, "boss", "a", 1_000_000, "test")
+	if c := s.VenueCounts(ctx)["5"]; c != game.city.Venues["5"].Count {
+		t.Fatalf("default L5 count %d", c)
+	}
+	// More Premium Venues: a third one can be rented straight away.
+	if err := s.SetVenueCounts(ctx, "boss", map[string]int{"5": 3}, "demand", now); err != nil {
+		t.Fatal(err)
+	}
+	v, _ := s.City(ctx, "", false, now)
+	five := 0
+	for _, x := range v.Venues {
+		if x.Level == 5 {
+			five++
+		}
+	}
+	if five != 3 || v.Counts["5"] != 3 {
+		t.Fatalf("L5 venues %d, counts %v", five, v.Counts)
+	}
+	if _, err := s.Lease(ctx, "a", 5, 3, "Third", 1, now); err != nil {
+		t.Fatalf("rent the new slot: %v", err)
+	}
+	// Can't shrink below a rented slot; can't go to zero or past the cap; needs a reason; unknown level refused.
+	for name, try := range map[string]struct {
+		c   map[string]int
+		r   string
+		err error
+	}{
+		"below a rented slot": {map[string]int{"5": 2}, "x", errRejected},
+		"zero":                {map[string]int{"5": 0}, "x", errBad},
+		"over the cap":        {map[string]int{"1": maxVenuesPerLevel + 1}, "x", errBad},
+		"no reason":           {map[string]int{"1": 30}, "", errBad},
+		"unknown level":       {map[string]int{"9": 3}, "x", errBad},
+	} {
+		if err := s.SetVenueCounts(ctx, "boss", try.c, try.r, now); !errors.Is(err, try.err) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if err := s.SetVenueCounts(ctx, "boss", map[string]int{"5": 3, "1": 10}, "tidy", now); err != nil {
+		t.Fatal(err)
+	}
+	if c := s.VenueCounts(ctx); c["1"] != 10 || c["5"] != 3 || c["2"] != game.city.Venues["2"].Count {
+		t.Fatalf("%v", c)
+	}
+	if rows, _ := s.Audit(ctx, "", 10, 0); rows[0].Action != "venue-counts" || rows[0].Actor != "boss" {
+		t.Fatalf("audit: %+v", rows[0])
+	}
+}

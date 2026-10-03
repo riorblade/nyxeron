@@ -545,6 +545,49 @@ func (s *store) SetRent(ctx context.Context, actor string, rent map[string]int64
 	return t.Commit()
 }
 
+const maxVenuesPerLevel = 500
+
+// SetVenueCounts changes how many venues of each level the city has. A level can't shrink below its highest
+// rented slot (nobody loses a venue they're paying for); new slots are free to rent at once.
+func (s *store) SetVenueCounts(ctx context.Context, actor string, counts map[string]int, reason string, now time.Time) error {
+	if strings.TrimSpace(reason) == "" || len(counts) == 0 {
+		return errBad
+	}
+	before := s.VenueCounts(ctx)
+	after := map[string]int{}
+	for l, n := range before {
+		after[l] = n
+	}
+	t, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer t.Rollback()
+	for l, n := range counts {
+		level, _ := strconv.Atoi(l)
+		if _, ok := before[l]; !ok || n < 1 || n > maxVenuesPerLevel {
+			return errBad
+		}
+		var highest int
+		if err := t.QueryRow(`SELECT COALESCE(MAX(slot), 0) FROM leases WHERE level = ? AND ends_at > ?`, level, now.Unix()).Scan(&highest); err != nil {
+			return err
+		}
+		if n < highest {
+			return errRejected
+		}
+		after[l] = n
+	}
+	b, _ := json.Marshal(after)
+	if _, err := t.Exec(`INSERT INTO settings (key, value, updated_at) VALUES ('venueCounts', ?, ?)
+		ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`, string(b), now.Unix()); err != nil {
+		return err
+	}
+	if err := audit(t, actor, "venue-counts", "", map[string]any{"before": before, "after": after}, reason); err != nil {
+		return err
+	}
+	return t.Commit()
+}
+
 // Revenue: rent the platform took (all time and the last 7 days).
 func (s *store) Revenue(ctx context.Context, now time.Time) (total, week int64) {
 	_ = s.db.QueryRowContext(ctx, `SELECT COALESCE(-SUM(delta), 0), COALESCE(-SUM(CASE WHEN at >= ? THEN delta END), 0)
@@ -777,6 +820,16 @@ func (a *admin) route(mux *http.ServeMux) {
 		if yes && body(w, r, &in) {
 			id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 			ok(w, a.db.AdminCancelParty(r.Context(), actor, id, in.Reason))
+		}
+	})
+	mux.HandleFunc("PUT /api/admin/venues", func(w http.ResponseWriter, r *http.Request) {
+		actor, _, yes := a.who(w, r, roleAdmin)
+		var in struct {
+			Counts map[string]int
+			Reason string
+		}
+		if yes && body(w, r, &in) {
+			ok(w, a.db.SetVenueCounts(r.Context(), actor, in.Counts, in.Reason, time.Now()))
 		}
 	})
 	mux.HandleFunc("PUT /api/admin/rent", func(w http.ResponseWriter, r *http.Request) {

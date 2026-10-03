@@ -163,6 +163,7 @@ type CityView struct {
 	Venues  []VenueView      `json:"venues"`
 	Parties []PartyView      `json:"parties"`
 	Rent    map[string]int64 `json:"rent"`
+	Counts  map[string]int   `json:"counts"`
 	Now     int64            `json:"now"`
 	// Prices[level][token]: what stock costs, the usual shelf price and the most a shop may ask, right now.
 	Prices map[string]map[string]PriceRow `json:"prices,omitempty"`
@@ -211,10 +212,32 @@ func (s *store) Rent(ctx context.Context) map[string]int64 {
 	return out
 }
 
+// VenueCounts: how many venues of each level the city has: the back office's numbers (settings "venueCounts") over
+// the game data.
+func (s *store) VenueCounts(ctx context.Context) map[string]int {
+	out := map[string]int{}
+	for l, v := range game.city.Venues {
+		out[l] = v.Count
+	}
+	var raw string
+	if s.db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = 'venueCounts'`).Scan(&raw) == nil {
+		var o map[string]int
+		if json.Unmarshal([]byte(raw), &o) == nil {
+			for l, n := range o {
+				if _, ok := out[l]; ok && n > 0 {
+					out[l] = n
+				}
+			}
+		}
+	}
+	return out
+}
+
 // City: every venue with its tenant (if any) and shop, and the parties that haven't ended. `viewer` marks what is
 // theirs; `admin` adds who the tenants are.
 func (s *store) City(ctx context.Context, viewer string, admin bool, now time.Time) (CityView, error) {
-	v := CityView{Rent: s.Rent(ctx), Now: now.Unix(), Venues: []VenueView{}, Parties: []PartyView{}}
+	counts := s.VenueCounts(ctx)
+	v := CityView{Rent: s.Rent(ctx), Counts: counts, Now: now.Unix(), Venues: []VenueView{}, Parties: []PartyView{}}
 	byVenue := map[[2]int]*LeaseView{}
 	rows, err := s.db.QueryContext(ctx, `SELECT l.id, l.level, l.slot, l.club, u.name, u.id, u.email, l.starts_at, l.ends_at, l.open
 		FROM leases l JOIN users u ON u.id = l.user_id WHERE l.ends_at > ?`, now.Unix())
@@ -254,7 +277,7 @@ func (s *store) City(ctx context.Context, viewer string, admin bool, now time.Ti
 		r.Close()
 	}
 	for level := 1; level <= 5; level++ {
-		for slot := 1; slot <= game.city.Venues[lv(level)].Count; slot++ {
+		for slot := 1; slot <= counts[lv(level)]; slot++ {
 			v.Venues = append(v.Venues, VenueView{Level: level, Slot: slot, Lease: byVenue[[2]int{level, slot}]})
 		}
 	}
@@ -329,8 +352,8 @@ func pay(t *sql.Tx, id string, amount int64, kind, reason string) error {
 // the player's, extends it. A player may run up to maxVenuesPerPlayer venues; at most maxWeeksAhead paid ahead.
 func (s *store) Lease(ctx context.Context, id string, level, slot int, club string, weeks int, now time.Time) (p Profile, err error) {
 	club, ok := cleanName(club)
-	v, known := game.city.Venues[lv(level)]
-	if !ok || !known || slot < 0 || slot > v.Count || weeks < 1 || weeks > game.city.MaxWeeksAhead {
+	count, known := s.VenueCounts(ctx)[lv(level)]
+	if !ok || !known || slot < 0 || slot > count || weeks < 1 || weeks > game.city.MaxWeeksAhead {
 		return p, errBad
 	}
 	rent := s.Rent(ctx)[lv(level)] * int64(weeks)
@@ -374,7 +397,7 @@ func (s *store) Lease(ctx context.Context, id string, level, slot int, club stri
 			if slot == 0 {
 				e := t.QueryRow(`WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n WHERE x < ?)
 					SELECT x FROM n WHERE x NOT IN (SELECT slot FROM leases WHERE level = ? AND ends_at > ?) LIMIT 1`,
-					v.Count, level, now.Unix()).Scan(&slot)
+					count, level, now.Unix()).Scan(&slot)
 				if errors.Is(e, sql.ErrNoRows) {
 					return errConflict // all taken
 				} else if e != nil {

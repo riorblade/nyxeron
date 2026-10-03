@@ -5,6 +5,9 @@ teammate would notice.
 
 ## 2026-10-03 · CEO: your clubs
 
+- **Back office: venues per level.** Venues → "Venues per level" sets how many venues each level has, next to its
+  weekly rent, in one save with a reason (audited). A level can't go below its highest rented venue; new venues can
+  be rented at once and the game's rent list follows.
 - **Events with invites:** CEOs schedule events at any club (Office → Events, or Events on a club card, or the city
   venue page): date and time picker, length (default 10 min), Public or Private. Every event has an invite link
   (`/?event=…`); guests mark "I'm going" and get a "… is live: Join now" banner once the host opens the club.

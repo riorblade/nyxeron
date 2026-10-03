@@ -134,7 +134,7 @@ function RentList({ onRented }: { onRented: () => void }) {
                   Lv {lv} · {levels[lv].name}
                 </div>
                 <div className="text-xs text-white/55">
-                  {t.free(free, venueCount(lv))} ·{" "}
+                  {t.free(free, c.counts?.[lv] ?? venueCount(lv))} ·{" "}
                   {t.perWeek(fmt(c.rent[lv] ?? 0))}
                   {canHostParty(lv) ? ` · ${t.parties}` : ` · ${t.shop}`}
                 </div>

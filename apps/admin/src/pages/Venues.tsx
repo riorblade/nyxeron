@@ -60,6 +60,8 @@ export function Venues({ canEdit }: { canEdit: boolean }) {
         <Kpi label="Scheduled" value={c.parties.length - live.length} />
       </div>
 
+      <LevelsTable c={c} canEdit={canEdit} done={reload} />
+
       <div className="grid gap-4 xl:grid-cols-[1fr_22rem]">
         <Section title="Venues">
           <div className="mb-3 flex flex-wrap gap-1">
@@ -184,7 +186,6 @@ export function Venues({ canEdit }: { canEdit: boolean }) {
               <Empty>No parties scheduled.</Empty>
             )}
           </Section>
-          <RentTable rent={c.rent} canEdit={canEdit} done={reload} />
         </div>
       </div>
     </>
@@ -218,76 +219,157 @@ function Status({ l, parties }: { l: Lease; parties: CityView["parties"] }) {
   );
 }
 
-function RentTable({
-  rent,
+/**
+ * Supply and price per venue level: how many venues the city has and their weekly rent. A level can't shrink below
+ * its highest rented slot (the api refuses it too), so nobody loses a venue they're paying for.
+ */
+function LevelsTable({
+  c,
   canEdit,
   done,
 }: {
-  rent: Record<string, number>;
+  c: CityView;
   canEdit: boolean;
   done: () => void;
 }) {
-  const [edit, setEdit] = useState<Record<string, string>>({});
+  const [count, setCount] = useState<Record<string, string>>({});
+  const [rent, setRent] = useState<Record<string, string>>({});
   const [reason, setReason] = useState("");
   const [msg, setMsg] = useState("");
-  const changed = Object.fromEntries(
-    Object.entries(edit)
-      .map(([l, v]) => [l, Number(v)] as const)
-      .filter(([l, v]) => v && v !== rent[l]),
+  const [busy, setBusy] = useState(false);
+  const stats = (l: number) => {
+    const at = c.venues.filter((v) => v.level === l);
+    const rented = at.filter((v) => v.lease);
+    return {
+      rented: rented.length,
+      min: Math.max(1, ...rented.map((v) => v.slot)),
+    };
+  };
+  const diff = (edit: Record<string, string>, cur: Record<string, number>) =>
+    Object.fromEntries(
+      Object.entries(edit)
+        .map(([l, v]) => [l, Number(v)] as const)
+        .filter(([l, v]) => v && v !== cur[l]),
+    );
+  const counts = diff(count, c.counts);
+  const rents = diff(rent, c.rent);
+  const tooLow = Object.entries(counts).filter(
+    ([l, n]) => n < stats(Number(l)).min,
   );
+  const changes = Object.keys(counts).length + Object.keys(rents).length;
+
   return (
-    <Section title="Weekly rent">
+    <Section title="Venues per level" className="mb-4">
       <form
-        className="flex flex-col gap-2"
         onSubmit={async (e) => {
           e.preventDefault();
+          setBusy(true);
+          setMsg("");
           try {
-            await api("PUT", "/admin/rent", { rent: changed, reason });
-            setEdit({});
+            if (Object.keys(counts).length)
+              await api("PUT", "/admin/venues", { counts, reason });
+            if (Object.keys(rents).length)
+              await api("PUT", "/admin/rent", { rent: rents, reason });
+            setCount({});
+            setRent({});
             setReason("");
-            setMsg("✓ Saved (new leases and extensions)");
+            setMsg(
+              "✓ Saved. New venues can be rented right away; rent applies to new leases and extensions.",
+            );
             done();
           } catch (err) {
-            setMsg(`Error: ${(err as Error).message}`);
+            setMsg(
+              (err as Error).message === "rejected"
+                ? "Error: a level can't go below its highest rented venue."
+                : `Error: ${(err as Error).message}`,
+            );
+          } finally {
+            setBusy(false);
           }
         }}
       >
-        {LEVELS.map((l) => (
-          <label
-            key={l}
-            className="flex items-center justify-between gap-3 text-sm"
-          >
-            <span>
-              Lv {l} · {levels[l].name}
-            </span>
-            <input
-              className="field w-28 text-right font-mono"
-              inputMode="numeric"
-              disabled={!canEdit}
-              value={edit[l] ?? String(rent[l] ?? "")}
-              onChange={(e) =>
-                setEdit({ ...edit, [l]: e.target.value.replace(/\D/g, "") })
-              }
-            />
-          </label>
-        ))}
+        <Table
+          head={[
+            "Level",
+            "Venues",
+            "Rented",
+            "Free",
+            "Lowest allowed",
+            "Weekly rent (Coin)",
+          ]}
+        >
+          {LEVELS.map((l) => {
+            const s = stats(l);
+            const n = c.counts[l] ?? 0;
+            return (
+              <tr key={l}>
+                <td>
+                  Lv {l} · {levels[l].name}
+                </td>
+                <td>
+                  <input
+                    className={`field h-8 w-24 text-right font-mono ${count[l] && Number(count[l]) < s.min ? "border-white" : ""}`}
+                    inputMode="numeric"
+                    aria-label={`Venues at level ${l}`}
+                    disabled={!canEdit}
+                    value={count[l] ?? String(n)}
+                    onChange={(e) =>
+                      setCount({
+                        ...count,
+                        [l]: e.target.value.replace(/\D/g, ""),
+                      })
+                    }
+                  />
+                </td>
+                <td className="font-mono tabular-nums">{s.rented}</td>
+                <td className="font-mono tabular-nums">{n - s.rented}</td>
+                <td className="font-mono tabular-nums text-white/60">
+                  {s.min}
+                </td>
+                <td>
+                  <input
+                    className="field h-8 w-32 text-right font-mono"
+                    inputMode="numeric"
+                    aria-label={`Weekly rent at level ${l}`}
+                    disabled={!canEdit}
+                    value={rent[l] ?? String(c.rent[l] ?? "")}
+                    onChange={(e) =>
+                      setRent({
+                        ...rent,
+                        [l]: e.target.value.replace(/\D/g, ""),
+                      })
+                    }
+                  />
+                </td>
+              </tr>
+            );
+          })}
+        </Table>
+        {tooLow.length > 0 && (
+          <p className="mt-2 text-sm">
+            Lv {tooLow.map(([l]) => l).join(", ")}: can't go below the highest
+            rented venue (see "Lowest allowed").
+          </p>
+        )}
         {canEdit && (
-          <>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
             <input
               className="field"
-              placeholder="Reason (required)"
+              placeholder="Reason (required, goes to the audit log)"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
             />
             <button
-              className="btn btn-primary self-start"
-              disabled={!Object.keys(changed).length || !reason.trim()}
+              className="btn btn-primary"
+              disabled={busy || !changes || !reason.trim() || tooLow.length > 0}
             >
-              Save rent
+              {busy
+                ? "Saving…"
+                : `Save ${changes || ""} change${changes === 1 ? "" : "s"}`}
             </button>
-          </>
+          </div>
         )}
-        {msg && <p className="text-sm text-white/70">{msg}</p>}
+        {msg && <p className="mt-2 text-sm text-white/70">{msg}</p>}
       </form>
     </Section>
   );
