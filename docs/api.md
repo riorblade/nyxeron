@@ -129,4 +129,5 @@ curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application
 | `BINANCE_WEB3_API_KEY`, `BINANCE_WEB3_SECRET_KEY` | spot quotes |
 | `ADMIN_EMAILS` | back-office owners |
 | `AGENT_KEY` | stock agent secret (empty = agent API off) |
+| `BSC_RPC_1`, `BSC_RPC_2` | BNB Smart Chain JSON-RPC, two independent providers that must agree (`bsc.go`); both needed |
 | `RELAY_URL` | the relay's internal base URL, for live-room stats |

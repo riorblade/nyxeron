@@ -74,11 +74,24 @@ var game struct {
 			SpotFactorRange [2]float64 `json:"spotFactorRange"`
 		} `json:"platform"`
 	}
+	payments struct {
+		ChainID       int    `json:"chainId"`
+		Confirmations uint64 `json:"confirmations"`
+		AgenticWallet string `json:"agenticWallet"`
+		Topup         struct {
+			Tokens map[string]string `json:"tokens"`
+		} `json:"topup"`
+		Tokens map[string]struct {
+			Symbol   string `json:"symbol"`
+			Contract string `json:"contract"`
+		} `json:"tokens"`
+	}
 }
 
 func init() {
 	for name, v := range map[string]any{
 		"tokens": &game.tokens, "levels": &game.levels, "city": &game.city, "strategy": &game.strategy,
+		"payments": &game.payments,
 	} {
 		b, err := gameFS.ReadFile("gamedata/" + name + ".json")
 		if err == nil {
