@@ -111,6 +111,16 @@ export function Dashboard() {
             <span className="hidden text-[10px] tracking-[0.3em] text-white/50 uppercase sm:inline">
               {t.title}
             </span>
+            <a
+              className="flex h-9 items-center gap-1.5 rounded-lg border border-white/15 bg-black/30 px-3 text-xs hover:bg-white/10"
+              href={en.social.x}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={en.social.follow}
+            >
+              <span aria-hidden>𝕏</span>
+              <span className="hidden sm:inline">{en.social.follow}</span>
+            </a>
             <button
               className="flex size-9 items-center justify-center rounded-lg border border-white/15 bg-black/30 hover:bg-white/10"
               onClick={() => useSettings.getState().setOpen(true)}

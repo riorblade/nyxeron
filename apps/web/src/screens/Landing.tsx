@@ -460,6 +460,15 @@ export function Landing() {
                 {label as string}
               </button>
             ))}
+            <a
+              className="hit micro nx-in"
+              style={vars({ "--d": "670ms" })}
+              href={en.social.x}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {L.followX}
+            </a>
           </nav>
           <button
             className="contact micro hit nx-in"
