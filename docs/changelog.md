@@ -5,6 +5,10 @@ teammate would notice.
 
 ## 2026-10-03 · CEO: your clubs
 
+- **Follow us on X:** a "Follow on 𝕏" link on the landing page and a "Follow @nyxeron_xyz" button in the dashboard
+  header (the only outbound link in the client). Link previews (Open Graph / X card) show the Premium Venue.
+- **Tab icon everywhere:** PNG and ICO favicons next to the SVG (Safari and old caches showed the default icon);
+  titles read "NYXERON · Nightclub Empire"; the landing footer reads "©2026 NYXERON".
 - **X account:** [@nyxeron_xyz](https://x.com/nyxeron_xyz) with the Nightclub Empire bio (`docs/brand.md`).
 - **Brand identity:** the NYXERON mark (the VIP diamond, no letters), app icons and favicons for the game and the
   back office, an X profile picture and an X header rendered from the Premium Venue (`docs/brand.md`).

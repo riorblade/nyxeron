@@ -53,11 +53,16 @@ export const reasonText = (r: FailReason, short?: number) => reasons[r](short);
 
 export const en = {
   title: "NYXERON",
-  subtitle: "Nightlife Empire",
+  subtitle: "Nightclub Empire",
   tagline: "Plan by day. Survive the night.",
 
+  /** The only outbound link the client shows. */
+  social: {
+    x: "https://x.com/nyxeron_xyz",
+    follow: "Follow @nyxeron_xyz",
+  },
   landing: {
-    docTitle: "NYXERON · Nightlife Empire",
+    docTitle: "NYXERON · Nightclub Empire",
     main: ["Nyxeron", "Nightlife"],
     alt: ["Open the", "Doors"],
     crew: ["Sixty", "Nights"],
@@ -66,9 +71,10 @@ export const en = {
     zone: ["Veltra City", "Local Time"],
     enter: "Enter",
     settings: "Settings",
+    followX: "Follow on 𝕏",
     contactNew: "Open the doors",
     lede: "Veltra City, 22:00. One token booth, ten thousand coin and a permit that runs out in thirty days. Stock the token desk, book the DJ, keep the inspectors sweet, and build it into the venue this city can't stop talking about.",
-    copyright: "©2026 Kelompok Empuy",
+    copyright: "©2026 NYXERON",
     scroll: "Scroll down",
     statement: "From one token booth to a premium venue in sixty nights.",
     left: "Five venues, one ladder. Every level unlocks a new system: staff, live music, DJs, security, whale tables.",
