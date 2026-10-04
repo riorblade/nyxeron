@@ -120,8 +120,8 @@ var migrations = []string{
 		PRIMARY KEY (party_id, user_id)
 	);`,
 	// 5 — real money (docs/payments.md), kept apart from play money: credits (paid, minted only by verified
-	// top-ups) next to Coin, real units next to the play portfolio, top-ups, party/shop sales and each party's
-	// locked price list, units reserved in the warehouse during a party, and the platform's own money. Credits and platform money are in credits
+	// top-ups) next to Coin, real units next to the play portfolio, top-ups, party/shop sales and the price lists
+	// (a party's, locked when it starts; a shop's), units reserved in the warehouse during a party, and the platform's own money. Credits and platform money are in credits
 	// (1 = $0.01); top-up amounts also as the token's base units (18 decimals: too big for an INTEGER).
 	`ALTER TABLE users ADD COLUMN credits INTEGER NOT NULL DEFAULT 0 CHECK (credits >= 0);
 	ALTER TABLE ledger ADD COLUMN currency TEXT NOT NULL DEFAULT 'coin' CHECK (currency IN ('coin', 'credit'));
@@ -173,6 +173,12 @@ var migrations = []string{
 		token    TEXT    NOT NULL,
 		price    INTEGER NOT NULL CHECK (price > 0),
 		PRIMARY KEY (party_id, token)
+	);
+	CREATE TABLE shop_prices (
+		lease_id INTEGER NOT NULL,
+		token    TEXT    NOT NULL,
+		price    INTEGER NOT NULL CHECK (price > 0),
+		PRIMARY KEY (lease_id, token)
 	);
 	ALTER TABLE platform_stock ADD COLUMN reserved INTEGER NOT NULL DEFAULT 0 CHECK (reserved >= 0);
 	CREATE TABLE platform_ledger (
