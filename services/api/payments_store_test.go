@@ -87,6 +87,7 @@ INSERT INTO stock_moves (token, delta, kind, actor, reason, at) VALUES ('tsla', 
 		`SELECT COUNT(*) FROM topups`:                                           0,
 		`SELECT COUNT(*) FROM sales`:                                            0,
 		`SELECT COUNT(*) FROM party_prices`:                                     0,
+		`SELECT COUNT(*) FROM shop_prices`:                                      0,
 		`SELECT COUNT(*) FROM platform_ledger`:                                  0,
 	}
 	for q, want := range checks {
