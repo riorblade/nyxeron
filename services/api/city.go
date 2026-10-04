@@ -78,8 +78,10 @@ var game struct {
 		ChainID       int    `json:"chainId"`
 		Confirmations uint64 `json:"confirmations"`
 		AgenticWallet string `json:"agenticWallet"`
+		CreditsPerUSD int    `json:"creditsPerUsd"`
 		Topup         struct {
-			Tokens map[string]string `json:"tokens"`
+			FeePercent int               `json:"feePercent"`
+			Tokens     map[string]string `json:"tokens"`
 		} `json:"topup"`
 		Tokens map[string]struct {
 			Symbol   string `json:"symbol"`

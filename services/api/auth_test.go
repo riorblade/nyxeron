@@ -37,6 +37,11 @@ func signJWT(t *testing.T, key *ecdsa.PrivateKey, head, claims map[string]any) s
 
 // fakePrivy serves the app's JWKS and one user, like auth.privy.io.
 func fakePrivy(t *testing.T, key *ecdsa.PrivateKey) *privy {
+	return fakePrivyWallet(t, key, "0xEMBEDDED")
+}
+
+// fakePrivyWallet: the same, with the user's embedded wallet at this address.
+func fakePrivyWallet(t *testing.T, key *ecdsa.PrivateKey, wallet string) *privy {
 	pub := key.PublicKey
 	x, y := make([]byte, 32), make([]byte, 32)
 	pub.X.FillBytes(x)
@@ -56,7 +61,7 @@ func fakePrivy(t *testing.T, key *ecdsa.PrivateKey) *privy {
 		_, _ = w.Write([]byte(`{"id":"did:privy:abc","linked_accounts":[
 			{"type":"wallet","address":"0xEXTERNAL","chain_type":"ethereum","wallet_client_type":"metamask"},
 			{"type":"google_oauth","email":"kiel@gmail.com","name":"Kiel"},
-			{"type":"wallet","address":"0xEMBEDDED","chain_type":"ethereum","wallet_client_type":"privy"}]}`))
+			{"type":"wallet","address":"` + wallet + `","chain_type":"ethereum","wallet_client_type":"privy"}]}`))
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)

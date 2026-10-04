@@ -220,9 +220,13 @@ func (p *privy) user(id string, now time.Time) (Me, error) {
 			me.Wallet = a.Address
 		}
 	}
-	p.mu.Lock()
-	p.users[id] = cachedMe{me, now}
-	p.mu.Unlock()
+	// Not cached without a wallet: the embedded wallet can be created after the first lookup, and top-ups
+	// match on it.
+	if me.Wallet != "" {
+		p.mu.Lock()
+		p.users[id] = cachedMe{me, now}
+		p.mu.Unlock()
+	}
 	return me, nil
 }
 
