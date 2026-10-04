@@ -189,6 +189,20 @@ var migrations = []string{
 		reason TEXT    NOT NULL DEFAULT '',
 		at     INTEGER NOT NULL
 	);`,
+	// 6 — the cutover: the city runs on credits. The warehouse keeps only units bought by swaps verified on BSC
+	// (a restock whose tx is in platform_ledger); the units typed in by hand (100 per token on 2026-10-02) aren't
+	// real stock and go, each removal written as a stock move. Nothing is reserved before the cutover.
+	`CREATE TEMP TABLE verified AS
+		SELECT ps.token, COALESCE((SELECT SUM(m.delta) FROM stock_moves m WHERE m.token = ps.token AND m.kind = 'restock'
+			AND m.tx != '' AND m.tx IN (SELECT ref FROM platform_ledger WHERE kind = 'restock')), 0) AS units
+		FROM platform_stock ps;
+	INSERT INTO stock_moves (token, delta, kind, actor, reason, at)
+		SELECT ps.token, MIN(v.units, ps.qty) - ps.qty, 'adjust', 'cutover', 'hand-entered units are not real stock',
+			CAST(strftime('%s', 'now') AS INTEGER)
+		FROM platform_stock ps JOIN verified v ON v.token = ps.token WHERE ps.qty > MIN(v.units, ps.qty);
+	UPDATE platform_stock SET qty = MIN(qty, (SELECT units FROM verified WHERE verified.token = platform_stock.token)),
+		updated_at = CAST(strftime('%s', 'now') AS INTEGER);
+	DROP TABLE verified;`,
 }
 
 func migrate(db *sql.DB) error {

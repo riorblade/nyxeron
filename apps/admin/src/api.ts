@@ -138,10 +138,8 @@ export interface Supply {
     onHand: number;
     /** Held for parties in progress. */
     reserved: number;
-    inShops: number;
     sold24h: number;
     sold7d: number;
-    shops: number;
     daysLeft: number;
     suggested: number;
   }[];

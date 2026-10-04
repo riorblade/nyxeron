@@ -3,7 +3,7 @@ import {
   city as cityData,
   LEVELS,
   levels,
-  shopTokens,
+  payments,
   tokens,
   venueCount,
   type Level,
@@ -23,6 +23,7 @@ import {
 import { Img } from "@/components/Img";
 import { fetchOpenClubs, type OpenClub } from "@/api/rooms";
 import { events } from "@/api/events";
+import { topups, useTopups } from "@/api/topups";
 import { EventsFeed, EventsPanel, useEventsLive } from "./EventsPanel";
 import { en, fmt } from "@/i18n/en";
 import { guestJoin } from "@/net/session";
@@ -76,9 +77,18 @@ export function ManageVenue({ lease }: { lease: number }) {
   );
 }
 
+/** The player's Credit (rent and shop purchases are real money), loaded once. */
+function useCredit() {
+  const credits = useTopups((x) => x.credits);
+  useEffect(() => {
+    if (credits === null) void topups.load();
+  }, [credits]);
+  return credits ?? 0;
+}
+
 function RentList({ onRented }: { onRented: () => void }) {
   const c = useCity((x) => x.city)!;
-  const wallet = useProfile((p) => p.wallet);
+  const wallet = useCredit();
   const [club, setClub] = useState("");
   const [weeks, setWeeks] = useState(1);
   return (
@@ -154,7 +164,7 @@ function RentList({ onRented }: { onRented: () => void }) {
 
 function MyVenue({ v }: { v: Venue }) {
   const c = useCity((x) => x.city)!;
-  const wallet = useProfile((p) => p.wallet);
+  const wallet = useCredit();
   const { events: list } = useEventsLive();
   const [busy, setBusy] = useState(false);
   const [planning, setPlanning] = useState(false);
@@ -287,23 +297,35 @@ function Rename({ lease, club }: { lease: number; club: string }) {
   );
 }
 
-/** The shop in one line (status, open switch); Manage opens the shelf. */
+/** The shop in one line (status, open switch); Manage opens its menu: a Credit price per token. */
 function Shop({ v }: { v: Venue }) {
   const c = useCity((x) => x.city)!;
   const lease = v.lease!;
-  const prices = c.prices?.[v.level] ?? {};
-  const held = lease.stock.reduce((n, s) => n + s.qty, 0);
-  const [openShelf, setOpenShelf] = useState(held === 0);
+  const listed = lease.stock.length;
+  const [openMenu, setOpenMenu] = useState(listed === 0);
   const [edit, setEdit] = useState<Partial<Record<TokenId, number>>>({});
-  const [adding, setAdding] = useState(false);
-  const onShelf = new Set(lease.stock.map((s) => s.token));
-  const more = shopTokens(v.level).filter(
-    (tok) => !onShelf.has(tok) && prices[tok] && (c.supply?.[tok] ?? 0) >= 10,
-  );
-  // The first stock on an empty, closed shelf opens the shop too: nothing else to learn.
-  const restock = async (tok: TokenId) => {
-    await city.stock(tok, 10);
-    if (!held && !lease.open) await city.shop(lease.id, true);
+  const menu = Object.keys(payments.tokens) as TokenId[];
+  const priceOf = (tok: TokenId) =>
+    edit[tok] ?? lease.stock.find((s) => s.token === tok)?.price ?? 0;
+  // Bounds (the api checks the same): between wholesale and maxMarkup × wholesale, for tokens with a live price.
+  const bounds = (tok: TokenId) => {
+    const w = c.wholesale?.[tok];
+    return w ? { min: w, max: Math.floor(w * (c.maxMarkup ?? 3)) } : null;
+  };
+  const listedNow = menu.filter((tok) => priceOf(tok) > 0 && bounds(tok));
+  const bad = listedNow.some((tok) => {
+    const b = bounds(tok)!;
+    return priceOf(tok) < b.min || priceOf(tok) > b.max;
+  });
+  const save = async () => {
+    const prices = Object.fromEntries(
+      listedNow.map((tok) => [tok, priceOf(tok)]),
+    ) as Partial<Record<TokenId, number>>;
+    await city.prices(lease.id, prices);
+    // The first menu on a closed shop opens it too: nothing else to learn.
+    if (!listed && !lease.open && listedNow.length)
+      await city.shop(lease.id, true);
+    setEdit({});
   };
   return (
     <section className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
@@ -328,94 +350,73 @@ function Shop({ v }: { v: Venue }) {
           />
         </button>
         <span className="min-w-0 flex-1 text-sm">
-          {t.shopLine(lease.open, held)}
+          {t.shopLine(lease.open, listed)}
         </span>
-        <button className={ghost} onClick={() => setOpenShelf((x) => !x)}>
-          {openShelf ? t.done : t.manage}
+        <button className={ghost} onClick={() => setOpenMenu((x) => !x)}>
+          {openMenu ? t.done : t.manage}
         </button>
       </div>
 
-      {openShelf && (
+      {openMenu && (
         <div className="mt-2 flex flex-col gap-1.5">
-          {held === 0 && (
-            <p className="text-xs text-white/55">{t.emptyShelf}</p>
-          )}
-          {lease.stock.map((s) => {
-            const p = prices[s.token];
-            const price = edit[s.token] ?? s.price;
+          <p className="text-xs text-white/55">
+            {listed === 0 ? t.emptyShelf : t.menuNote}
+          </p>
+          {menu.map((tok) => {
+            const w = c.wholesale?.[tok];
+            const max = bounds(tok)?.max ?? 0;
+            const price = priceOf(tok);
             return (
-              <div key={s.token} className={row + " flex-wrap py-2"}>
+              <div key={tok} className={row + " flex-wrap py-2"}>
                 <span className="min-w-28">
                   <span className="font-mono text-xs">
-                    {tokens[s.token].ticker}
+                    {tokens[tok].ticker}
                   </span>{" "}
-                  <span className="text-xs text-white/50">×{s.qty}</span>
+                  <span className="text-xs text-white/50">
+                    ×{fmt(c.supply?.[tok] ?? 0)}
+                  </span>
                 </span>
                 <span className="flex flex-wrap items-center gap-2">
                   <input
                     className={field + " w-24 font-mono"}
                     inputMode="numeric"
-                    aria-label={t.shelf}
-                    value={price}
+                    aria-label={`${tokens[tok].ticker} ${t.shelf}`}
+                    placeholder="—"
+                    value={price || ""}
+                    disabled={!w}
                     onChange={(e) =>
                       setEdit({
                         ...edit,
-                        [s.token]: Number(e.target.value.replace(/\D/g, "")),
+                        [tok]: Number(e.target.value.replace(/\D/g, "")),
                       })
                     }
-                    title={p ? t.maxPrice(fmt(p.max)) : undefined}
                   />
-                  {p && price > p.wholesale && (
+                  {w ? (
                     <span className="text-xs text-white/60">
-                      {t.margin(fmt(price - p.wholesale))}
+                      {t.floor(fmt(w), fmt(max))}
+                      {price > w && ` · ${t.margin(fmt(price - w))}`}
                     </span>
+                  ) : (
+                    <span className="text-xs text-white/45">—</span>
                   )}
-                  <button
-                    className={ghost}
-                    disabled={!p || (c.supply?.[s.token] ?? 0) < 10}
-                    onClick={() => void restock(s.token)}
-                  >
-                    {t.restock(10, fmt((p?.wholesale ?? 0) * 10))}
-                  </button>
                 </span>
               </div>
             );
           })}
-          <div className="flex flex-wrap items-center gap-2 pt-1">
-            {Object.keys(edit).length > 0 && (
+          {Object.keys(edit).length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 className={btn}
-                onClick={() => {
-                  void city.shop(lease.id, undefined, edit);
-                  setEdit({});
-                }}
+                disabled={bad}
+                onClick={() => void save()}
               >
                 {t.savePrices}
               </button>
-            )}
-            {more.length > 0 &&
-              (adding ? (
-                more.map((tok) => (
-                  <button
-                    key={tok}
-                    className={ghost}
-                    onClick={() => {
-                      void restock(tok);
-                      setAdding(false);
-                    }}
-                  >
-                    {tokens[tok].ticker} · {fmt(prices[tok]!.wholesale * 10)} C
-                  </button>
-                ))
-              ) : (
-                <button
-                  className={held === 0 ? btn : ghost}
-                  onClick={() => setAdding(true)}
-                >
-                  + {t.addStock}
-                </button>
-              ))}
-          </div>
+              {bad && (
+                <span className="text-xs text-white/60">{t.outOfRange}</span>
+              )}
+            </div>
+          )}
         </div>
       )}
     </section>
@@ -535,7 +536,7 @@ function OpenClubRow({ club, party }: { club: OpenClub; party?: Party }) {
 }
 
 function ShopFront({ v }: { v: Venue }) {
-  const wallet = useProfile((p) => p.wallet);
+  const wallet = useCredit();
   const lease = v.lease!;
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
@@ -552,12 +553,14 @@ function ShopFront({ v }: { v: Venue }) {
             className="flex items-center gap-2 rounded-md border border-white/10 px-2 py-1 text-xs"
           >
             <span className="font-mono">{tokens[s.token].ticker}</span>
-            <span className="font-mono text-white/65">{fmt(s.price)} C</span>
+            <span className="font-mono text-white/65">
+              {t.credit(fmt(s.price))}
+            </span>
             <span className="text-white/45">×{s.qty}</span>
             <button
               className={btn + " h-6 px-2"}
-              disabled={wallet < s.price}
-              onClick={() => void city.buy(lease.id, s.token, 1)}
+              disabled={wallet < s.price || s.qty < 1}
+              onClick={() => void city.buy(lease.id, s.token, 1, s.price)}
             >
               {t.buy}
             </button>

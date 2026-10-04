@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -13,7 +14,14 @@ import (
 	"time"
 )
 
-var flat factorFn = func(string) float64 { return 1 }
+// fund gives a player credits, as a verified top-up would (the city runs on credits since the cutover).
+func fund(t *testing.T, s *store, id string, credits int64) {
+	t.Helper()
+	s.Get(ctx, id)
+	if err := s.inTx(ctx, func(tx *sql.Tx) error { return creditLedger(tx, id, credits, "topup", "", "test") }); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func wallet(t *testing.T, s *store, id string) int64 {
 	t.Helper()
@@ -33,22 +41,20 @@ func TestGameDataIsTheGamesData(t *testing.T) {
 			t.Errorf("gamedata/%s.json differs: cp packages/core/src/data/%s.json services/api/gamedata/", name, name)
 		}
 	}
-	// Same prices as packages/core/test/city.test.ts.
-	if wholesale("tsla", 1, 1) >= shelfPrice("tsla", 1, 1) || shelfPrice("tsla", 1, 2) != 2*shelfPrice("tsla", 1, 1) {
-		t.Fatal("city prices")
-	}
-	if f := spotFactorOf(map[string]float64{"SPY": 2, "QQQ": 1, "IWM": 1}, map[string]float64{"SPY": 1, "QQQ": 1, "IWM": 1}, "us500"); f != 1.5 {
-		t.Fatalf("basket factor %v", f)
-	}
 }
 
 func TestLeases(t *testing.T) {
 	s := testStore(t)
 	now := time.Now()
-	rent1 := game.city.Venues["1"].WeeklyRent
+	rent1 := s.Rent(ctx)["1"]
+	if rent1 != game.payments.RentCredits["1"] {
+		t.Fatalf("rent comes from payments.json: %d", rent1)
+	}
+	fund(t, s, "a", 1000)
+	fund(t, s, "b", 500)
 	p, err := s.Lease(ctx, "a", 1, 0, "Booth A", 1, now)
-	if err != nil || p.Wallet != startWallet-rent1 {
-		t.Fatalf("%+v %v", p, err)
+	if err != nil || credits(t, s, "a") != 1000-rent1 || p.Wallet != startWallet {
+		t.Fatalf("rent is paid in credits, Coin untouched: %+v %v", p, err)
 	}
 	// A taken venue can't be rented; nor something unaffordable.
 	if _, err := s.Lease(ctx, "b", 1, 1, "Mine now", 1, now); !errors.Is(err, errConflict) {
@@ -57,11 +63,10 @@ func TestLeases(t *testing.T) {
 	if _, err := s.Lease(ctx, "b", 5, 0, "Too big", 1, now); !errors.Is(err, errRejected) {
 		t.Fatalf("unaffordable: %v", err)
 	}
-	if wallet(t, s, "b") != startWallet {
+	if credits(t, s, "b") != 500 {
 		t.Fatal("failed rent must not charge")
 	}
-	// Extending adds weeks, up to the limit paid ahead.
-	// Extending: the slot is already yours (slot 1 of Level 1).
+	// Extending: the slot is already yours (slot 1 of Level 1), up to the limit paid ahead.
 	if _, err := s.Lease(ctx, "a", 1, 1, "", 2, now); err != nil {
 		t.Fatal(err)
 	}
@@ -76,8 +81,14 @@ func TestLeases(t *testing.T) {
 	if total, week := s.Revenue(ctx, now); total != 3*rent1 || week != 3*rent1 {
 		t.Fatalf("revenue %d %d", total, week)
 	}
+	// Rent is the platform's own money, so reconciliation counts it (it doesn't back players' credits).
+	var platform, rows int64
+	s.db.QueryRow(`SELECT COALESCE(SUM(delta), 0), COUNT(*) FROM platform_ledger WHERE kind = 'rent' AND ref = 'lease:1'`).Scan(&platform, &rows)
+	if platform != 3*rent1 || rows != 2 {
+		t.Fatalf("platform rent %d in %d rows, want %d in 2", platform, rows, 3*rent1)
+	}
 	// Several venues per player, up to the limit.
-	s.GrantCoins(ctx, "boss", "a", 1_000_000, "test")
+	fund(t, s, "a", 100_000)
 	for i := 1; i < game.city.MaxVenues; i++ {
 		if _, err := s.Lease(ctx, "a", 2, 0, "More", 1, now); err != nil {
 			t.Fatalf("venue %d: %v", i+1, err)
@@ -95,72 +106,26 @@ func TestLeases(t *testing.T) {
 	}
 }
 
-func TestShop(t *testing.T) {
+// A shop's shelves are its menu in credits, with what the platform's warehouse has (sales.go sells from it).
+func TestShopShelves(t *testing.T) {
 	s := testStore(t)
 	now := time.Now()
-	if _, err := s.Stock(ctx, "a", "tsla", 10, flat, now); !errors.Is(err, errNoLease) {
-		t.Fatalf("no venue: %v", err)
-	}
+	fund(t, s, "a", 1000)
 	s.Lease(ctx, "a", 1, 0, "Booth", 1, now)
-	// The platform's warehouse is empty until it is restocked.
-	if _, err := s.Stock(ctx, "a", "tsla", 10, flat, now); !errors.Is(err, errSoldOut) {
-		t.Fatalf("empty warehouse: %v", err)
-	}
-	if err := s.Restock(ctx, "boss", "tsla", 15, "restock", "launch", ""); err != nil {
-		t.Fatal(err)
-	}
-	s.Restock(ctx, "boss", "us500", 5000, "restock", "launch", "")
-	before := wallet(t, s, "a")
-	if _, err := s.Stock(ctx, "a", "tsla", 10, flat, now); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.Stock(ctx, "a", "tsla", 6, flat, now); !errors.Is(err, errSoldOut) {
-		t.Fatalf("more than the warehouse has: %v", err)
-	}
-	if got := before - wallet(t, s, "a"); got != 10*wholesale("tsla", 1, 1) {
-		t.Fatalf("stock cost %d", got)
-	}
-	if _, err := s.Stock(ctx, "a", "nvda", 1, flat, now); !errors.Is(err, errRejected) {
-		t.Fatalf("level-2 token in a booth: %v", err)
-	}
-	if _, err := s.Stock(ctx, "a", "us500", game.levels["1"].Storage, flat, now); !errors.Is(err, errRejected) {
-		t.Fatalf("over storage: %v", err)
-	}
-	// Prices: capped at maxMarkup × the usual.
-	top := maxShelfPrice("tsla", 1, 1)
-	if err := s.SetShop(ctx, "a", 1, nil, map[string]int64{"tsla": top + 1}, flat, now); !errors.Is(err, errBad) {
-		t.Fatalf("overpriced: %v", err)
-	}
-	if err := s.SetShop(ctx, "a", 1, nil, map[string]int64{"tsla": top}, flat, now); err != nil {
+	s.Restock(ctx, "boss", "tsla", 15, "restock", "launch", "")
+	if err := s.SetShopPrices(ctx, "a", 1, map[string]int64{"tsla": 50}, market, now); err != nil {
 		t.Fatal(err)
 	}
 	v, _ := s.City(ctx, "", false, now)
-	lease := v.Venues[0].Lease
-	if len(lease.Stock) != 1 || lease.Stock[0].Qty != 10 || lease.Stock[0].Price != top {
-		t.Fatalf("%+v", lease.Stock)
-	}
-
-	// Another player buys while the owner is away: money to the owner, tokens to the buyer.
-	owner := wallet(t, s, "a")
-	p, err := s.ShopBuy(ctx, "b", lease.ID, "tsla", 3, now)
-	if err != nil || p.Wallet != startWallet-3*top || p.Portfolio["tsla"] != (Holding{Qty: 3, Cost: 3 * top}) {
-		t.Fatalf("%+v %v", p, err)
-	}
-	if wallet(t, s, "a") != owner+3*top {
-		t.Fatal("owner not paid")
-	}
-	for name, try := range map[string]func() error{
-		"own shop":     func() error { _, e := s.ShopBuy(ctx, "a", lease.ID, "tsla", 1, now); return e },
-		"out of stock": func() error { _, e := s.ShopBuy(ctx, "b", lease.ID, "tsla", 8, now); return e },
-	} {
-		if err := try(); !errors.Is(err, errRejected) {
-			t.Errorf("%s: %v", name, err)
-		}
+	if st := v.Venues[0].Lease.Stock; len(st) != 1 || st[0].Token != "tsla" || st[0].Qty != 15 || st[0].Price != 50 {
+		t.Fatalf("%+v", st)
 	}
 	closed := false
-	s.SetShop(ctx, "a", 1, &closed, nil, flat, now)
-	if _, err := s.ShopBuy(ctx, "b", lease.ID, "tsla", 1, now); !errors.Is(err, errRejected) {
-		t.Fatalf("closed shop: %v", err)
+	if err := s.SetShop(ctx, "a", 1, &closed, now); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := s.City(ctx, "", false, now); v.Venues[0].Lease.Open {
+		t.Fatal("closed shop still open")
 	}
 }
 
@@ -168,12 +133,12 @@ func TestParties(t *testing.T) {
 	s := testStore(t)
 	now := time.Now()
 	start := now.Add(time.Hour).Unix()
+	fund(t, s, "small", 1000)
 	s.Lease(ctx, "small", 2, 0, "Shop", 1, now)
 	if _, err := s.Event(ctx, "small", EventInput{Lease: 1, StartsAt: start, Minutes: 0, Title: ""}, now); !errors.Is(err, errRejected) {
 		t.Fatalf("party at a shop: %v", err)
 	}
-	s.Get(ctx, "host")
-	s.GrantCoins(ctx, "test", "host", 100_000, "test")
+	fund(t, s, "host", 1000)
 	if _, err := s.Lease(ctx, "host", 3, 0, "Neon Tap", 1, now); err != nil {
 		t.Fatal(err)
 	}
@@ -203,24 +168,23 @@ func TestParties(t *testing.T) {
 		t.Fatalf("%+v", v.Parties)
 	}
 
-	// A guest settles their night at the live party: the host gets what they spent.
+	// A guest settles their night at the live party: play money, nobody is paid Coin for it.
 	host := wallet(t, s, "host")
 	s.Get(ctx, "guest")
 	if _, err := s.Night(ctx, "guest", startWallet-1500, map[string]Holding{"tsla": {Qty: 1, Cost: 1000}}, 0, "ABC123"); err != nil {
 		t.Fatal(err)
 	}
-	// time.Now() in Night is before the party in this test, so nothing is paid out yet.
 	if wallet(t, s, "host") != host {
-		t.Fatal("paid outside the party")
+		t.Fatal("the host was paid Coin")
 	}
 }
 
-// Party payout uses the real clock: a party that is on right now.
-func TestPartyPaysHost(t *testing.T) {
+// Since the cutover a live city party pays its host in credits through real sales (sales.go), never in Coin from
+// guests' play nights.
+func TestCityPartyPaysNoCoin(t *testing.T) {
 	s := testStore(t)
 	now := time.Now()
-	s.Get(ctx, "host")
-	s.GrantCoins(ctx, "test", "host", 100_000, "test")
+	fund(t, s, "host", 1000)
 	s.Lease(ctx, "host", 3, 0, "Neon Tap", 1, now)
 	hostLease := leaseOf(t, s, "host", now)
 	p, _ := s.Event(ctx, "host", EventInput{Lease: hostLease, StartsAt: now.Unix(), Minutes: 10, Title: ""}, now)
@@ -232,8 +196,8 @@ func TestPartyPaysHost(t *testing.T) {
 	if _, err := s.Night(ctx, "guest", startWallet-1500, nil, 0, "live01"); err != nil {
 		t.Fatal(err)
 	}
-	if wallet(t, s, "host") != host+1500 {
-		t.Fatalf("host %d, want %d", wallet(t, s, "host"), host+1500)
+	if wallet(t, s, "host") != host {
+		t.Fatalf("host paid %d Coin", wallet(t, s, "host")-host)
 	}
 	// The back office can end a lease: the venue frees and upcoming parties are cancelled.
 	v, _ := s.City(ctx, "", true, now)
@@ -269,6 +233,7 @@ func TestRename(t *testing.T) {
 	if err := s.Rename(ctx, "a", 1, "Escala Bar", now); !errors.Is(err, errNoLease) {
 		t.Fatalf("no venue: %v", err)
 	}
+	fund(t, s, "a", 1000)
 	s.Lease(ctx, "a", 1, 0, "Booth", 1, now)
 	if err := s.Rename(ctx, "a", 1, "  ", now); !errors.Is(err, errBad) {
 		t.Fatalf("blank: %v", err)
@@ -281,13 +246,26 @@ func TestRename(t *testing.T) {
 	}
 }
 
-// The warehouse: CEOs' orders show up as demand; the agent restocks only with an on-chain purchase behind it.
+// The warehouse: what players buy shows up as demand; the agent restocks only with an on-chain purchase behind it.
 func TestSupplyAndAgent(t *testing.T) {
 	s := testStore(t)
 	now := time.Now()
 	s.Restock(ctx, "boss", "tsla", 100, "restock", "launch", "")
+	fund(t, s, "a", 1000)
+	fund(t, s, "b", 10_000)
 	s.Lease(ctx, "a", 1, 0, "Booth", 1, now)
-	s.Stock(ctx, "a", "tsla", 70, flat, now)
+	s.SetShopPrices(ctx, "a", 1, map[string]int64{"tsla": 40}, market, now)
+	buy := func(qty int64) {
+		t.Helper()
+		for qty > 0 {
+			n := min(qty, game.city.Shop.MaxBuy)
+			if _, err := s.BuyAtShop(ctx, "b", 1, "tsla", n, 0, market, now); err != nil {
+				t.Fatal(err)
+			}
+			qty -= n
+		}
+	}
+	buy(70)
 	sup, err := s.Supply(ctx, now)
 	if err != nil {
 		t.Fatal(err)
@@ -298,11 +276,11 @@ func TestSupplyAndAgent(t *testing.T) {
 			tsla = r
 		}
 	}
-	if tsla.OnHand != 30 || tsla.InShops != 70 || tsla.Sold7d != 70 || tsla.Shops != 1 || tsla.Suggested != 0 {
+	if tsla.OnHand != 30 || tsla.Sold7d != 70 || tsla.Sold24h != 70 || tsla.Suggested != 0 {
 		t.Fatalf("%+v", tsla)
 	}
 	// 10/day for 3 days = 30 on hand: none suggested; sell 21 more → 13/day × 3 = 39 − 9 = 30.
-	s.Stock(ctx, "a", "tsla", 21, flat, now)
+	buy(21)
 	sup, _ = s.Supply(ctx, now)
 	for _, r := range sup.Tokens {
 		if r.Token == "tsla" && (r.OnHand != 9 || r.Suggested != 30) {
@@ -383,21 +361,12 @@ func leaseOf(t *testing.T, s *store, owner string, now time.Time) int64 {
 func TestManyVenues(t *testing.T) {
 	s := testStore(t)
 	now := time.Now()
-	s.Restock(ctx, "boss", "us500", 10_000, "restock", "launch", "")
-	s.Get(ctx, "a")
-	s.GrantCoins(ctx, "boss", "a", 1_000_000, "test")
+	fund(t, s, "a", 10_000)
 	s.Lease(ctx, "a", 1, 1, "Booth", 1, now)
 	s.Lease(ctx, "a", 2, 1, "Shop", 1, now)
-	both := game.levels["1"].Storage + game.levels["2"].Storage
-	if _, err := s.Stock(ctx, "a", "us500", both, flat, now); err != nil {
-		t.Fatalf("combined storage: %v", err)
-	}
-	if _, err := s.Stock(ctx, "a", "us500", 1, flat, now); !errors.Is(err, errRejected) {
-		t.Fatalf("past combined storage: %v", err)
-	}
 	// Leases 1 (booth) and 2 (shop): close one shop, the other stays open.
 	closed := false
-	if err := s.SetShop(ctx, "a", 1, &closed, nil, flat, now); err != nil {
+	if err := s.SetShop(ctx, "a", 1, &closed, now); err != nil {
 		t.Fatal(err)
 	}
 	v, _ := s.City(ctx, "", false, now)
@@ -408,7 +377,7 @@ func TestManyVenues(t *testing.T) {
 	if err := s.Rename(ctx, "b", 2, "Stolen", now); !errors.Is(err, errNoLease) {
 		t.Fatalf("someone else's venue: %v", err)
 	}
-	if err := s.SetShop(ctx, "b", 2, &closed, nil, flat, now); !errors.Is(err, errNoLease) {
+	if err := s.SetShop(ctx, "b", 2, &closed, now); !errors.Is(err, errNoLease) {
 		t.Fatalf("someone else's shop: %v", err)
 	}
 }
@@ -417,8 +386,7 @@ func TestManyVenues(t *testing.T) {
 func TestVenueCounts(t *testing.T) {
 	s := testStore(t)
 	now := time.Now()
-	s.Get(ctx, "a")
-	s.GrantCoins(ctx, "boss", "a", 1_000_000, "test")
+	fund(t, s, "a", 10_000)
 	if c := s.VenueCounts(ctx)["5"]; c != game.city.Venues["5"].Count {
 		t.Fatalf("default L5 count %d", c)
 	}
@@ -472,11 +440,13 @@ func TestCityClosed(t *testing.T) {
 	pl := &players{db: testStore(t)}
 	mux := http.NewServeMux()
 	pl.routeCity(mux)
+	pl.routeSales(mux)
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 	for _, c := range []struct{ method, path string }{
-		{"POST", "/api/city/lease"}, {"PUT", "/api/city/venue"}, {"POST", "/api/city/stock"},
-		{"PUT", "/api/city/shop"}, {"POST", "/api/city/shops/1/buy"},
+		{"POST", "/api/city/lease"}, {"PUT", "/api/city/venue"}, {"PUT", "/api/city/shop"},
+		{"PUT", "/api/city/shops/1/prices"}, {"POST", "/api/city/shops/1/buy-credit"},
+		{"PUT", "/api/events/1/prices"}, {"POST", "/api/events/1/buy"},
 	} {
 		req, _ := http.NewRequest(c.method, srv.URL+c.path, strings.NewReader(`{}`))
 		res, err := http.DefaultClient.Do(req)
@@ -486,6 +456,13 @@ func TestCityClosed(t *testing.T) {
 		res.Body.Close()
 		if res.StatusCode != http.StatusForbidden {
 			t.Fatalf("%s %s: %d", c.method, c.path, res.StatusCode)
+		}
+	}
+	// The Coin shop is gone since the cutover: a shop holds no stock and sells real stock in credits.
+	for _, path := range []string{"/api/city/stock", "/api/city/shops/1/buy"} {
+		res, _ := http.Post(srv.URL+path, "application/json", strings.NewReader(`{}`))
+		if res.StatusCode != http.StatusNotFound {
+			t.Fatalf("POST %s still answers %d", path, res.StatusCode)
 		}
 	}
 	res, err := http.Get(srv.URL + "/api/city")

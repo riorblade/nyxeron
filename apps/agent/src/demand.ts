@@ -3,10 +3,8 @@ export type SupplyRow = {
   token: string;
   ticker: string;
   onHand: number;
-  inShops: number;
   sold24h: number;
   sold7d: number;
-  shops: number;
   /** At the last 7 days' pace; -1: no demand yet. */
   daysLeft: number;
   suggested: number;

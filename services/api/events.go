@@ -293,20 +293,6 @@ func (s *store) EventRoom(ctx context.Context, id string, pid int64, room string
 	return nil
 }
 
-// partyHost: whose live city event a guest was at (by relay room), for paying out what they spent; "" if none.
-// Only city venues pay out: a practice club's takings stay in its own (offline) game.
-func partyHost(t *sql.Tx, room string, now time.Time) string {
-	if room == "" {
-		return ""
-	}
-	var host string
-	grace := int64(game.city.Party.SettleGraceMinutes) * 60
-	_ = t.QueryRow(`SELECT host_id FROM parties WHERE room = ? AND cancelled = 0 AND lease_id > 0
-		AND starts_at - 900 <= ? AND starts_at + minutes * 60 + ? > ? ORDER BY starts_at DESC LIMIT 1`,
-		strings.ToUpper(room), now.Unix(), grace, now.Unix()).Scan(&host)
-	return host
-}
-
 func (pl *players) routeEvents(mux *http.ServeMux) {
 	reply := func(w http.ResponseWriter, v any, err error) {
 		switch {

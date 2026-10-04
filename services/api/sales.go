@@ -60,6 +60,9 @@ const quoteMaxAge = 10 * time.Minute
 
 // freshQuotes: the quoter's prices, or none when they are too old.
 func freshQuotes(q *quoter, now time.Time) map[string]float64 {
+	if q == nil {
+		return map[string]float64{}
+	}
 	r := q.get()
 	if now.Sub(time.UnixMilli(r.At)) > quoteMaxAge || r.Source != "binance" {
 		return map[string]float64{}
@@ -317,6 +320,11 @@ func settle(t *sql.Tx, id int64, now time.Time) error {
 		return err
 	}
 	if err := take(t, token, qty); err != nil {
+		return err
+	}
+	// A sold unit is demand: the agent's restock view counts these.
+	if _, err := t.Exec(`INSERT INTO stock_moves (token, delta, kind, user_id, actor, reason, tx, at)
+		VALUES (?, ?, 'sold', ?, 'sale', ?, '', ?)`, token, -qty, buyer, "sale:"+strconv.FormatInt(id, 10), now.Unix()); err != nil {
 		return err
 	}
 	if _, err := t.Exec(`INSERT INTO backed_units (user_id, token, qty) VALUES (?, ?, ?)

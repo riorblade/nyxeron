@@ -65,13 +65,6 @@ func TestEvents(t *testing.T) {
 	if list, _ = s.Events(ctx, "stranger", at); !list[0].Live || list[0].Room != "ROOM42" {
 		t.Fatalf("live: %+v", list[0])
 	}
-	// A practice club's event doesn't pay the host from guests' spend (only city venues do).
-	tx, _ := s.db.Begin()
-	if h := partyHost(tx, "ROOM42", at); h != "" {
-		t.Fatalf("practice event paid out to %q", h)
-	}
-	tx.Rollback()
-
 	if err := s.CancelEvent(ctx, "guest", pub.ID); !errors.Is(err, errNotFound) {
 		t.Fatalf("cancel someone else's: %v", err)
 	}

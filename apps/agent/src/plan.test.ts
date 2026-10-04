@@ -10,10 +10,8 @@ const row = (
   token,
   ticker: token.toUpperCase(),
   onHand: 0,
-  inShops: 0,
   sold24h: 0,
   sold7d: 0,
-  shops: 0,
   daysLeft,
   suggested,
 });

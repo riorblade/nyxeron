@@ -54,11 +54,12 @@ false`. `CITY_OPEN=1` in the api's environment opens it.
 
 | Method | Path | Body | Notes |
 | --- | --- | --- | --- |
-| POST | `/api/city/lease` | `{level, slot?, club, weeks}` | rent (slot 0 = first free; up to 5 venues) or extend yours at that slot |
+| POST | `/api/city/lease` | `{level, slot?, club, weeks}` | rent in credits (`payments.json → rentCredits`, the back office's table over it; slot 0 = first free; up to 5 venues) or extend yours at that slot |
 | PUT | `/api/city/venue` | `{lease, club}` | rename one of your venues |
-| POST | `/api/city/stock` | `{token, qty}` | buy shop stock from the warehouse at the market price |
-| PUT | `/api/city/shop` | `{lease, open?, prices?}` | open/close that venue's shop, set your shelf prices (≤ 3× usual) |
-| POST | `/api/city/shops/{lease}/buy` | `{token, qty}` | buy from someone's open shop (≤ 50) |
+| PUT | `/api/city/shop` | `{lease, open}` | open/close that venue's shop (its menu: `PUT /api/city/shops/{lease}/prices`, below) |
+
+Since the cutover a shop holds no stock: `GET /api/city` lists each shop's menu (`lease.stock`: token, the
+warehouse's units, the tenant's price in credits) and the live `wholesale` per token with `maxMarkup`.
 
 ## Events
 
@@ -84,7 +85,7 @@ live wholesale price and `maxMarkup` × it; whitelisted tokens only.
 | PUT | `/api/events/{id}/prices` | `{prices: {token: credits}}` | host only, before it starts (`prices_locked` after) |
 | POST | `/api/events/{id}/buy` | `{token, qty}` | while live: credits held, units reserved; settles at end + `settleGraceMinutes` → `{sale, credits}` |
 | PUT | `/api/city/shops/{lease}/prices` | `{prices}` | the tenant's shop prices in credits |
-| POST | `/api/city/shops/{lease}/buy-credit` | `{token, qty}` | settled at once: units to the buyer, margin to the tenant, wholesale to the platform |
+| POST | `/api/city/shops/{lease}/buy-credit` | `{token, qty, maxPrice?}` | settled at once: units to the buyer, margin to the tenant, wholesale to the platform |
 
 ## Back office
 
