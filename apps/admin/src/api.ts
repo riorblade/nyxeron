@@ -158,3 +158,47 @@ export interface Supply {
   }[];
   coverDays: number;
 }
+
+export interface Reconciliation {
+  at: number;
+  ok: boolean;
+  verdict: string;
+  owedCents: number;
+  walletCents: number;
+  platformCents: number;
+  units: Record<string, { counted: number; onChain: number }>;
+  problems: string[];
+}
+
+export interface Payments {
+  /** Why payments are paused (the last reconciliation's problems), or null while they run. */
+  paused: string[] | null;
+  reconciliations: Reconciliation[];
+  topups: {
+    tx: string;
+    logIndex: number;
+    token: string;
+    usdCents: number;
+    fee: number;
+    credits: number;
+    status: "pending" | "credited" | "unknown" | "rejected";
+    at: number;
+    userId: string;
+    email?: string;
+    sender: string;
+  }[];
+  sales: {
+    id: number;
+    token: string;
+    qty: number;
+    price: number;
+    wholesale: number;
+    status: "held" | "settled" | "void";
+    partyId?: number;
+    leaseId?: number;
+    buyer: string;
+    seller: string;
+    createdAt: number;
+    settledAt?: number;
+  }[];
+}

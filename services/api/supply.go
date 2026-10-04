@@ -49,11 +49,13 @@ type StockMove struct {
 
 type Supply struct {
 	// What the agent's restocks paid in the last 24 h, in cents: it checks its daily limit before swapping.
-	AgentSpentToday int64       `json:"agentSpentTodayCents"`
-	Tokens          []SupplyRow `json:"tokens"`
-	Moves           []StockMove `json:"moves"`
-	CoverDays       int         `json:"coverDays"`
-	At              int64       `json:"at"`
+	AgentSpentToday int64 `json:"agentSpentTodayCents"`
+	// A reconciliation mismatch stands: the agent buys nothing until it clears.
+	Paused    bool        `json:"paused"`
+	Tokens    []SupplyRow `json:"tokens"`
+	Moves     []StockMove `json:"moves"`
+	CoverDays int         `json:"coverDays"`
+	At        int64       `json:"at"`
 }
 
 // coverDays: how many days of demand the suggestion aims to keep on hand.
@@ -67,6 +69,11 @@ func (s *store) Supply(ctx context.Context, now time.Time) (Supply, error) {
 		return out, err
 	}
 	out.AgentSpentToday = spent
+	why, err := s.Paused(ctx)
+	if err != nil {
+		return out, err
+	}
+	out.Paused = why != nil
 	for _, tok := range sortedTokens() {
 		r := SupplyRow{Token: tok, Ticker: game.tokens[tok].Ticker}
 		err := s.db.QueryRowContext(ctx, `SELECT

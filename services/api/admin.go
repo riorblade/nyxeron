@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -741,6 +742,60 @@ func (a *admin) route(mux *http.ServeMux) {
 		if yes && body(w, r, &in) {
 			ok(w, a.db.SetUser(r.Context(), actor, r.PathValue("id"), in))
 		}
+	})
+	mux.HandleFunc("GET /api/admin/payments", func(w http.ResponseWriter, r *http.Request) {
+		if _, _, yes := a.who(w, r, roleViewer); yes {
+			p, err := a.db.Payments(r.Context())
+			if err != nil {
+				fail(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, p)
+		}
+	})
+	// Run the reconciliation now (it also runs every hour): a match resumes paused payments.
+	mux.HandleFunc("POST /api/admin/reconcile", func(w http.ResponseWriter, r *http.Request) {
+		actor, _, yes := a.who(w, r, roleAdmin)
+		var in struct {
+			Reason string `json:"reason"`
+		}
+		if yes && body(w, r, &in) {
+			if strings.TrimSpace(in.Reason) == "" { // it can resume payments: say why (audit log)
+				fail(w, errBad)
+				return
+			}
+			rec, err := a.db.Reconcile(r.Context(), a.chain, actor, in.Reason, time.Now())
+			switch {
+			case errors.Is(err, errNotConfigured):
+				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "not_configured"})
+			case err != nil:
+				slog.Warn("reconcile", "err", err)
+				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "chain_unavailable"})
+			default:
+				writeJSON(w, http.StatusOK, rec)
+			}
+		}
+	})
+	// Book USDC/USDT the team sent to the Agentic Wallet as the platform's own money (read on BSC).
+	mux.HandleFunc("POST /api/admin/seed", func(w http.ResponseWriter, r *http.Request) {
+		actor, _, yes := a.who(w, r, roleAdmin)
+		var in struct {
+			Tx     string `json:"tx"`
+			Reason string `json:"reason"`
+		}
+		if !yes || !body(w, r, &in) {
+			return
+		}
+		cents, err := a.db.RecordSeed(r.Context(), a.chain, actor, in.Tx, in.Reason, time.Now())
+		if errors.Is(err, errRejected) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "credited_to_a_player"})
+			return
+		}
+		if err != nil {
+			restockError(w, err) // pending, tx_used, not_a_restock (nothing came in), bad_request, not_configured…
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]int64{"usdCents": cents})
 	})
 	mux.HandleFunc("POST /api/admin/sales/{id}/void", func(w http.ResponseWriter, r *http.Request) {
 		actor, _, yes := a.who(w, r, roleAdmin)

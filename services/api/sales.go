@@ -218,6 +218,9 @@ func sellable(prices map[string]int64, token string, qty, maxPrice int64, quotes
 // both settle when the party ends.
 func (s *store) BuyAtParty(ctx context.Context, buyer string, pid int64, token string, qty, maxPrice int64, quotes map[string]float64, now time.Time) (Sale, error) {
 	sale := Sale{Token: token, Qty: qty, Status: "held"}
+	if err := s.unpaused(ctx); err != nil {
+		return sale, err
+	}
 	p, err := partyOf(s.db, pid)
 	if err != nil {
 		return sale, err
@@ -256,6 +259,9 @@ func (s *store) BuyAtParty(ctx context.Context, buyer string, pid int64, token s
 // BuyAtShop: a city shop sells real stock at its tenant's price, settled at once.
 func (s *store) BuyAtShop(ctx context.Context, buyer string, lease int64, token string, qty, maxPrice int64, quotes map[string]float64, now time.Time) (Sale, error) {
 	sale := Sale{Token: token, Qty: qty, Status: "settled"}
+	if err := s.unpaused(ctx); err != nil {
+		return sale, err
+	}
 	var owner string
 	var open int
 	err := s.db.QueryRowContext(ctx, `SELECT user_id, open FROM leases WHERE id = ? AND ends_at > ?`, lease, now.Unix()).Scan(&owner, &open)
@@ -476,6 +482,8 @@ func salesError(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "prices_locked"})
 	case errors.Is(err, errPriceChanged):
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "price_changed"})
+	case errors.Is(err, errPaused):
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "paused"})
 	case errors.Is(err, errNoPrice):
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "no_price"})
 	default:

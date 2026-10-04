@@ -18,6 +18,8 @@ export type Supply = {
   at: number;
   /** What the agent's restocks paid in the last 24 h, in cents. */
   agentSpentTodayCents?: number;
+  /** A reconciliation mismatch stands: buy nothing until it clears. */
+  paused?: boolean;
 };
 
 /** What the warehouse holds and what CEOs are buying. */

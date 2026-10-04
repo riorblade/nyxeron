@@ -26,7 +26,8 @@ type fakeRPC struct {
 	head     uint64
 	receipts map[string]string // tx → receipt JSON
 	balance  string
-	down     bool // answers HTTP 503, like a provider having an outage
+	balances map[string]string // per token contract (lower case), else balance
+	down     bool              // answers HTTP 503, like a provider having an outage
 	mu       sync.Mutex
 	methods  []string
 	callTags []string // the block tag of each eth_call
@@ -104,11 +105,17 @@ func (f *fakeRPC) serve(t *testing.T) string {
 			result = string(b)
 		case "eth_call":
 			var tag string
+			var call struct{ To string }
 			_ = json.Unmarshal(req.Params[1], &tag)
+			_ = json.Unmarshal(req.Params[0], &call)
 			f.mu.Lock()
 			f.callTags = append(f.callTags, tag)
+			bal, ok := f.balances[strings.ToLower(call.To)]
 			f.mu.Unlock()
-			result = strconv.Quote(f.balance)
+			if !ok {
+				bal = f.balance
+			}
+			result = strconv.Quote(bal)
 		}
 		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":` + result + `}`))
 	}))

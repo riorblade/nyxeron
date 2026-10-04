@@ -108,6 +108,9 @@ Every change requires `reason` (except announcement/admin role changes) and is w
 | GET | `/api/admin/stock` | — | viewer |
 | PUT | `/api/admin/stock/{token}` | `{tx, reason}` (a swap, verified on BSC) or `{delta < 0, reason}` (take units out) | admin |
 | POST | `/api/admin/sales/{id}/void` | `{reason}` (a held party sale: credits back, units released) | admin |
+| GET | `/api/admin/payments` | — (paused?, reconciliation history, top-ups incl. unknown senders, sales) | viewer |
+| POST | `/api/admin/reconcile` | `{reason}` (check now against BSC; a match resumes paused payments) | admin |
+| POST | `/api/admin/seed` | `{tx, reason}` (book USDC/USDT the team sent to the Agentic Wallet as the platform's own money; read on BSC, once) | admin |
 | GET | `/api/admin/audit?target&before&limit` | — | viewer |
 | GET/PUT | `/api/admin/announcement` | `{text, active}` | viewer / admin |
 | GET/PUT | `/api/admin/admins` | `{email, role}` (`""` removes) | owner |

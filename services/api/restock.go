@@ -70,6 +70,8 @@ func restockError(w http.ResponseWriter, err error) {
 		code, name = http.StatusUnprocessableEntity, "not_a_restock"
 	case errors.Is(err, errOverLimit):
 		code, name = http.StatusUnprocessableEntity, "over_limit"
+	case errors.Is(err, errPaused):
+		code, name = http.StatusServiceUnavailable, "paused"
 	case errors.Is(err, errUnbacked):
 		code, name = http.StatusConflict, "unbacked"
 	case errors.Is(err, errBad):
@@ -124,6 +126,8 @@ func (s *store) VerifiedRestock(ctx context.Context, c *bsc, actor, token, tx, r
 	if c == nil {
 		return out, errNotConfigured
 	}
+	// Not blocked by a reconciliation pause: recording a swap that already happened mints no credits, and it is
+	// what brings the books back in line (the agent stops buying while paused instead: demand says so).
 	if err := s.unused(ctx, s.db, out.Tx); err != nil {
 		return out, err
 	}
@@ -142,7 +146,7 @@ func (s *store) VerifiedRestock(ctx context.Context, c *bsc, actor, token, tx, r
 			return out, err
 		}
 		if flow.Sign() < 0 {
-			cents += usdCents(new(big.Int).Neg(flow))
+			cents += usdCentsUp(new(big.Int).Neg(flow)) // what left the wallet, never less (the books stay cautious)
 		}
 	}
 	out.Shares, out.USDCents, out.Units = shares.String(), cents, unitsOf(shares)
