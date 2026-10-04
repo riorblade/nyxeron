@@ -1234,6 +1234,29 @@ export const en = {
     walletError: (msg: string) => `The wallet said: ${msg}`,
   },
 
+  sales: {
+    prices: "Credit prices",
+    pricesNote:
+      "Real stock sold at this party, per unit (0.001 share), in Credit. Blank = not sold. Set before it starts; locked after.",
+    floor: (w: number, max: number) => `${fmt(w)}–${fmt(max)}`,
+    save: "Save prices",
+    saved: "Prices saved",
+    menu: "Real stock here",
+    each: (credits: number) => `${fmt(credits)} Credit`,
+    yourCredit: (credits: number) => `Your Credit: ${fmt(credits)}`,
+    bought: (qty: number, ticker: string, left: number) =>
+      `Bought ${qty} ${ticker} with Credit · ${fmt(left)} left`,
+    errors: {
+      rejected: "Not enough Credit, or this token isn't on the menu.",
+      sold_out: "The warehouse is out of this token right now.",
+      not_live: "The party isn't on.",
+      prices_locked: "The party has started: prices are locked.",
+      no_price: "No live price right now. Try again in a minute.",
+      bad_request: "Check the prices: each between the two numbers shown.",
+      price_changed: "The price changed. Check it and buy again.",
+    } as Record<string, string>,
+  },
+
   tokenDetail: {
     title: "Token",
     stock: "Stock",

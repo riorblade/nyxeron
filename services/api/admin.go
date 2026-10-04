@@ -742,6 +742,16 @@ func (a *admin) route(mux *http.ServeMux) {
 			ok(w, a.db.SetUser(r.Context(), actor, r.PathValue("id"), in))
 		}
 	})
+	mux.HandleFunc("POST /api/admin/sales/{id}/void", func(w http.ResponseWriter, r *http.Request) {
+		actor, _, yes := a.who(w, r, roleAdmin)
+		var in struct {
+			Reason string `json:"reason"`
+		}
+		if yes && body(w, r, &in) {
+			n, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+			ok(w, a.db.VoidSale(r.Context(), actor, n, in.Reason))
+		}
+	})
 	mux.HandleFunc("POST /api/admin/users/{id}/clear-saves", func(w http.ResponseWriter, r *http.Request) {
 		actor, _, yes := a.who(w, r, roleAdmin)
 		var in struct {

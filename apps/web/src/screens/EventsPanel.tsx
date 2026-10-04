@@ -1,8 +1,15 @@
-import { city as cityData, levels, type Level } from "@nyxeron/core";
+import {
+  city as cityData,
+  levels,
+  tokens,
+  type Level,
+  type TokenId,
+} from "@nyxeron/core";
 import { CalendarClock, Copy, Globe, Lock } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { art } from "@/lib/art";
 import { events, loadEvents, useEvents, type ClubEvent } from "@/api/events";
+import { menuOf, priceRange, sales, type PriceList } from "@/api/sales";
 import { Img } from "@/components/Img";
 import { en } from "@/i18n/en";
 import { cn } from "@/lib/utils";
@@ -246,6 +253,9 @@ export function EventsPanel({
                   {t.openClub}
                 </button>
               )}
+              {e.leaseId > 0 && now < e.startsAt && (
+                <PriceEditor event={e.id} />
+              )}
               <button className={ghost} onClick={() => events.copyInvite(e)}>
                 <span className="flex items-center gap-1.5">
                   <Copy className="size-3.5" /> {t.copyInvite}
@@ -382,6 +392,87 @@ export function LiveEventBanner() {
       >
         {t.joinNow}
       </button>
+    </div>
+  );
+}
+
+/** The host's Credit prices for a city party's real stock, before it starts. */
+function PriceEditor({ event }: { event: number }) {
+  const s = en.sales;
+  const [open, setOpen] = useState(false);
+  const [list, setList] = useState<PriceList | null>(null);
+  const [draft, setDraft] = useState<Partial<Record<TokenId, number>>>({});
+  const [busy, setBusy] = useState(false);
+  const say = useGame((x) => x.notify);
+  const toggle = async () => {
+    if (open) return setOpen(false);
+    setOpen(true);
+    try {
+      const l = await sales.prices(event);
+      setList(l);
+      setDraft(
+        Object.fromEntries(
+          (Object.keys(l.wholesale) as TokenId[]).map((t) => [
+            t,
+            l.prices[t] ?? 0,
+          ]),
+        ),
+      );
+    } catch (err) {
+      say(s.errors[(err as Error).message] ?? (err as Error).message, true);
+    }
+  };
+  const save = async () => {
+    setBusy(true);
+    try {
+      await sales.setPrices(event, menuOf(draft));
+      say(s.saved);
+      setOpen(false);
+    } catch (err) {
+      say(s.errors[(err as Error).message] ?? (err as Error).message, true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="basis-full">
+      <button
+        className={ghost}
+        onClick={() => void toggle()}
+        aria-expanded={open}
+      >
+        {s.prices}
+      </button>
+      {open && list && (
+        <div className="mt-2 flex flex-col gap-2 rounded-lg border border-white/10 p-3">
+          <p className="text-[11px] text-white/55">{s.pricesNote}</p>
+          {(Object.keys(list.wholesale) as TokenId[]).map((t) => {
+            const r = priceRange(list, t);
+            return (
+              <label key={t} className="flex items-center gap-2 text-xs">
+                <span className="w-14 font-mono">{tokens[t].ticker}</span>
+                <input
+                  className="h-8 w-24 rounded-md border border-white/15 bg-black/30 px-2 font-mono"
+                  inputMode="numeric"
+                  value={draft[t] || ""}
+                  placeholder="—"
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      [t]: Number(e.target.value.replace(/\D/g, "")),
+                    })
+                  }
+                  aria-label={`${tokens[t].ticker} ${s.prices}`}
+                />
+                <span className="text-white/50">{s.floor(r.min, r.max)}</span>
+              </label>
+            );
+          })}
+          <button className={btn} disabled={busy} onClick={() => void save()}>
+            {s.save}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -75,6 +75,17 @@ players who opened its invite link (`/?event=<code>`).
 | DELETE | `/api/events/{id}` | — | cancel my event |
 | PUT | `/api/events/{id}/room` | `{room}` | my event is live in this relay room (from 15 min before until it ends) |
 
+Real stock in the city (`sales.go`, docs/payments.md §4–5): prices in credits per unit (0.001 share), between the
+live wholesale price and `maxMarkup` × it; whitelisted tokens only.
+
+| Method | Path | Body | Notes |
+| --- | --- | --- | --- |
+| GET | `/api/events/prices/{id}` | — | `{prices, wholesale, maxMarkup}` of a city party (public) |
+| PUT | `/api/events/{id}/prices` | `{prices: {token: credits}}` | host only, before it starts (`prices_locked` after) |
+| POST | `/api/events/{id}/buy` | `{token, qty}` | while live: credits held, units reserved; settles at end + `settleGraceMinutes` → `{sale, credits}` |
+| PUT | `/api/city/shops/{lease}/prices` | `{prices}` | the tenant's shop prices in credits |
+| POST | `/api/city/shops/{lease}/buy-credit` | `{token, qty}` | settled at once: units to the buyer, margin to the tenant, wholesale to the platform |
+
 ## Back office
 
 Role needed: **viewer** reads, **admin** changes players, venues, stock and settings, **owner** manages admins.
@@ -96,6 +107,7 @@ Every change requires `reason` (except announcement/admin role changes) and is w
 | PUT | `/api/admin/venues` | `{counts: {"1": n, …}, reason}` (not below a level's highest rented slot; ≤ 500) | admin |
 | GET | `/api/admin/stock` | — | viewer |
 | PUT | `/api/admin/stock/{token}` | `{tx, reason}` (a swap, verified on BSC) or `{delta < 0, reason}` (take units out) | admin |
+| POST | `/api/admin/sales/{id}/void` | `{reason}` (a held party sale: credits back, units released) | admin |
 | GET | `/api/admin/audit?target&before&limit` | — | viewer |
 | GET/PUT | `/api/admin/announcement` | `{text, active}` | viewer / admin |
 | GET/PUT | `/api/admin/admins` | `{email, role}` (`""` removes) | owner |
