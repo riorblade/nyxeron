@@ -184,7 +184,7 @@ var migrations = []string{
 	CREATE TABLE platform_ledger (
 		id     INTEGER PRIMARY KEY,
 		delta  INTEGER NOT NULL,
-		kind   TEXT    NOT NULL CHECK (kind IN ('fee', 'wholesale', 'seed', 'restock')),
+		kind   TEXT    NOT NULL CHECK (kind IN ('fee', 'wholesale', 'rent', 'seed', 'restock')),
 		ref    TEXT    NOT NULL DEFAULT '',
 		reason TEXT    NOT NULL DEFAULT '',
 		at     INTEGER NOT NULL
