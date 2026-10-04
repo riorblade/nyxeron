@@ -136,6 +136,8 @@ export interface Supply {
     token: string;
     ticker: string;
     onHand: number;
+    /** Held for parties in progress. */
+    reserved: number;
     inShops: number;
     sold24h: number;
     sold7d: number;

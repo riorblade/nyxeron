@@ -42,6 +42,7 @@ type admin struct {
 	relayURL string
 	dbPath   string
 	client   *http.Client
+	chain    *bsc // verifies reported restocks; nil: restocks can't be reported
 }
 
 func parseOwners(env string) map[string]bool {
@@ -861,13 +862,29 @@ func (a *admin) route(mux *http.ServeMux) {
 			Reason string
 			Tx     string
 		}
-		if yes && body(w, r, &in) {
-			kind := "adjust"
-			if in.Delta > 0 {
-				kind = "restock"
-			}
-			ok(w, a.db.Restock(r.Context(), actor, r.PathValue("token"), in.Delta, kind, in.Reason, in.Tx))
+		if !yes || !body(w, r, &in) {
+			return
 		}
+		// Units come in only from a swap verified on BSC (the same check as the agent's); by hand an admin can
+		// only take units out (a correction, audited with its reason).
+		if in.Tx != "" {
+			if strings.TrimSpace(in.Reason) == "" { // back-office changes always say why (audit log)
+				fail(w, errBad)
+				return
+			}
+			got, err := a.db.VerifiedRestock(r.Context(), a.chain, actor, r.PathValue("token"), in.Tx, in.Reason, time.Now())
+			if err != nil {
+				restockError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, got)
+			return
+		}
+		if in.Delta >= 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "report_a_tx"})
+			return
+		}
+		ok(w, a.db.Restock(r.Context(), actor, r.PathValue("token"), in.Delta, "adjust", in.Reason, ""))
 	})
 	// Public: the banner players see.
 	mux.HandleFunc("GET /api/announcement", func(w http.ResponseWriter, r *http.Request) {

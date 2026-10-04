@@ -340,11 +340,19 @@ func TestSupplyAndAgent(t *testing.T) {
 	if c := call("POST", "/api/agent/restock", "k-secret", `{"token":"tsla","qty":30}`); c != 400 {
 		t.Fatalf("restock without a tx: %d", c)
 	}
-	if c := call("POST", "/api/agent/restock", "k-secret", `{"token":"tsla","qty":30,"tx":"0xabc"}`); c != 200 {
-		t.Fatalf("restock: %d", c)
+	// A claimed purchase is not stock: the units come only from a swap verified on BSC (restock_test.go).
+	if c := call("POST", "/api/agent/restock", "k-secret", `{"token":"tsla","qty":30,"tx":"0xabc"}`); c != 400 {
+		t.Fatalf("restock with a made-up tx: %d", c)
 	}
-	if sup, _ = s.Supply(ctx, now); sup.Moves[0].Actor != "agent" || sup.Moves[0].Tx != "0xabc" || sup.Moves[0].Delta != 30 {
-		t.Fatalf("%+v", sup.Moves[0])
+	tx := `"0x` + strings.Repeat("ab", 32) + `"`
+	if c := call("POST", "/api/agent/restock", "k-secret", `{"token":"tsla","qty":30,"tx":`+tx+`}`); c != 503 {
+		t.Fatalf("restock without BSC configured: %d", c)
+	}
+	sup, _ = s.Supply(ctx, now)
+	for _, m := range sup.Moves {
+		if m.Actor == "agent" {
+			t.Fatalf("an unverified restock moved stock: %+v", m)
+		}
 	}
 }
 

@@ -75,11 +75,16 @@ var game struct {
 		} `json:"platform"`
 	}
 	payments struct {
-		ChainID       int    `json:"chainId"`
-		Confirmations uint64 `json:"confirmations"`
-		AgenticWallet string `json:"agenticWallet"`
-		CreditsPerUSD int    `json:"creditsPerUsd"`
-		Topup         struct {
+		ChainID       int     `json:"chainId"`
+		Confirmations uint64  `json:"confirmations"`
+		AgenticWallet string  `json:"agenticWallet"`
+		CreditsPerUSD int     `json:"creditsPerUsd"`
+		SharesPerUnit float64 `json:"sharesPerUnit"`
+		Agent         struct {
+			MaxUsdPerSwap int64 `json:"maxUsdPerSwap"`
+			MaxUsdPerDay  int64 `json:"maxUsdPerDay"`
+		} `json:"agent"`
+		Topup struct {
 			FeePercent int               `json:"feePercent"`
 			Tokens     map[string]string `json:"tokens"`
 		} `json:"topup"`

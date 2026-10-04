@@ -11,20 +11,22 @@ import (
 	"time"
 )
 
-// The platform's warehouse. Tokens are the game's utility and Coin is how they change hands: CEOs stock their
-// shops from the platform's own inventory (never from thin air), and the platform restocks it — by hand from the
-// back office, or by its agent, which buys the real tokenized stocks with the platform's BNB agentic wallet and
-// reports each purchase here. The agent reads demand (what CEOs order, what they hold) to decide what to buy.
+// The platform's warehouse. CEOs stock their shops from the platform's own inventory (never from thin air), and
+// the platform restocks it with real bStock: its agent buys with the platform's Binance Agentic Wallet and
+// reports each swap here; the api verifies it on BSC before any unit is added (restock.go). The agent reads
+// demand (what CEOs order, what they hold) to decide what to buy.
 //
 //	GET  /api/agent/demand   (Authorization: Bearer $AGENT_KEY) → Supply
-//	POST /api/agent/restock  {token, qty, tx, note} → Supply row; tx = the on-chain purchase, for the audit trail
+//	POST /api/agent/restock  {token, tx, note?} → Restocked: units from the bStock the swap really delivered
 //
-// The back office sees the same view (GET /api/admin/stock) and corrects it (PUT /api/admin/stock/{token}).
+// The back office sees the same view (GET /api/admin/stock), reports swaps the same way and may only take units
+// out by hand (PUT /api/admin/stock/{token}).
 
 type SupplyRow struct {
 	Token     string  `json:"token"`
 	Ticker    string  `json:"ticker"`
-	OnHand    int64   `json:"onHand"`    // in the platform's warehouse
+	OnHand    int64   `json:"onHand"`    // in the platform's warehouse, free to sell
+	Reserved  int64   `json:"reserved"`  // held for sales in progress (parties)
 	InShops   int64   `json:"inShops"`   // already with CEOs, on their shelves
 	Sold24h   int64   `json:"sold24h"`   // to CEOs
 	Sold7d    int64   `json:"sold7d"`    // to CEOs
@@ -46,10 +48,12 @@ type StockMove struct {
 }
 
 type Supply struct {
-	Tokens    []SupplyRow `json:"tokens"`
-	Moves     []StockMove `json:"moves"`
-	CoverDays int         `json:"coverDays"`
-	At        int64       `json:"at"`
+	// What the agent's restocks paid in the last 24 h, in cents: it checks its daily limit before swapping.
+	AgentSpentToday int64       `json:"agentSpentTodayCents"`
+	Tokens          []SupplyRow `json:"tokens"`
+	Moves           []StockMove `json:"moves"`
+	CoverDays       int         `json:"coverDays"`
+	At              int64       `json:"at"`
 }
 
 // coverDays: how many days of demand the suggestion aims to keep on hand.
@@ -58,15 +62,21 @@ const coverDays = 3
 
 func (s *store) Supply(ctx context.Context, now time.Time) (Supply, error) {
 	out := Supply{Tokens: []SupplyRow{}, CoverDays: coverDays, At: now.Unix()}
+	spent, err := spentToday(s.db, now)
+	if err != nil {
+		return out, err
+	}
+	out.AgentSpentToday = spent
 	for _, tok := range sortedTokens() {
 		r := SupplyRow{Token: tok, Ticker: game.tokens[tok].Ticker}
 		err := s.db.QueryRowContext(ctx, `SELECT
 			COALESCE((SELECT qty FROM platform_stock WHERE token = ?1), 0),
+			COALESCE((SELECT reserved FROM platform_stock WHERE token = ?1), 0),
 			COALESCE((SELECT SUM(qty) FROM shop_stock WHERE token = ?1), 0),
 			COALESCE((SELECT COUNT(*) FROM shop_stock WHERE token = ?1 AND qty > 0), 0),
 			COALESCE((SELECT -SUM(delta) FROM stock_moves WHERE token = ?1 AND kind = 'sold' AND at >= ?2), 0),
 			COALESCE((SELECT -SUM(delta) FROM stock_moves WHERE token = ?1 AND kind = 'sold' AND at >= ?3), 0)`,
-			tok, now.Unix()-86400, now.Unix()-7*86400).Scan(&r.OnHand, &r.InShops, &r.Shops, &r.Sold24h, &r.Sold7d)
+			tok, now.Unix()-86400, now.Unix()-7*86400).Scan(&r.OnHand, &r.Reserved, &r.InShops, &r.Shops, &r.Sold24h, &r.Sold7d)
 		if err != nil {
 			return out, err
 		}
@@ -148,8 +158,9 @@ func (s *store) Restock(ctx context.Context, actor, token string, delta int64, k
 // ---------- the agent ----------
 
 type agent struct {
-	key string
-	db  *store
+	key   string
+	db    *store
+	chain *bsc
 }
 
 func (ag *agent) ok(w http.ResponseWriter, r *http.Request) bool {
@@ -179,26 +190,19 @@ func (ag *agent) route(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/agent/restock", func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			Token string
-			Qty   int64
 			Tx    string
 			Note  string
 		}
 		if !ag.ok(w, r) || !body(w, r, &in) {
 			return
 		}
-		if in.Qty <= 0 || in.Tx == "" {
-			fail(w, errBad) // the agent only adds, and only with an on-chain purchase behind it
+		// The units come from the swap on BSC, never from the request.
+		got, err := ag.db.VerifiedRestock(r.Context(), ag.chain, "agent", in.Token, in.Tx, in.Note, time.Now())
+		if err != nil {
+			restockError(w, err)
 			return
 		}
-		note := in.Note
-		if strings.TrimSpace(note) == "" {
-			note = "agent purchase"
-		}
-		if err := ag.db.Restock(r.Context(), "agent", in.Token, in.Qty, "restock", note, in.Tx); err != nil {
-			fail(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+		writeJSON(w, http.StatusOK, got)
 	})
 }
 

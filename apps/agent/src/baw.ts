@@ -50,3 +50,53 @@ export const quote = (usd: number, toToken: string) =>
     "--binanceChainId",
     BSC,
   ]);
+
+// Slippage the agent accepts on a swap, in percent: always explicit, never the wallet's "auto".
+export const SLIPPAGE = "1";
+
+/** Swaps `usd` of USDC for a token at market. Only submits: the result is an order to follow with `order`. */
+export const swap = (usd: number, toToken: string) =>
+  baw<{ orderId: string }>([
+    "market-order",
+    "swap",
+    "--fromTokenQty",
+    String(usd),
+    "--fromToken",
+    USDC,
+    "--toToken",
+    toToken,
+    "--binanceChainId",
+    BSC,
+    "--slippage",
+    SLIPPAGE,
+  ]);
+
+export type Order = {
+  orderId: string;
+  status: "PENDING" | "FINISHED" | "FAILED";
+  txHash: string | null;
+};
+
+/** A submitted swap as the wallet sees it now. */
+export async function order(orderId: string): Promise<Order | undefined> {
+  const page = await baw<{ list: Order[] }>([
+    "market-order",
+    "list",
+    "--orderId",
+    orderId,
+  ]);
+  return page.list.find((o) => o.orderId === orderId);
+}
+
+/**
+ * Where a followed swap stands: "wait" (still pending), "done" with its tx, or "failed". A FINISHED order
+ * without a tx hash can't be reported, so it counts as failed.
+ */
+export function outcome(o: Order | undefined) {
+  if (o?.status === "FINISHED")
+    return o.txHash
+      ? { state: "done" as const, tx: o.txHash }
+      : { state: "failed" as const };
+  if (o?.status === "FAILED") return { state: "failed" as const };
+  return { state: "wait" as const }; // PENDING, or any status the wallet adds later: keep following
+}
