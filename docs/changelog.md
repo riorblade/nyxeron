@@ -3,6 +3,14 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-08 · CEO: play on
+
+- **Keep playing instead of a dead end:** a club that won or survived (The Basement after Day 7, a career at Level 5
+  / Day 60) used to stop on the result screen for good. The result screen now has **Keep playing**: the club goes on
+  to the next day as an ordinary club with no end date (its card reads "Day N", not "of 60", and keeps its Won /
+  Finished tag). A survived club can still win at Level 5 with Rep 80. Defeat is still final. The Basement's late
+  supplier now lasts its one day instead of the rest of the game.
+
 ## 2026-10-03 · CEO: your clubs
 
 - **Classic and City (owner decision):** the play currency is now **NYX Points (NP)** everywhere (was "Coin" / C);

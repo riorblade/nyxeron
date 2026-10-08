@@ -5,10 +5,10 @@ import { endGame } from "./economy";
 
 /** R14: Level 5 and reputation ≥ 80 → victory. Day 60 without it → survived. */
 export function r14_checkVictory(s: GameState): GameState {
-  if (s.outcome || s.mode === "event") return s; // an AI-run night never ends a career
+  if (s.outcome || s.mode === "event" || s.freePlay === "victory") return s; // an AI-run night never ends a career
   if (s.level === 5 && s.reputation >= economy.victoryReputation)
     return endGame(s, "victory");
-  if (s.day >= economy.maxDays) return endGame(s, "survived");
+  if (s.day >= economy.maxDays && !s.freePlay) return endGame(s, "survived");
   return s;
 }
 
