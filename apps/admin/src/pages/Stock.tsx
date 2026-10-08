@@ -21,7 +21,8 @@ const ticker = (t: string) => tokens[t as TokenId]?.ticker ?? t.toUpperCase();
 const whitelisted = (t: string) => t in payments.tokens;
 
 /**
- * The platform's warehouse. CEOs buy their shop stock from it, so an empty warehouse means no shop can restock.
+ * The platform's warehouse: real bStock in the Agentic Wallet. Parties and shops sell from it, so an empty token
+ * can't be bought anywhere.
  * Units come in only from a swap the api verified on BNB Chain: the stock agent reports its own, and here an
  * admin reports one by its tx. Typing a number can only take units out (a correction).
  */
@@ -39,15 +40,14 @@ export function Stock({ canEdit }: { canEdit: boolean }) {
   const total = data.tokens.reduce((n, r) => n + r.onHand, 0);
   const empty = data.tokens.filter((r) => r.onHand === 0).length;
   const sold7d = data.tokens.reduce((n, r) => n + r.sold7d, 0);
-  const shelves = data.tokens.reduce((n, r) => n + r.inShops, 0);
 
   return (
     <>
-      <Title sub="CEOs buy the stock for their shops from this warehouse. If a token is empty here, no shop can restock it.">
+      <Title sub="Real stock the platform holds in the Agentic Wallet. Parties and shops sell from it; if a token is empty here, nobody can buy it.">
         Platform stock
       </Title>
 
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
         <Kpi
           label="In the warehouse"
           value={fmt(total)}
@@ -56,14 +56,9 @@ export function Stock({ canEdit }: { canEdit: boolean }) {
         <Kpi
           label="Empty tokens"
           value={`${empty} / ${data.tokens.length}`}
-          note="CEOs can't stock these"
+          note="nobody can buy these"
         />
-        <Kpi
-          label="On CEOs' shelves"
-          value={fmt(shelves)}
-          note="already sold to shops"
-        />
-        <Kpi label="Bought by CEOs" value={fmt(sold7d)} note="last 7 days" />
+        <Kpi label="Sold to players" value={fmt(sold7d)} note="last 7 days" />
       </div>
 
       {empty > 0 && (
@@ -98,15 +93,12 @@ export function Stock({ canEdit }: { canEdit: boolean }) {
         {help && (
           <dl className="mb-4 grid gap-x-6 gap-y-1.5 rounded-lg border border-white/10 p-3 text-xs text-white/70 sm:grid-cols-2">
             <Term k="In warehouse">
-              Units the platform holds; CEOs buy from here.
+              Units the platform holds (0.001 share each); parties and shops
+              sell from here.
             </Term>
-            <Term k="On CEO shelves">
-              Units CEOs already bought and haven't sold to players yet.
+            <Term k="Sold (24h / 7d)">
+              Units players bought at parties and shops: this is demand.
             </Term>
-            <Term k="CEOs bought (24h / 7d)">
-              Units CEOs took from the warehouse: this is demand.
-            </Term>
-            <Term k="Shops">How many CEO shops hold this token.</Term>
             <Term k="Runs out in">
               Days the warehouse lasts at the last 7 days' pace (— = no demand
               yet).
@@ -121,9 +113,7 @@ export function Stock({ canEdit }: { canEdit: boolean }) {
           head={[
             "Token",
             "In warehouse",
-            "On CEO shelves",
-            "CEOs bought 24h / 7d",
-            "Shops",
+            "Sold 24h / 7d",
             "Runs out in",
             "Suggested",
             ...(canEdit ? [""] : []),
@@ -246,11 +236,9 @@ function TokenRow({
             </span>
           )}
         </td>
-        <td>{n(r.inShops)}</td>
         <td>
           {n(r.sold24h)} <span className="text-white/40">/</span> {n(r.sold7d)}
         </td>
-        <td>{n(r.shops)}</td>
         <td className="font-mono tabular-nums">
           {r.daysLeft < 0 ? "—" : `${r.daysLeft.toFixed(1)} days`}
         </td>

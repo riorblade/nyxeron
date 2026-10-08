@@ -24,6 +24,20 @@ teammate would notice.
   Finished tag). A survived club can still win at Level 5 with Rep 80. Defeat is still final. The Basement's late
   supplier now lasts its one day instead of the rest of the game.
 
+## 2026-10-08 · The city runs on Credit (on-chain cutover)
+
+- **Rent in Credit:** venue rent is paid in Credit at new, low weekly prices (`payments.json → rentCredits`:
+  Level 1 100 · Level 2 200 · Level 3 500 · Level 4 1,000 · Level 5 2,000 Credit; the back office's rent table
+  sets them). Coin-era prices would have made a Level 3 party venue cost $200 a week against a $100 top-up cap.
+  Leases paid in Coin run to their end date; extending them costs Credit.
+- **The Coin shop is closed:** shops are Credit menus over the warehouse (tokens by venue level). What CEOs still
+  held on their Coin shelves was bought back in NYX Points at their own shelf price (migration 6, one ledger row
+  `buyback` per player). A city party no longer pays its host Coin from guests' play nights.
+- **Warehouse:** only units bought by swaps verified on BNB Chain remain; the 100 hand-typed units per token from
+  2026-10-02 were removed by migration 6 (each removal is a stock move by `cutover`).
+- **Back office:** Payments (hourly reconciliation, top-ups, unknown transfers, sales, seed); rent shown in Credit
+  (rent is booked as the platform's money); Stock shows units sold to players instead of CEO shelves.
+
 ## 2026-10-08 · Top-ups
 
 - **Top up Credit:** players send USDC from their game wallet to the platform's Agentic Wallet (no gas, 1% fee) and

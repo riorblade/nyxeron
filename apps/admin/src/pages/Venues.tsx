@@ -44,7 +44,7 @@ export function Venues({ canEdit }: { canEdit: boolean }) {
   );
   return (
     <>
-      <Title sub="Venues are rented weekly with Coin; shops sell while tenants are away; Level 3+ hosts parties.">
+      <Title sub="Venues are rented weekly in Credit (real money, 100 = $1); shops resell real stock while tenants are away; Level 3+ hosts parties.">
         Venues
       </Title>
       {msg && <p className="mb-3 text-sm text-white/70">{msg}</p>}
@@ -295,7 +295,7 @@ function LevelsTable({
             "Rented",
             "Free",
             "Lowest allowed",
-            "Weekly rent (Coin)",
+            "Weekly rent (Credit, 100 = $1)",
           ]}
         >
           {LEVELS.map((l) => {

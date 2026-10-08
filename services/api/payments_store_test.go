@@ -81,14 +81,15 @@ INSERT INTO stock_moves (token, delta, kind, actor, reason, at) VALUES ('tsla', 
 		`SELECT COUNT(*) FROM ledger WHERE kind = 'rent' AND currency = 'coin'`: 1, // old rows are Coin
 		`SELECT COUNT(*) FROM leases WHERE club = 'Nyx'`:                        1,
 		`SELECT COUNT(*) FROM parties WHERE invite = 'abc'`:                     1,
-		`SELECT COUNT(*) FROM platform_stock WHERE qty = 100 AND reserved = 0`:  1,
-		`SELECT COUNT(*) FROM stock_moves`:                                      1,
-		`SELECT COUNT(*) FROM backed_units`:                                     0,
-		`SELECT COUNT(*) FROM topups`:                                           0,
-		`SELECT COUNT(*) FROM sales`:                                            0,
-		`SELECT COUNT(*) FROM party_prices`:                                     0,
-		`SELECT COUNT(*) FROM shop_prices`:                                      0,
-		`SELECT COUNT(*) FROM platform_ledger`:                                  0,
+		// Migration 6 (the cutover) then removes the hand-typed units, writing the removal as a stock move.
+		`SELECT COUNT(*) FROM platform_stock WHERE qty = 0 AND reserved = 0`:                            1,
+		`SELECT COUNT(*) FROM stock_moves WHERE kind = 'adjust' AND actor = 'cutover' AND delta = -100`: 1,
+		`SELECT COUNT(*) FROM backed_units`:                                                             0,
+		`SELECT COUNT(*) FROM topups`:                                                                   0,
+		`SELECT COUNT(*) FROM sales`:                                                                    0,
+		`SELECT COUNT(*) FROM party_prices`:                                                             0,
+		`SELECT COUNT(*) FROM shop_prices`:                                                              0,
+		`SELECT COUNT(*) FROM platform_ledger`:                                                          0,
 	}
 	for q, want := range checks {
 		if got := count(t, s, q); got != want {
@@ -102,8 +103,8 @@ INSERT INTO stock_moves (token, delta, kind, actor, reason, at) VALUES ('tsla', 
 	}
 }
 
-// Every play-money path (starter wallet, refill, import, nights, gigs, admin grants, rent, shop stock, shop
-// sales) moves Coin only: credits stay 0 and no credit row is written.
+// Every play-money path (starter wallet, refill, import, nights, gigs, admin grants, warehouse corrections) moves
+// Coin only: credits stay 0 and no credit row is written. (The city runs on credits since the cutover.)
 func TestCoinPathsNeverTouchCredits(t *testing.T) {
 	s := testStore(t)
 	now := time.Now()
@@ -111,28 +112,19 @@ func TestCoinPathsNeverTouchCredits(t *testing.T) {
 	steps := map[string]func() error{
 		"import": func() error { _, e := s.Import(ctx, "a", in); return e },
 		"grant":  func() error { return s.GrantCoins(ctx, "boss", "a", 1_000_000, "test") },
-		"lease":  func() error { _, e := s.Lease(ctx, "a", 1, 0, "Booth", 1, now); return e },
 		"restock": func() error {
 			return s.Restock(ctx, "boss", "tsla", 50, "restock", "test", "")
 		},
-		"stock": func() error { _, e := s.Stock(ctx, "a", "tsla", 10, flat, now); return e },
 		"night": func() error {
 			_, e := s.Night(ctx, "b", startWallet-1500, map[string]Holding{"tsla": {Qty: 1, Cost: 1000}}, 0, "")
 			return e
 		},
 		"gig": func() error { _, e := s.Gig(ctx, "b", 100, now); return e },
 	}
-	for _, name := range []string{"import", "grant", "lease", "restock", "stock", "night", "gig"} {
+	for _, name := range []string{"import", "grant", "restock", "night", "gig"} {
 		if err := steps[name](); err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
-	}
-	open := true
-	if err := s.SetShop(ctx, "a", 1, &open, nil, flat, now); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.ShopBuy(ctx, "b", 1, "tsla", 2, now); err != nil {
-		t.Fatalf("shop buy: %v", err)
 	}
 	s.Get(ctx, "c")
 	if err := s.GrantCoins(ctx, "boss", "c", -startWallet+10, "broke"); err != nil {
@@ -149,7 +141,7 @@ func TestCoinPathsNeverTouchCredits(t *testing.T) {
 	if n := count(t, s, `SELECT COUNT(*) FROM ledger WHERE currency = 'credit'`); n != 0 {
 		t.Fatalf("%d credit rows from Coin paths", n)
 	}
-	if n := count(t, s, `SELECT COUNT(*) FROM ledger WHERE currency = 'coin'`); n < 7 {
+	if n := count(t, s, `SELECT COUNT(*) FROM ledger WHERE currency = 'coin'`); n < 4 {
 		t.Fatalf("Coin paths wrote only %d ledger rows", n)
 	}
 }
@@ -236,5 +228,54 @@ func TestPaymentTablesRefuseBadRows(t *testing.T) {
 	}
 	if _, err := s.db.Exec(`INSERT INTO platform_stock (token, qty, updated_at, reserved) VALUES ('tsla', 0, 1, -1)`); err == nil {
 		t.Fatal("negative reservation")
+	}
+}
+
+// Migration 6 (the cutover) keeps the units bought by swaps verified on BSC and removes the ones typed in by hand.
+func TestCutoverKeepsOnlyVerifiedStock(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "live.db")
+	s, err := openStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Back to just before the cutover: 100 TSLA typed in by hand, then 8 bought by a verified swap.
+	if _, err := s.db.Exec(`PRAGMA user_version = 5;
+INSERT INTO platform_stock (token, qty, updated_at) VALUES ('tsla', 108, 1), ('nvda', 100, 1), ('aapl', 3, 1);
+INSERT INTO stock_moves (token, delta, kind, actor, reason, tx, at) VALUES
+	('tsla', 100, 'restock', 'boss', 'by hand', '', 1),
+	('nvda', 100, 'restock', 'boss', 'by hand', '0xmadeup', 1),
+	('tsla', 8, 'restock', 'agent', 'verified swap', '0xswap', 2),
+	('aapl', 10, 'restock', 'agent', 'verified swap', '0xswap2', 2),
+	('aapl', -7, 'sold', 'agent', 'CEO bought', '', 3);
+INSERT INTO platform_ledger (delta, kind, ref, at) VALUES (-300, 'restock', '0xswap', 2), (-300, 'restock', '0xswap2', 2);
+INSERT INTO users (id, wallet, created_at, updated_at) VALUES ('ceo', 1000, 1, 1);
+INSERT INTO shop_stock (user_id, token, qty, price) VALUES ('ceo', 'tsla', 4, 250), ('ceo', 'nvda', 2, 100), ('ceo', 'aapl', 0, 80);`); err != nil {
+		t.Fatal(err)
+	}
+	s.close()
+	if s, err = openStore(path); err != nil {
+		t.Fatal(err)
+	}
+	defer s.close()
+	tsla, _ := onHand(t, s, "tsla")
+	nvda, _ := onHand(t, s, "nvda")
+	aapl, _ := onHand(t, s, "aapl")
+	// AAPL: 10 verified, 7 already sold, so 3 left: never more than the warehouse had.
+	if tsla != 8 || nvda != 0 || aapl != 3 {
+		t.Fatalf("after the cutover: tsla %d (want 8, the verified swap), nvda %d (want 0), aapl %d (want 3)", tsla, nvda, aapl)
+	}
+	if n := count(t, s, `SELECT COUNT(*) FROM stock_moves WHERE actor = 'cutover'`); n != 2 {
+		t.Fatalf("cutover moves %d", n)
+	}
+	// The Coin shelf is bought back in NYX Points at the CEO's shelf price (4 × 250 + 2 × 100), and emptied.
+	if p, _ := s.Get(ctx, "ceo"); p.Wallet != 1000+1200 {
+		t.Fatalf("buyback: wallet %d, want %d", p.Wallet, 2200)
+	}
+	if n := count(t, s, `SELECT COUNT(*) FROM ledger WHERE user_id = 'ceo' AND kind = 'buyback' AND delta = 1200 AND balance = 2200
+		AND currency = 'coin' AND reason LIKE '%4 TSLA%'`); n != 1 {
+		t.Fatalf("buyback ledger rows %d", n)
+	}
+	if n := count(t, s, `SELECT COUNT(*) FROM shop_stock`); n != 0 {
+		t.Fatalf("shelves left %d", n)
 	}
 }

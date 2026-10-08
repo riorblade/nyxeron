@@ -54,11 +54,12 @@ false`. `CITY_OPEN=1` in the api's environment opens it.
 
 | Method | Path | Body | Notes |
 | --- | --- | --- | --- |
-| POST | `/api/city/lease` | `{level, slot?, club, weeks}` | rent (slot 0 = first free; up to 5 venues) or extend yours at that slot |
+| POST | `/api/city/lease` | `{level, slot?, club, weeks}` | rent in credits (`payments.json → rentCredits`, the back office's table over it; slot 0 = first free; up to 5 venues) or extend yours at that slot |
 | PUT | `/api/city/venue` | `{lease, club}` | rename one of your venues |
-| POST | `/api/city/stock` | `{token, qty}` | buy shop stock from the warehouse at the market price |
-| PUT | `/api/city/shop` | `{lease, open?, prices?}` | open/close that venue's shop, set your shelf prices (≤ 3× usual) |
-| POST | `/api/city/shops/{lease}/buy` | `{token, qty}` | buy from someone's open shop (≤ 50) |
+| PUT | `/api/city/shop` | `{lease, open}` | open/close that venue's shop (its menu: `PUT /api/city/shops/{lease}/prices`, below) |
+
+Since the cutover a shop holds no stock: `GET /api/city` lists each shop's menu (`lease.stock`: token, the
+warehouse's units, the tenant's price in credits) and the live `wholesale` per token with `maxMarkup`.
 
 ## Events
 

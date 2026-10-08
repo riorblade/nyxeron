@@ -189,6 +189,33 @@ var migrations = []string{
 		reason TEXT    NOT NULL DEFAULT '',
 		at     INTEGER NOT NULL
 	);`,
+	// 6 — the cutover: the city runs on credits. The warehouse keeps only units bought by swaps verified on BSC
+	// (a restock whose tx is in platform_ledger); the units typed in by hand (100 per token on 2026-10-02) aren't
+	// real stock and go, each removal written as a stock move. Nothing is reserved before the cutover. Coin shops
+	// are gone too: what CEOs still hold on their shelves is bought back in NYX Points at their own shelf price,
+	// one ledger row per player, and the shelves are emptied.
+	`CREATE TEMP TABLE verified AS
+		SELECT ps.token, COALESCE((SELECT SUM(m.delta) FROM stock_moves m WHERE m.token = ps.token AND m.kind = 'restock'
+			AND m.tx != '' AND m.tx IN (SELECT ref FROM platform_ledger WHERE kind = 'restock')), 0) AS units
+		FROM platform_stock ps;
+	INSERT INTO stock_moves (token, delta, kind, actor, reason, at)
+		SELECT ps.token, MIN(v.units, ps.qty) - ps.qty, 'adjust', 'cutover', 'hand-entered units are not real stock',
+			CAST(strftime('%s', 'now') AS INTEGER)
+		FROM platform_stock ps JOIN verified v ON v.token = ps.token WHERE ps.qty > MIN(v.units, ps.qty);
+	UPDATE platform_stock SET qty = MIN(qty, (SELECT units FROM verified WHERE verified.token = platform_stock.token)),
+		updated_at = CAST(strftime('%s', 'now') AS INTEGER);
+	DROP TABLE verified;
+	CREATE TEMP TABLE buyback AS
+		SELECT user_id, SUM(qty * price) AS np, group_concat(qty || ' ' || upper(token), ', ') AS what
+		FROM shop_stock WHERE qty > 0 GROUP BY user_id;
+	UPDATE users SET wallet = wallet + (SELECT np FROM buyback WHERE buyback.user_id = users.id)
+		WHERE id IN (SELECT user_id FROM buyback);
+	INSERT INTO ledger (user_id, delta, balance, kind, actor, reason, at)
+		SELECT b.user_id, b.np, u.wallet, 'buyback', 'cutover', 'Coin shop closed, shelf bought back: ' || b.what,
+			CAST(strftime('%s', 'now') AS INTEGER)
+		FROM buyback b JOIN users u ON u.id = b.user_id WHERE b.np > 0;
+	DELETE FROM shop_stock;
+	DROP TABLE buyback;`,
 }
 
 func migrate(db *sql.DB) error {

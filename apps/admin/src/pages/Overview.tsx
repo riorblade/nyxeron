@@ -37,7 +37,7 @@ export function Overview() {
           <Kpi
             label="Rent revenue"
             value={fmt(s.rent.week)}
-            note={`last 7 days · ${fmt(s.rent.total)} all time`}
+            note={`Credit, last 7 days · ${fmt(s.rent.total)} all time`}
           />
           <Kpi label="Rented venues" value={fmt(s.rent.leases)} />
           <Kpi

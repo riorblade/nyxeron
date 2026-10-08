@@ -213,7 +213,7 @@ func creditLedger(t *sql.Tx, id string, delta int64, kind, actor, reason string)
 	return err
 }
 
-// platformLedger records the platform's own money, in credits: top-up fees and wholesale proceeds in, the seed
+// platformLedger records the platform's own money, in credits: top-up fees, rent and wholesale proceeds in, the seed
 // for the first stock in, USDC spent on restocks out. Reconciliation subtracts it from the Agentic Wallet.
 func platformLedger(t *sql.Tx, delta int64, kind, ref, reason string) error {
 	_, err := t.Exec(`INSERT INTO platform_ledger (delta, kind, ref, reason, at) VALUES (?, ?, ?, ?, ?)`,
@@ -354,9 +354,8 @@ func (s *store) Refill(ctx context.Context, id string) (p Profile, err error) {
 }
 
 // Night settles a night out as a guest. Guests only spend (door + tokens), so the wallet can't grow, and the tokens
-// taken home can't have cost more than what was spent.
-//
-// At a live party in the city (room), what the guest spent goes to the venue's tenant.
+// taken home can't have cost more than what was spent. It is play money everywhere: since the cutover a city
+// party's real sales go through the api in credits (sales.go), so nobody is paid Coin for a guest's night.
 func (s *store) Night(ctx context.Context, id string, cash int64, bought map[string]Holding, pnl int64, room string) (p Profile, err error) {
 	if cash < 0 || !validHoldings(bought) {
 		return p, errBad
@@ -384,14 +383,6 @@ func (s *store) Night(ctx context.Context, id string, cash int64, bought map[str
 		}
 		if e := ledger(t, id, cash-cur.Wallet, "night", "", room); e != nil {
 			return e
-		}
-		if host := partyHost(t, room, time.Now()); host != "" && host != id && spent > 0 {
-			if _, e := t.Exec(`UPDATE users SET wallet = wallet + ? WHERE id = ?`, spent, host); e != nil {
-				return e
-			}
-			if e := ledger(t, host, spent, "party", "", room); e != nil {
-				return e
-			}
 		}
 		if e := addHoldings(t, id, bought); e != nil {
 			return e

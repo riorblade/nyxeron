@@ -11,10 +11,10 @@ import (
 	"time"
 )
 
-// The platform's warehouse. CEOs stock their shops from the platform's own inventory (never from thin air), and
-// the platform restocks it with real bStock: its agent buys with the platform's Binance Agentic Wallet and
+// The platform's warehouse: real bStock in the Agentic Wallet. Parties and shops sell from it (sales.go; never
+// from thin air), and the platform restocks it: its agent buys with the platform's Binance Agentic Wallet and
 // reports each swap here; the api verifies it on BSC before any unit is added (restock.go). The agent reads
-// demand (what CEOs order, what they hold) to decide what to buy.
+// demand (what players bought) to decide what to buy.
 //
 //	GET  /api/agent/demand   (Authorization: Bearer $AGENT_KEY) → Supply
 //	POST /api/agent/restock  {token, tx, note?} → Restocked: units from the bStock the swap really delivered
@@ -27,10 +27,8 @@ type SupplyRow struct {
 	Ticker    string  `json:"ticker"`
 	OnHand    int64   `json:"onHand"`    // in the platform's warehouse, free to sell
 	Reserved  int64   `json:"reserved"`  // held for sales in progress (parties)
-	InShops   int64   `json:"inShops"`   // already with CEOs, on their shelves
-	Sold24h   int64   `json:"sold24h"`   // to CEOs
-	Sold7d    int64   `json:"sold7d"`    // to CEOs
-	Shops     int     `json:"shops"`     // CEOs holding this token
+	Sold24h   int64   `json:"sold24h"`   // to players, at parties and shops
+	Sold7d    int64   `json:"sold7d"`    // to players, at parties and shops
 	DaysLeft  float64 `json:"daysLeft"`  // at the last 7 days' pace (-1: no demand yet)
 	Suggested int64   `json:"suggested"` // to cover coverDays at that pace
 }
@@ -79,11 +77,9 @@ func (s *store) Supply(ctx context.Context, now time.Time) (Supply, error) {
 		err := s.db.QueryRowContext(ctx, `SELECT
 			COALESCE((SELECT qty FROM platform_stock WHERE token = ?1), 0),
 			COALESCE((SELECT reserved FROM platform_stock WHERE token = ?1), 0),
-			COALESCE((SELECT SUM(qty) FROM shop_stock WHERE token = ?1), 0),
-			COALESCE((SELECT COUNT(*) FROM shop_stock WHERE token = ?1 AND qty > 0), 0),
 			COALESCE((SELECT -SUM(delta) FROM stock_moves WHERE token = ?1 AND kind = 'sold' AND at >= ?2), 0),
 			COALESCE((SELECT -SUM(delta) FROM stock_moves WHERE token = ?1 AND kind = 'sold' AND at >= ?3), 0)`,
-			tok, now.Unix()-86400, now.Unix()-7*86400).Scan(&r.OnHand, &r.Reserved, &r.InShops, &r.Shops, &r.Sold24h, &r.Sold7d)
+			tok, now.Unix()-86400, now.Unix()-7*86400).Scan(&r.OnHand, &r.Reserved, &r.Sold24h, &r.Sold7d)
 		if err != nil {
 			return out, err
 		}

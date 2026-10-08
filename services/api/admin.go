@@ -538,7 +538,7 @@ func (s *store) SetRent(ctx context.Context, actor string, rent map[string]int64
 		return err
 	}
 	defer t.Rollback()
-	if _, err := t.Exec(`INSERT INTO settings (key, value, updated_at) VALUES ('rent', ?, ?)
+	if _, err := t.Exec(`INSERT INTO settings (key, value, updated_at) VALUES ('rent_credits', ?, ?)
 		ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`, string(b), time.Now().Unix()); err != nil {
 		return err
 	}
@@ -591,11 +591,11 @@ func (s *store) SetVenueCounts(ctx context.Context, actor string, counts map[str
 	return t.Commit()
 }
 
-// Revenue: rent the platform took in Coin (all time and the last 7 days). Credit rent is real money: it is
-// reported apart once the city runs on credits.
+// Revenue: rent the platform took, in credits (all time and the last 7 days). The city runs on credits since the
+// cutover; Coin-era rent isn't real money.
 func (s *store) Revenue(ctx context.Context, now time.Time) (total, week int64) {
 	_ = s.db.QueryRowContext(ctx, `SELECT COALESCE(-SUM(delta), 0), COALESCE(-SUM(CASE WHEN at >= ? THEN delta END), 0)
-		FROM ledger WHERE kind = 'rent' AND currency = 'coin'`, now.Unix()-7*86400).Scan(&total, &week)
+		FROM ledger WHERE kind = 'rent' AND currency = 'credit'`, now.Unix()-7*86400).Scan(&total, &week)
 	return
 }
 

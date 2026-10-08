@@ -65,6 +65,9 @@ const quoteMaxAge = 10 * time.Minute
 
 // freshQuotes: the quoter's prices, or none when they are too old.
 func freshQuotes(q *quoter, now time.Time) map[string]float64 {
+	if q == nil {
+		return map[string]float64{}
+	}
 	r := q.get()
 	if now.Sub(time.UnixMilli(r.At)) > quoteMaxAge || r.Source != "binance" {
 		return map[string]float64{}
@@ -72,12 +75,16 @@ func freshQuotes(q *quoter, now time.Time) map[string]float64 {
 	return r.Quotes
 }
 
-// checkPrices: every token whitelisted, every price between wholesale and maxMarkup × wholesale.
-func checkPrices(prices map[string]int64, quotes map[string]float64) error {
-	if len(prices) == 0 || len(prices) > len(game.payments.Tokens) {
+// checkPrices: every token whitelisted and sold at a venue of this level (tokens.json minLevel), every price
+// between wholesale and maxMarkup × wholesale. An empty list takes everything off the menu.
+func checkPrices(prices map[string]int64, level int, quotes map[string]float64) error {
+	if len(prices) > len(game.payments.Tokens) {
 		return errBad
 	}
 	for token, p := range prices {
+		if game.tokens[token].MinLevel > level {
+			return errBad
+		}
 		w, err := wholesaleOf(token, quotes)
 		if err != nil {
 			return err
@@ -152,7 +159,11 @@ func (s *store) SetPartyPrices(ctx context.Context, host string, pid int64, pric
 	if now.Unix() >= p.starts {
 		return errPriceLocked
 	}
-	if err := checkPrices(prices, quotes); err != nil {
+	var level int
+	if err := s.db.QueryRowContext(ctx, `SELECT level FROM leases WHERE id = ?`, p.lease).Scan(&level); err != nil {
+		return err
+	}
+	if err := checkPrices(prices, level, quotes); err != nil {
 		return err
 	}
 	return s.inTx(ctx, func(t *sql.Tx) error {
@@ -166,14 +177,15 @@ func (s *store) SetPartyPrices(ctx context.Context, host string, pid int64, pric
 // SetShopPrices: a tenant's shop prices in credits.
 func (s *store) SetShopPrices(ctx context.Context, owner string, lease int64, prices map[string]int64, quotes map[string]float64, now time.Time) error {
 	var who string
-	err := s.db.QueryRowContext(ctx, `SELECT user_id FROM leases WHERE id = ? AND ends_at > ?`, lease, now.Unix()).Scan(&who)
+	var level int
+	err := s.db.QueryRowContext(ctx, `SELECT user_id, level FROM leases WHERE id = ? AND ends_at > ?`, lease, now.Unix()).Scan(&who, &level)
 	if errors.Is(err, sql.ErrNoRows) || who != owner {
 		return errNotFound
 	}
 	if err != nil {
 		return err
 	}
-	if err := checkPrices(prices, quotes); err != nil {
+	if err := checkPrices(prices, level, quotes); err != nil {
 		return err
 	}
 	return s.inTx(ctx, func(t *sql.Tx) error {
@@ -322,6 +334,11 @@ func settle(t *sql.Tx, id int64, now time.Time) error {
 		return err
 	}
 	if err := take(t, token, qty); err != nil {
+		return err
+	}
+	// A sold unit is demand: the agent's restock view counts these.
+	if _, err := t.Exec(`INSERT INTO stock_moves (token, delta, kind, user_id, actor, reason, tx, at)
+		VALUES (?, ?, 'sold', ?, 'sale', ?, '', ?)`, token, -qty, buyer, "sale:"+strconv.FormatInt(id, 10), now.Unix()); err != nil {
 		return err
 	}
 	if _, err := t.Exec(`INSERT INTO backed_units (user_id, token, qty) VALUES (?, ?, ?)
