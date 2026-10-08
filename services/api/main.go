@@ -40,11 +40,13 @@ func routes(q *quoter, origins []string, auth *privy, db *store, adm *admin) htt
 	if adm == nil {
 		adm = &admin{owners: map[string]bool{}}
 	}
-	adm.auth, adm.db, adm.quotes = auth, db, q
+	// BNB Smart Chain through two providers (bsc.go); nil without both: top-ups and restocks are off.
+	chain := newBSC(os.Getenv("BSC_RPC_1"), os.Getenv("BSC_RPC_2"))
+	adm.auth, adm.db, adm.quotes, adm.chain = auth, db, q, chain
 	adm.route(mux)
-	(&agent{key: os.Getenv("AGENT_KEY"), db: db}).route(mux)
+	(&agent{key: os.Getenv("AGENT_KEY"), db: db, chain: chain}).route(mux)
 	mux.HandleFunc("GET /api/me", auth.handleMe)
-	pl := &players{auth: auth, db: db, q: q, chain: newBSC(os.Getenv("BSC_RPC_1"), os.Getenv("BSC_RPC_2"))}
+	pl := &players{auth: auth, db: db, q: q, chain: chain}
 	pl.route(mux)
 	pl.routeDocs(mux)
 	pl.routeCity(mux)

@@ -4,7 +4,9 @@ The platform's restocking agent. It reads what the warehouse is short of (`GET /
 from the `payments.json` whitelist (today TSLA → TSLAB), checks its locked bStock contract against Binance's list
 and asks the platform's Binance Agentic Wallet what the budget buys.
 
-**It stops at the quote: nothing is traded and nothing is reported to the api yet.**
+**It only trades with `--buy`:** then it swaps `AGENT_BUY_USD` of USDC (platform funds, slippage 1%), follows the
+order until the wallet reports its tx, and reports the tx to `POST /api/agent/restock`. The api reads the swap on
+BSC itself and adds the units the Agentic Wallet really received; the agent's own numbers count for nothing.
 
 ```sh
 npm install --global @binance/agentic-wallet    # the `baw` CLI
@@ -14,6 +16,7 @@ baw auth signin --json                           # confirm in the Binance App, t
 AGENT_KEY=dev DB_PATH=services/api/dev.db pnpm dev:api   # terminal 1
 AGENT_KEY=dev pnpm agent --token tsla                    # terminal 2, repo root: a $3 quote for TSLAB
 AGENT_KEY=dev pnpm agent                                 # the whitelisted token most needed
+AGENT_KEY=… NYXERON_API=… pnpm agent --token tsla --buy  # a real swap on mainnet + verified restock
 ```
 
 With an empty warehouse (no sales yet) the plain run prints `nothing to restock`; `--token tsla` quotes anyway.

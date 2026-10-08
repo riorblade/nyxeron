@@ -63,7 +63,7 @@ the back office).
 
 The agent keeps the warehouse stocked from demand (`GET /api/agent/demand`: on hand, reserved, sold 24 h/7 d,
 suggested) and buys bStock in bulk with **platform funds** (fees, or a seed the team puts in), not with players'
-credits. `POST /api/agent/restock {token, qty, tx}` adds units **only after the api verifies the swap on BSC**
+credits. `POST /api/agent/restock {token, tx}` adds units **only after the api verifies the swap on BSC**
 (bStock received by the Agentic Wallet, amount from the logs, tx unused, 15 confirmations, two RPCs agree). Manual
 restock in the back office becomes "report a tx" (same verification); typing a number no longer creates stock.
 

@@ -95,7 +95,7 @@ Every change requires `reason` (except announcement/admin role changes) and is w
 | PUT | `/api/admin/rent` | `{rent: {"1": n, …}, reason}` | admin |
 | PUT | `/api/admin/venues` | `{counts: {"1": n, …}, reason}` (not below a level's highest rented slot; ≤ 500) | admin |
 | GET | `/api/admin/stock` | — | viewer |
-| PUT | `/api/admin/stock/{token}` | `{delta, reason, tx?}` | admin |
+| PUT | `/api/admin/stock/{token}` | `{tx, reason}` (a swap, verified on BSC) or `{delta < 0, reason}` (take units out) | admin |
 | GET | `/api/admin/audit?target&before&limit` | — | viewer |
 | GET/PUT | `/api/admin/announcement` | `{text, active}` | viewer / admin |
 | GET/PUT | `/api/admin/admins` | `{email, role}` (`""` removes) | owner |
@@ -106,15 +106,15 @@ For the platform's restocking agent (e.g. built with BNB Agent Studio). Secret: 
 
 | Method | Path | Body | Notes |
 | --- | --- | --- | --- |
-| GET | `/api/agent/demand` | — | per token: on hand, with CEOs, sold 24h/7d, shops, days left, suggested restock; last 100 movements |
-| POST | `/api/agent/restock` | `{token, qty, tx, note?}` | adds stock; `qty > 0` and the on-chain `tx` are required; audited as `agent` |
+| GET | `/api/agent/demand` | — | per token: on hand, reserved, with CEOs, sold 24h/7d, shops, days left, suggested restock; last 100 movements |
+| POST | `/api/agent/restock` | `{token, tx, note?}` | the api reads the swap on BSC (two RPCs, 15 confirmations) and adds the units of whitelisted bStock the Agentic Wallet received; the tx counts once; USDC paid within the agent's limits (`payments.json`); 202 `pending` until final; audited as `agent` |
 
 Example:
 
 ```sh
 curl -H "Authorization: Bearer $AGENT_KEY" https://api.nyxeron.xyz/api/agent/demand
 curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \
-  -d '{"token":"tsla","qty":500,"tx":"0x…","note":"weekly restock"}' \
+  -d '{"token":"tsla","tx":"0x…","note":"weekly restock"}' \
   https://api.nyxeron.xyz/api/agent/restock
 ```
 
