@@ -1,5 +1,5 @@
 import { tokens, type TokenId } from "@nyxeron/core";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Backdrop } from "@/components/Backdrop";
 import { Button } from "@/components/ui/button";
 import { en } from "@/i18n/en";
@@ -43,6 +43,7 @@ export function LiveGuest() {
         : remote?.phase !== "night"
           ? t.doorsClosed
           : t.atTheDoor;
+  const buying = useRef(false);
   const online: OnlineGuest = useMemo(
     () => ({
       buy: (token: TokenId, qty: number) => {
@@ -51,10 +52,14 @@ export function LiveGuest() {
         // Real stock: the api takes Credit and holds the units. Not sent to the host's game, which would also
         // charge the guest's play money for it.
         const notify = useGame.getState().notify;
+        // One purchase at a time: a double tap or a retry must not hold the guest's Credit twice.
+        if (buying.current) return notify(s.busy, true);
+        buying.current = true;
         sales
           .buy(party.id, token, qty, price)
           .then((left) => notify(s.bought(qty, tokens[token].ticker, left)))
-          .catch((e: Error) => notify(s.errors[e.message] ?? e.message, true));
+          .catch((e: Error) => notify(s.errors[e.message] ?? e.message, true))
+          .finally(() => (buying.current = false));
       },
       leave: guestLeave,
       waiting,
