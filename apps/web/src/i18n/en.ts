@@ -389,6 +389,8 @@ export const en = {
           "Not possible: check the venue level, the lease dates or your event limit.",
         conflict: "That overlaps another event at this club.",
         not_found: "That event isn't available (cancelled, over, or private).",
+        started:
+          "It has started: guests may have bought, so it can't be cancelled now.",
         bad_request: "Check the date, time and length.",
         no_lease: "That venue isn't yours any more.",
       })[code] ?? `Couldn't do that (${code}).`,
@@ -1239,6 +1241,30 @@ export const en = {
         "Not added: under the minimum or over the limit. It's recorded and will be refunded.",
       wallet: "The transfer wasn't sent. Nothing was taken.",
       unknown: "Something went wrong. Try again in a moment.",
+    } as Record<string, string>,
+  },
+
+  sales: {
+    prices: "Credit prices",
+    pricesNote:
+      "Real stock sold at this party, per unit (0.001 share), in Credit. Blank = not sold. Set before it starts; locked after.",
+    floor: (w: number, max: number) => `${fmt(w)}–${fmt(max)}`,
+    save: "Save prices",
+    saved: "Prices saved",
+    menu: "Real stock here",
+    each: (credits: number) => `${fmt(credits)} Credit`,
+    yourCredit: (credits: number) => `Your Credit: ${fmt(credits)}`,
+    bought: (qty: number, ticker: string, left: number) =>
+      `Bought ${qty} ${ticker} with Credit · ${fmt(left)} left`,
+    busy: "Still buying the last one…",
+    errors: {
+      rejected: "Not enough Credit, or this token isn't on the menu.",
+      sold_out: "The warehouse is out of this token right now.",
+      not_live: "The party isn't on.",
+      prices_locked: "The party has started: prices are locked.",
+      no_price: "No live price right now. Try again in a minute.",
+      bad_request: "Check the prices: each between the two numbers shown.",
+      price_changed: "The price changed. Check it and buy again.",
     } as Record<string, string>,
   },
 

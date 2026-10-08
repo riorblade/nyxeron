@@ -30,6 +30,14 @@ teammate would notice.
   get Credit (100 = $1) once BNB Chain confirms it. Minimum $3; at most $20 a day and $100 in all during the
   hackathon. The api enforces the caps: it credits up to the room left and records the rest for a refund.
 
+## 2026-10-08 · Real stock at parties and shops
+
+- **Buy real stock with Credit:** at a live city party or an open shop, guests buy real tokenized stock (units of
+  0.001 share) at the CEO's Credit price; the CEO keeps the margin over the live wholesale price, the platform gets
+  wholesale. A party's sales are held while it runs and settle when it ends. Every buy carries the price the guest
+  saw (`maxPrice`) and a guest buys one at a time.
+- **Events can't be cancelled once they start** (guests may have bought); only an admin voids a sale.
+
 ## 2026-10-03 · CEO: your clubs
 
 - **Classic and City (owner decision):** the play currency is now **NYX Points (NP)** everywhere (was "Coin" / C);

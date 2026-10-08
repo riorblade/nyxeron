@@ -53,6 +53,7 @@ func routes(q *quoter, origins []string, auth *privy, db *store, adm *admin) htt
 	pl.routeRooms(mux, newRoomList())
 	pl.routeEvents(mux)
 	pl.routeTopups(mux)
+	pl.routeSales(mux)
 	// Preflight: the browser asks before sending Authorization / JSON cross-site.
 	mux.HandleFunc("OPTIONS /api/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE")
@@ -126,6 +127,8 @@ func main() {
 	if chain := newBSC(os.Getenv("BSC_RPC_1"), os.Getenv("BSC_RPC_2")); chain != nil {
 		go db.scanTopupsEvery(ctx, chain, time.Minute)
 	}
+	// Party sales settle when the party ends (+ settleGraceMinutes).
+	go db.settleEvery(ctx, time.Minute)
 	go func() {
 		<-ctx.Done()
 		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
