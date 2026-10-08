@@ -10,7 +10,7 @@ Production today: **frontends on Vercel**, **backend on one VPS** (Docker Compos
 | `api`                      | VPS → `api.nyxeron.xyz/api/*`, SQLite volume `api_data`  | Go, `scratch`, ~5 MB | 48 MB   |
 
 Secrets live in `deploy/.env` on the VPS (from `.env.example`: Privy, Binance, `ADMIN_EMAILS`, `AGENT_KEY`,
-`DOMAIN`, `FRONTEND_EXTRA_HOST`, `ADMIN_HOST`). Database migrations run automatically when the api starts.
+`BSC_RPC_1`, `BSC_RPC_2`, `DOMAIN`, `FRONTEND_EXTRA_HOST`, `ADMIN_HOST`). Database migrations run automatically when the api starts.
 
 `compose.yml` alone can also self-host everything on one machine with its own Caddy `edge` (below).
 

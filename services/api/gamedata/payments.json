@@ -1,5 +1,6 @@
 {
   "chainId": 56,
+  "confirmations": 15,
   "agenticWallet": "0xcDFa725242E29921468a7482E8F3990fc40E170f",
   "creditsPerUsd": 100,
   "sharesPerUnit": 0.001,
