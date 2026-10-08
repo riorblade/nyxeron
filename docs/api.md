@@ -72,7 +72,7 @@ players who opened its invite link (`/?event=<code>`).
 | GET | `/api/events/invite/{code}` | — | opens an invite: returns the event and marks me as going (lists private ones) |
 | POST | `/api/events` | `{lease?, club?, level?, startsAt, minutes?, title?, private?}` | schedule (5–60 min, default 10; up to 7 days ahead; no overlap at the same club; ≤ 20 upcoming) |
 | POST | `/api/events/{id}/rsvp` | `{going}` | going / not going (a private event needs its invite first) |
-| DELETE | `/api/events/{id}` | — | cancel my event |
+| DELETE | `/api/events/{id}` | — | cancel my event, only before it starts (409 `started` after: guests may have bought; only an admin voids sales) |
 | PUT | `/api/events/{id}/room` | `{room}` | my event is live in this relay room (from 15 min before until it ends) |
 
 Real stock in the city (`sales.go`, docs/payments.md §4–5): prices in credits per unit (0.001 share), between the
@@ -82,9 +82,9 @@ live wholesale price and `maxMarkup` × it; whitelisted tokens only.
 | --- | --- | --- | --- |
 | GET | `/api/events/prices/{id}` | — | `{prices, wholesale, maxMarkup}` of a city party (public) |
 | PUT | `/api/events/{id}/prices` | `{prices: {token: credits}}` | host only, before it starts (`prices_locked` after) |
-| POST | `/api/events/{id}/buy` | `{token, qty}` | while live: credits held, units reserved; settles at end + `settleGraceMinutes` → `{sale, credits}` |
+| POST | `/api/events/{id}/buy` | `{token, qty, maxPrice}` | `maxPrice` (required): the price the buyer saw, refused 409 `price_changed` if higher now; while live: credits held, units reserved; settles at end + `settleGraceMinutes` → `{sale, credits}` |
 | PUT | `/api/city/shops/{lease}/prices` | `{prices}` | the tenant's shop prices in credits |
-| POST | `/api/city/shops/{lease}/buy-credit` | `{token, qty}` | settled at once: units to the buyer, margin to the tenant, wholesale to the platform |
+| POST | `/api/city/shops/{lease}/buy-credit` | `{token, qty, maxPrice}` | settled at once: units to the buyer, margin to the tenant, wholesale to the platform |
 
 ## Back office
 

@@ -23,15 +23,16 @@ import (
 //
 //	GET  /api/events/prices/{id}          → {prices, wholesale} (credits per unit)
 //	PUT  /api/events/{id}/prices          {prices} → host only, before the party starts
-//	POST /api/events/{id}/buy             {token, qty} → while live: credits held, units reserved
+//	POST /api/events/{id}/buy             {token, qty, maxPrice} → while live: credits held, units reserved
 //	PUT  /api/city/shops/{lease}/prices   {prices} → the tenant's shop prices in credits
-//	POST /api/city/shops/{lease}/buy-credit {token, qty} → settled at once
+//	POST /api/city/shops/{lease}/buy-credit {token, qty, maxPrice} → settled at once
 //	POST /api/admin/sales/{id}/void       {reason} → a held sale: credits back, units released
 
 var (
 	errNoPrice     = errors.New("sales: no live price for the token")
 	errNotLive     = errors.New("sales: the party isn't on")
 	errPriceLocked = errors.New("sales: the party has started; its prices are locked")
+	errStarted     = errors.New("events: the party has started; only an admin can call it off")
 )
 
 // wholesaleOf: what one unit costs the platform now, in credits: live price × sharesPerUnit × creditsPerUsd,
@@ -44,11 +45,15 @@ func wholesaleOf(token string, quotes map[string]float64) (int64, error) {
 	if !(price > 0) || math.IsInf(price, 0) {
 		return 0, errNoPrice
 	}
-	w := math.Ceil(price * game.payments.SharesPerUnit * float64(game.payments.CreditsPerUSD))
-	if w > maxWholesale { // an absurd quote is no price (and keeps price × qty far from overflowing)
+	// Whole numbers: the price in credits per share (cents today), then up to whole credits per unit. Float math
+	// alone rounds one credit too many at some prices ($70.00 × 0.001 × 100 = 7.000…01 → 8).
+	per := int64(math.Round(1 / game.payments.SharesPerUnit))
+	perShare := price * float64(game.payments.CreditsPerUSD)
+	if perShare > float64(maxWholesale*per) { // an absurd quote is no price (and keeps price × qty far from overflowing)
 		return 0, errNoPrice
 	}
-	return int64(w), nil
+	c := int64(math.Round(perShare))
+	return max(1, (c+per-1)/per), nil
 }
 
 // maxWholesale: one unit (0.001 share) above $10,000 means a broken feed, not a stock.
@@ -529,9 +534,13 @@ func (pl *players) routeSales(mux *http.ServeMux) {
 		var in struct {
 			Token    string
 			Qty      int64
-			MaxPrice int64 // the price the buyer saw; refused if the seller's is higher now
+			MaxPrice int64 // the price the buyer saw (required); refused if the seller's is higher now
 		}
 		if ok && body(w, r, &in) {
+			if in.MaxPrice < 1 { // 0 would mean no cap: a buyer always says what they agreed to pay
+				fail(w, errBad)
+				return
+			}
 			sale, err := pl.db.BuyAtParty(r.Context(), who, id(r, "id"), in.Token, in.Qty, in.MaxPrice, quotes(), time.Now())
 			if err != nil {
 				salesError(w, err)
@@ -563,9 +572,13 @@ func (pl *players) routeSales(mux *http.ServeMux) {
 		var in struct {
 			Token    string
 			Qty      int64
-			MaxPrice int64 // the price the buyer saw; refused if the seller's is higher now
+			MaxPrice int64 // the price the buyer saw (required); refused if the seller's is higher now
 		}
 		if ok && body(w, r, &in) {
+			if in.MaxPrice < 1 { // 0 would mean no cap: a buyer always says what they agreed to pay
+				fail(w, errBad)
+				return
+			}
 			sale, err := pl.db.BuyAtShop(r.Context(), who, id(r, "lease"), in.Token, in.Qty, in.MaxPrice, quotes(), time.Now())
 			if err != nil {
 				salesError(w, err)

@@ -271,10 +271,14 @@ func TestSalesEndpoints(t *testing.T) {
 		out["prices"].(map[string]any)["tsla"] != float64(50) || out["wholesale"].(map[string]any)["tsla"] != float64(wholesaleTSLA) {
 		t.Fatalf("prices %d %v", code, out)
 	}
-	if code, out := do("POST", "/api/events/"+pid+"/buy", map[string]any{"token": "tsla", "qty": 2}); code != 200 || out["credits"] != float64(400) {
+	// The buyer always says what they agreed to pay: without maxPrice there'd be no cap.
+	if code, out := do("POST", "/api/events/"+pid+"/buy", map[string]any{"token": "tsla", "qty": 2}); code != 400 {
+		t.Fatalf("no maxPrice %d %v", code, out)
+	}
+	if code, out := do("POST", "/api/events/"+pid+"/buy", map[string]any{"token": "tsla", "qty": 2, "maxPrice": 50}); code != 200 || out["credits"] != float64(400) {
 		t.Fatalf("buy %d %v", code, out)
 	}
-	if code, out := do("POST", "/api/events/"+pid+"/buy", map[string]any{"token": "tsla", "qty": 20}); code != 422 {
+	if code, out := do("POST", "/api/events/"+pid+"/buy", map[string]any{"token": "tsla", "qty": 20, "maxPrice": 50}); code != 422 {
 		t.Fatalf("overspend %d %v", code, out)
 	}
 }
@@ -329,6 +333,12 @@ func TestNoSaleWithoutAFreshSanePrice(t *testing.T) {
 	}
 	if _, err := wholesaleOf("tsla", map[string]float64{"TSLA": 0}); !errors.Is(err, errNoPrice) {
 		t.Fatalf("zero price: %v", err)
+	}
+	// Whole-number rounding: $70.00 is 7 credits a unit, not 8 (float math made it 7.000…01).
+	for price, want := range map[float64]int64{70: 7, 70.01: 8, 250.5: 26, 0.004: 1, 433.21: 44} {
+		if w, err := wholesaleOf("tsla", map[string]float64{"TSLA": price}); err != nil || w != want {
+			t.Fatalf("$%v: %d %v, want %d", price, w, err, want)
+		}
 	}
 }
 
