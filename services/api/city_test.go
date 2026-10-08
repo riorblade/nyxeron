@@ -120,6 +120,21 @@ func TestShopShelves(t *testing.T) {
 	if st := v.Venues[0].Lease.Stock; len(st) != 1 || st[0].Token != "tsla" || st[0].Qty != 15 || st[0].Price != 50 {
 		t.Fatalf("%+v", st)
 	}
+	// A token sells only at venues of its level and up (tokens.json minLevel): a Level 1 booth can't list a
+	// Level 2 token. An empty list takes everything off the menu.
+	tsla := game.tokens["tsla"]
+	game.tokens["tsla"] = tokenInfo{Ticker: tsla.Ticker, MinLevel: 2}
+	err := s.SetShopPrices(ctx, "a", 1, map[string]int64{"tsla": 50}, market, now)
+	game.tokens["tsla"] = tsla
+	if !errors.Is(err, errBad) {
+		t.Fatalf("above the venue's level: %v", err)
+	}
+	if err := s.SetShopPrices(ctx, "a", 1, map[string]int64{}, market, now); err != nil {
+		t.Fatalf("empty menu: %v", err)
+	}
+	if v, _ := s.City(ctx, "", false, now); len(v.Venues[0].Lease.Stock) != 0 {
+		t.Fatalf("menu not emptied: %+v", v.Venues[0].Lease.Stock)
+	}
 	closed := false
 	if err := s.SetShop(ctx, "a", 1, &closed, now); err != nil {
 		t.Fatal(err)

@@ -247,7 +247,9 @@ INSERT INTO stock_moves (token, delta, kind, actor, reason, tx, at) VALUES
 	('tsla', 8, 'restock', 'agent', 'verified swap', '0xswap', 2),
 	('aapl', 10, 'restock', 'agent', 'verified swap', '0xswap2', 2),
 	('aapl', -7, 'sold', 'agent', 'CEO bought', '', 3);
-INSERT INTO platform_ledger (delta, kind, ref, at) VALUES (-300, 'restock', '0xswap', 2), (-300, 'restock', '0xswap2', 2);`); err != nil {
+INSERT INTO platform_ledger (delta, kind, ref, at) VALUES (-300, 'restock', '0xswap', 2), (-300, 'restock', '0xswap2', 2);
+INSERT INTO users (id, wallet, created_at, updated_at) VALUES ('ceo', 1000, 1, 1);
+INSERT INTO shop_stock (user_id, token, qty, price) VALUES ('ceo', 'tsla', 4, 250), ('ceo', 'nvda', 2, 100), ('ceo', 'aapl', 0, 80);`); err != nil {
 		t.Fatal(err)
 	}
 	s.close()
@@ -264,5 +266,16 @@ INSERT INTO platform_ledger (delta, kind, ref, at) VALUES (-300, 'restock', '0xs
 	}
 	if n := count(t, s, `SELECT COUNT(*) FROM stock_moves WHERE actor = 'cutover'`); n != 2 {
 		t.Fatalf("cutover moves %d", n)
+	}
+	// The Coin shelf is bought back in NYX Points at the CEO's shelf price (4 × 250 + 2 × 100), and emptied.
+	if p, _ := s.Get(ctx, "ceo"); p.Wallet != 1000+1200 {
+		t.Fatalf("buyback: wallet %d, want %d", p.Wallet, 2200)
+	}
+	if n := count(t, s, `SELECT COUNT(*) FROM ledger WHERE user_id = 'ceo' AND kind = 'buyback' AND delta = 1200 AND balance = 2200
+		AND currency = 'coin' AND reason LIKE '%4 TSLA%'`); n != 1 {
+		t.Fatalf("buyback ledger rows %d", n)
+	}
+	if n := count(t, s, `SELECT COUNT(*) FROM shop_stock`); n != 0 {
+		t.Fatalf("shelves left %d", n)
 	}
 }

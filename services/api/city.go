@@ -31,7 +31,8 @@ import (
 var gameFS embed.FS
 
 type tokenInfo struct {
-	Ticker string `json:"ticker"`
+	Ticker   string `json:"ticker"`
+	MinLevel int    `json:"minLevel"` // the smallest venue that may sell it (tokens.json)
 }
 
 var game struct {
@@ -301,20 +302,6 @@ var (
 	errVenueLimit = errors.New("venue limit reached")
 )
 
-func pay(t *sql.Tx, id string, amount int64, kind, reason string) error {
-	var wallet int64
-	if err := t.QueryRow(`SELECT wallet FROM users WHERE id = ?`, id).Scan(&wallet); err != nil {
-		return err
-	}
-	if wallet < amount {
-		return errRejected
-	}
-	if _, err := t.Exec(`UPDATE users SET wallet = wallet - ? WHERE id = ?`, amount, id); err != nil {
-		return err
-	}
-	return ledger(t, id, -amount, kind, "", reason)
-}
-
 // Lease rents a venue (slot 0: the first free one of that level) for whole weeks, or, when the slot is already
 // the player's, extends it. A player may run up to maxVenuesPerPlayer venues; at most maxWeeksAhead paid ahead.
 func (s *store) Lease(ctx context.Context, id string, level, slot int, club string, weeks int, now time.Time) (p Profile, err error) {
@@ -413,8 +400,7 @@ func (s *store) Rename(ctx context.Context, id string, lease int64, club string,
 	})
 }
 
-// SetShop opens or closes one venue's shop and sets the player's shelf prices (up to maxMarkup times the usual
-// price at that venue).
+// SetShop opens or closes one venue's shop (its menu is set in sales.go: SetShopPrices).
 func (s *store) SetShop(ctx context.Context, id string, lease int64, open *bool, now time.Time) error {
 	return s.tx(ctx, id, func(t *sql.Tx) error {
 		l, e := ownLease(t, id, lease, now)

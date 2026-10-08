@@ -75,12 +75,16 @@ func freshQuotes(q *quoter, now time.Time) map[string]float64 {
 	return r.Quotes
 }
 
-// checkPrices: every token whitelisted, every price between wholesale and maxMarkup × wholesale.
-func checkPrices(prices map[string]int64, quotes map[string]float64) error {
-	if len(prices) == 0 || len(prices) > len(game.payments.Tokens) {
+// checkPrices: every token whitelisted and sold at a venue of this level (tokens.json minLevel), every price
+// between wholesale and maxMarkup × wholesale. An empty list takes everything off the menu.
+func checkPrices(prices map[string]int64, level int, quotes map[string]float64) error {
+	if len(prices) > len(game.payments.Tokens) {
 		return errBad
 	}
 	for token, p := range prices {
+		if game.tokens[token].MinLevel > level {
+			return errBad
+		}
 		w, err := wholesaleOf(token, quotes)
 		if err != nil {
 			return err
@@ -155,7 +159,11 @@ func (s *store) SetPartyPrices(ctx context.Context, host string, pid int64, pric
 	if now.Unix() >= p.starts {
 		return errPriceLocked
 	}
-	if err := checkPrices(prices, quotes); err != nil {
+	var level int
+	if err := s.db.QueryRowContext(ctx, `SELECT level FROM leases WHERE id = ?`, p.lease).Scan(&level); err != nil {
+		return err
+	}
+	if err := checkPrices(prices, level, quotes); err != nil {
 		return err
 	}
 	return s.inTx(ctx, func(t *sql.Tx) error {
@@ -169,14 +177,15 @@ func (s *store) SetPartyPrices(ctx context.Context, host string, pid int64, pric
 // SetShopPrices: a tenant's shop prices in credits.
 func (s *store) SetShopPrices(ctx context.Context, owner string, lease int64, prices map[string]int64, quotes map[string]float64, now time.Time) error {
 	var who string
-	err := s.db.QueryRowContext(ctx, `SELECT user_id FROM leases WHERE id = ? AND ends_at > ?`, lease, now.Unix()).Scan(&who)
+	var level int
+	err := s.db.QueryRowContext(ctx, `SELECT user_id, level FROM leases WHERE id = ? AND ends_at > ?`, lease, now.Unix()).Scan(&who, &level)
 	if errors.Is(err, sql.ErrNoRows) || who != owner {
 		return errNotFound
 	}
 	if err != nil {
 		return err
 	}
-	if err := checkPrices(prices, quotes); err != nil {
+	if err := checkPrices(prices, level, quotes); err != nil {
 		return err
 	}
 	return s.inTx(ctx, func(t *sql.Tx) error {

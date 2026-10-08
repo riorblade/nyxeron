@@ -4,6 +4,7 @@ import {
   LEVELS,
   levels,
   payments,
+  shopTokens,
   tokens,
   venueCount,
   type Level,
@@ -304,7 +305,8 @@ function Shop({ v }: { v: Venue }) {
   const listed = lease.stock.length;
   const [openMenu, setOpenMenu] = useState(listed === 0);
   const [edit, setEdit] = useState<Partial<Record<TokenId, number>>>({});
-  const menu = Object.keys(payments.tokens) as TokenId[];
+  // Real-stock tokens this venue's level may sell (tokens.json minLevel; the api checks the same).
+  const menu = shopTokens(v.level).filter((tok) => tok in payments.tokens);
   const priceOf = (tok: TokenId) =>
     edit[tok] ?? lease.stock.find((s) => s.token === tok)?.price ?? 0;
   // Bounds (the api checks the same): between wholesale and maxMarkup × wholesale, for tokens with a live price.
@@ -312,10 +314,13 @@ function Shop({ v }: { v: Venue }) {
     const w = c.wholesale?.[tok];
     return w ? { min: w, max: Math.floor(w * (c.maxMarkup ?? 3)) } : null;
   };
-  const listedNow = menu.filter((tok) => priceOf(tok) > 0 && bounds(tok));
+  const listedNow = menu.filter((tok) => priceOf(tok) > 0);
+  // A listed token without a live price can't be saved (the api would refuse it), and leaving it out would take
+  // it off the menu without the tenant asking: wait for the price instead.
+  const noPrice = listedNow.some((tok) => !bounds(tok));
   const bad = listedNow.some((tok) => {
-    const b = bounds(tok)!;
-    return priceOf(tok) < b.min || priceOf(tok) > b.max;
+    const b = bounds(tok);
+    return b && (priceOf(tok) < b.min || priceOf(tok) > b.max);
   });
   const save = async () => {
     const prices = Object.fromEntries(
@@ -407,13 +412,15 @@ function Shop({ v }: { v: Venue }) {
             <div className="flex flex-wrap items-center gap-2">
               <button
                 className={btn}
-                disabled={bad}
+                disabled={bad || noPrice}
                 onClick={() => void save()}
               >
                 {t.savePrices}
               </button>
-              {bad && (
-                <span className="text-xs text-white/60">{t.outOfRange}</span>
+              {(bad || noPrice) && (
+                <span className="text-xs text-white/60">
+                  {noPrice ? t.noLivePrice : t.outOfRange}
+                </span>
               )}
             </div>
           )}

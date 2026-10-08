@@ -21,7 +21,8 @@ const ticker = (t: string) => tokens[t as TokenId]?.ticker ?? t.toUpperCase();
 const whitelisted = (t: string) => t in payments.tokens;
 
 /**
- * The platform's warehouse. CEOs buy their shop stock from it, so an empty warehouse means no shop can restock.
+ * The platform's warehouse: real bStock in the Agentic Wallet. Parties and shops sell from it, so an empty token
+ * can't be bought anywhere.
  * Units come in only from a swap the api verified on BNB Chain: the stock agent reports its own, and here an
  * admin reports one by its tx. Typing a number can only take units out (a correction).
  */

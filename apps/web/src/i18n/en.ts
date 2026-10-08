@@ -265,15 +265,9 @@ export const en = {
     full: "All taken",
     yours: "Your venue",
     until: (d: string) => `Rented until ${d}`,
-    extend: (c: string) => `Extend 1 week · ${c} Credit`,
     shop: "Shop",
     shopOpen: "Open: other players can buy",
-    storage: (n: number, of: number) => `Storage ${n} / ${of}`,
-    inStock: (n: number) => `${n} in stock`,
-    cost: (c: string) => `stock costs ${c} C`,
     shelf: "Your price",
-    maxPrice: (c: string) => `max ${c}`,
-    restock: (n: number, c: string) => `Restock +${n} · ${c} C`,
     margin: (c: string) => `+${c} Credit each`,
     floor: (min: string, max: string) => `${min}–${max}`,
     menuNote:
@@ -293,10 +287,11 @@ export const en = {
     manage: "Manage",
     done: "Done",
     emptyShelf: "Your menu is empty. Set a price to start selling.",
-    addStock: "Add a stock",
     partyLocked: "Parties open at Level 3. Until then your shop sells for you.",
     savePrices: "Save prices",
     outOfRange: "A price is outside its range (wholesale to 3×).",
+    noLivePrice:
+      "A token on your menu has no live price right now. Try again in a minute.",
     parties: "Parties",
     partiesLocked:
       "Parties need a Level 3 venue or bigger. Smaller venues sell.",
@@ -327,7 +322,6 @@ export const en = {
     rename: "Rename",
     warehouse: (n: number) =>
       n ? `platform has ${n}` : "sold out at the platform",
-    stocked: "Stock delivered",
     saved: "Shop updated",
     bought: (n: number, t: string) => `Bought ${n} ${t}`,
     scheduled: "Party scheduled",
