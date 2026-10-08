@@ -6,7 +6,8 @@ import { useAccount } from "@/auth/account";
  * Top-ups: the player sends USDC from their embedded wallet to the platform's Agentic Wallet, then reports only
  * the tx hash. The api reads the transfer on BNB Chain itself and mints Credit (real money, 1 = $0.01) once it is
  * final; until then POST /api/topups answers 202 and we ask again. The minimum and the caps (payments.json) are
- * kept here, before anything is sent: the api credits whatever a player's wallet actually sent.
+ * checked here before anything is sent, and again by the api, which credits only up to the caps (the rest is
+ * recorded for a refund).
  */
 export interface Topup {
   tx: string;
@@ -16,6 +17,8 @@ export interface Topup {
   fee: number;
   credits: number;
   status: "pending" | "credited" | "unknown" | "rejected";
+  /** What wasn't credited and why (over the caps, under the minimum). */
+  reason?: string;
   at: number;
 }
 
@@ -38,6 +41,8 @@ interface TopupStore {
   error: string;
   /** The last top-up's tx, while it is being confirmed and after. */
   tx: string;
+  /** Cents sent but not credited yet: they count against the caps until the api has them. */
+  pending: number;
 }
 
 export const useTopups = create<TopupStore>(() => ({
@@ -48,6 +53,7 @@ export const useTopups = create<TopupStore>(() => ({
   phase: "idle",
   error: "",
   tx: "",
+  pending: 0,
 }));
 
 const base = import.meta.env.VITE_API_BASE ?? "";
@@ -99,8 +105,20 @@ export const topups = {
     }
   },
 
-  sending: () => useTopups.setState({ phase: "sending", error: "", tx: "" }),
-  failed: (error: string) => useTopups.setState({ phase: "error", error }),
+  sending: (cents: number) =>
+    useTopups.setState((s) => ({
+      phase: "sending",
+      error: "",
+      tx: "",
+      pending: s.pending + cents,
+    })),
+  /** Nothing left the wallet: its cents no longer count against the caps. */
+  notSent: (cents: number, error: string) =>
+    useTopups.setState((s) => ({
+      phase: "error",
+      error,
+      pending: Math.max(0, s.pending - cents),
+    })),
 
   /** Report a sent transfer and wait until the api has credited it. */
   async report(tx: string) {
@@ -109,7 +127,14 @@ export const topups = {
       try {
         const { code, json } = await call("POST", { tx });
         if (code === 200) {
-          useTopups.setState({ phase: "done", ...fromApi(json) });
+          // The api's sums now include it (credited, in full or up to the caps, or rejected for a refund).
+          useTopups.setState({
+            ...fromApi(json),
+            pending: 0,
+            ...(json.status === "rejected"
+              ? { phase: "error" as const, error: "rejected" }
+              : { phase: "done" as const }),
+          });
           return;
         }
         // 202: not final yet. 503: the chain couldn't be read just now. 429: asked too fast. 409 no_wallet: the
@@ -123,6 +148,7 @@ export const topups = {
           useTopups.setState({
             phase: "error",
             error: json.error ?? String(code),
+            pending: 0,
           });
           return;
         }
@@ -146,14 +172,17 @@ const fromApi = (json: {
   list: json.topups ?? [],
 });
 
-/** How much this player may still top up, in cents: payments.json's caps over 24 h and in total. */
-export function topupRoom(topped: Topped) {
+/**
+ * How much this player may still top up, in cents: payments.json's caps over 24 h and in total, less what was
+ * sent but isn't credited yet (`pending`).
+ */
+export function topupRoom(topped: Topped, pending = 0) {
   return Math.max(
     0,
     Math.min(
       payments.topup.capUsdPerDay * 100 - topped.day,
       payments.topup.capUsdTotal * 100 - topped.total,
-    ),
+    ) - pending,
   );
 }
 

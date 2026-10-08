@@ -16,5 +16,8 @@ describe("top-ups (web side)", () => {
     // Earlier days count against the total only.
     expect(topupRoom({ day: 0, total: total - 500 })).toBe(500);
     expect(topupRoom({ day: day, total: day })).toBe(0);
+    // A top-up still confirming counts too: no second send past the cap meanwhile.
+    expect(topupRoom({ day: 0, total: 0 }, 1500)).toBe(day - 1500);
+    expect(topupRoom({ day: 1500, total: 1500 }, 1000)).toBe(0);
   });
 });

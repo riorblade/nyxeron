@@ -3,10 +3,9 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
-## 2026-10-04 · The city runs on Credit (on-chain cutover)
+## 2026-10-08 · The city runs on Credit (on-chain cutover)
 
-- **Credit is real money in the city:** players top up USDC/USDT on BNB Chain (1% fee) and get Credit (100 = $1).
-  Venue rent is paid in Credit at new, low weekly prices (`payments.json → rentCredits`: Level 1 100 · Level 2 200 ·
+- **Rent in Credit:** venue rent is paid in Credit at new, low weekly prices (`payments.json → rentCredits`: Level 1 100 · Level 2 200 ·
   Level 3 500 · Level 4 1,000 · Level 5 2,000 Credit; the back office's rent table sets them). Coin-era prices would
   have made a Level 3 party venue cost $200 a week against a $100 top-up cap.
 - **Shops and parties sell real stock:** a shop or a party has a menu in Credit (between the live wholesale price and
@@ -17,6 +16,12 @@ teammate would notice.
   2026-10-02 were removed by migration 6 (each removal is a stock move by `cutover`).
 - **Back office:** Payments (hourly reconciliation, top-ups, unknown transfers, sales, seed); rent shown in Credit
   (rent is booked as the platform's money); Stock shows units sold to players instead of CEO shelves.
+
+## 2026-10-08 · Top-ups
+
+- **Top up Credit:** players send USDC from their game wallet to the platform's Agentic Wallet (no gas, 1% fee) and
+  get Credit (100 = $1) once BNB Chain confirms it. Minimum $3; at most $20 a day and $100 in all during the
+  hackathon. The api enforces the caps: it credits up to the room left and records the rest for a refund.
 
 ## 2026-10-03 · CEO: your clubs
 
