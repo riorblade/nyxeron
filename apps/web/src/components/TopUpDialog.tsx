@@ -43,7 +43,7 @@ export function TopUpDialog() {
   }, []);
 
   const cents = Math.round(Number(usd) * 100);
-  const room = topupRoom(s.topped);
+  const room = topupRoom(s.topped, s.pending);
   const min = payments.topup.minUsd * 100;
   const valid = Number.isFinite(cents) && cents >= min && cents <= room;
   const busy = s.phase === "sending" || s.phase === "confirming";
@@ -61,7 +61,7 @@ export function TopUpDialog() {
 
   const send = async () => {
     if (!valid || busy) return;
-    topups.sending();
+    topups.sending(cents);
     let hash: string;
     try {
       ({ hash } = await sendTransaction(
@@ -80,7 +80,9 @@ export function TopUpDialog() {
         { sponsor: true },
       ));
     } catch (e) {
-      topups.failed(t.walletError((e as Error).message ?? "rejected"));
+      // The provider's own message is for us, not the player.
+      console.warn("top-up: wallet", e);
+      topups.notSent(cents, "wallet");
       return;
     }
     await topups.report(hash);
@@ -208,8 +210,10 @@ function Status() {
       : phase === "confirming"
         ? t.confirming
         : phase === "done"
-          ? t.done(last?.credits ?? 0)
-          : (t.errors[error] ?? error);
+          ? last?.reason
+            ? t.partly(last.credits)
+            : t.done(last?.credits ?? 0)
+          : (t.errors[error] ?? t.errors.unknown);
   return (
     <p
       role={phase === "error" ? "alert" : "status"}

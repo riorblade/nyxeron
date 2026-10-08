@@ -7,9 +7,11 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -46,7 +48,16 @@ type topupAPI struct {
 	wallet string
 }
 
+// liftCaps: the recorded transfer is $906, over payments.json's caps; tests of the chain path lift them
+// (TestTopupCaps checks the real ones).
+func liftCaps(t *testing.T) {
+	caps := game.payments.Topup
+	game.payments.Topup.CapUSDPerDay, game.payments.Topup.CapUSDTotal = 1_000_000, 1_000_000
+	t.Cleanup(func() { game.payments.Topup = caps })
+}
+
 func newTopupAPI(t *testing.T, wallet string, head uint64) *topupAPI {
+	liftCaps(t)
 	every := topupEvery
 	topupEvery = 0 // tests report back to back; TestTopupRateLimit checks the real pace
 	t.Cleanup(func() { topupEvery = every })
@@ -357,5 +368,107 @@ func TestTopupScannerCursor(t *testing.T) {
 	x.b.down = false
 	if err := x.db.scanTopups(ctx, c, now); err != nil || count(t, x.db, `SELECT COUNT(*) FROM topups`) != 1 {
 		t.Fatalf("after recovery: %v", err)
+	}
+}
+
+// payments.json's minimum and caps are kept by the api: a player is credited up to their room, never below the
+// minimum; what isn't credited is recorded for a refund. Real caps: $3 minimum, $20 a day, $100 in all.
+func TestTopupCaps(t *testing.T) {
+	s := testStore(t)
+	p := game.payments.Topup
+	if p.MinUSD != 3 || p.CapUSDPerDay != 20 || p.CapUSDTotal != 100 {
+		t.Fatalf("payments.json caps changed: %+v; update this test", p)
+	}
+	s.Get(ctx, "a")
+	n := 0
+	send := func(usd float64, at time.Time) Topup {
+		t.Helper()
+		n++
+		amount, _ := new(big.Float).Mul(big.NewFloat(usd), big.NewFloat(1e18)).Int(nil)
+		tp, _, err := s.recordTopup(ctx, Transfer{Tx: fmt.Sprintf("0x%064x", n), Token: p.Tokens["USDC"],
+			From: player, To: game.payments.AgenticWallet, Amount: amount}, 0, "a", at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return tp
+	}
+	day := time.Now()
+	// Under the minimum: nothing credited, recorded for a refund.
+	if tp := send(2.99, day); tp.Status != "rejected" || tp.Credits != 0 || tp.Reason == "" || credits(t, s, "a") != 0 {
+		t.Fatalf("under the minimum: %+v", tp)
+	}
+	// $25 in a day: $20 credited (less the 1% fee), $5 over the daily cap recorded.
+	if tp := send(25, day); tp.Status != "credited" || tp.USDCents != 2000 || tp.Credits != 1980 || !strings.Contains(tp.Reason, "500 cents") {
+		t.Fatalf("over the daily cap: %+v", tp)
+	}
+	if tp := send(5, day); tp.Status != "rejected" || credits(t, s, "a") != 1980 {
+		t.Fatalf("no room left today: %+v", tp)
+	}
+	// Day by day up to $100 in all: the fifth day has $20 room, the sixth none.
+	for d := 1; d <= 4; d++ {
+		if tp := send(20, day.Add(time.Duration(d)*25*time.Hour)); tp.Status != "credited" || tp.USDCents != 2000 {
+			t.Fatalf("day %d: %+v", d+1, tp)
+		}
+	}
+	if tp := send(20, day.Add(5*25*time.Hour)); tp.Status != "rejected" {
+		t.Fatalf("over the total cap: %+v", tp)
+	}
+	if got := credits(t, s, "a"); got != 5*1980 {
+		t.Fatalf("credits %d, want %d", got, 5*1980)
+	}
+	// Room under the minimum credits nothing: $2 left in the day is below $3.
+	s.Get(ctx, "b")
+	b := func(usd float64) Topup {
+		n++
+		amount, _ := new(big.Float).Mul(big.NewFloat(usd), big.NewFloat(1e18)).Int(nil)
+		tp, _, err := s.recordTopup(ctx, Transfer{Tx: fmt.Sprintf("0x%064x", n), Token: p.Tokens["USDC"],
+			From: player, To: game.payments.AgenticWallet, Amount: amount}, 0, "b", day)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return tp
+	}
+	b(18)
+	if tp := b(10); tp.Status != "rejected" {
+		t.Fatalf("$2 of room is under the minimum: %+v", tp)
+	}
+}
+
+// Two claims at once can't share the same room: the api's single connection serializes them.
+func TestTopupCapsUnderConcurrentClaims(t *testing.T) {
+	s := testStore(t)
+	s.Get(ctx, "a")
+	var wg sync.WaitGroup
+	for i := range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			amount, _ := new(big.Int).SetString("15000000000000000000", 10) // $15 each, $60 against a $20 day
+			if _, _, err := s.recordTopup(ctx, Transfer{Tx: fmt.Sprintf("0x%064x", 100+i), Token: game.payments.Topup.Tokens["USDC"],
+				From: player, To: game.payments.AgenticWallet, Amount: amount}, 0, "a", time.Now()); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	var cents int64
+	s.db.QueryRow(`SELECT SUM(usd_cents) FROM topups WHERE user_id = 'a' AND status = 'credited'`).Scan(&cents)
+	// $15 fits, then $5 of room (≥ the $3 minimum) is credited; the other two are rejected: $20 in all.
+	if cents != 2000 || credits(t, s, "a") != toCredits(1500-topupFee(1500))+toCredits(500-topupFee(500)) {
+		t.Fatalf("credited %d cents, credits %d", cents, credits(t, s, "a"))
+	}
+}
+
+// The scanner doesn't credit a banned player either: their transfer stays "unknown" for the back office.
+func TestTopupScannerSkipsBannedPlayers(t *testing.T) {
+	s := testStore(t)
+	s.Get(ctx, "a")
+	s.SetIdentity(ctx, "a", "a@x", player, time.Now())
+	if id, _ := s.playerByWallet(ctx, player); id != "a" {
+		t.Fatalf("player %q", id)
+	}
+	s.db.Exec(`UPDATE users SET banned = 1 WHERE id = 'a'`)
+	if id, _ := s.playerByWallet(ctx, player); id != "" {
+		t.Fatalf("banned player matched: %q", id)
 	}
 }

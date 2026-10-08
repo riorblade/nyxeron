@@ -22,9 +22,12 @@ import (
 //	POST /api/topups {tx} → {status, credits, topups}; status "pending" until the transfer is final
 //	GET  /api/topups      → {credits, topups} (the player's last 20)
 //
-// No refunds and no server-side limits on what arrived: money a known player sent is credited in full (the
-// minimum and the caps in payments.json are kept by the web before it sends). Senders that are no player's
-// wallet are recorded as "unknown" for the back office, without credits.
+// payments.json's minimum and caps are kept here, in the same transaction as the credits (the web checks them too
+// before it sends): a player is credited only up to their room (capUsdPerDay over 24 h, capUsdTotal in all), and
+// nothing when that is below minUsd. What isn't credited stays recorded for the back office to refund by hand: a
+// "rejected" row when nothing was credited, or a "credited" row whose reason says how many cents were over the
+// caps (usd_cents is then the credited part; amount is always what arrived). Senders that are no player's wallet
+// are recorded as "unknown", without credits.
 
 type Topup struct {
 	Tx       string `json:"tx"`
@@ -34,6 +37,7 @@ type Topup struct {
 	Fee      int64  `json:"fee"`
 	Credits  int64  `json:"credits"`
 	Status   string `json:"status"`
+	Reason   string `json:"reason,omitempty"` // what wasn't credited and why (the back office refunds it)
 	At       int64  `json:"at"`
 }
 
@@ -74,20 +78,34 @@ func (s *store) recordTopup(ctx context.Context, tr Transfer, gasUsed uint64, us
 	}
 	tp = Topup{Tx: strings.ToLower(tr.Tx), LogIndex: int64(tr.LogIndex), Token: tr.Token, USDCents: cents,
 		Status: "unknown", At: now.Unix()}
-	if user != "" {
-		tp.Status, tp.Fee = "credited", topupFee(cents)
-		tp.Credits = toCredits(cents - tp.Fee)
-	}
 	t, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return tp, false, err
 	}
 	defer t.Rollback()
+	if user != "" {
+		// Inside the transaction: the api's single connection serializes top-ups, so two claims can't share room.
+		ok, err := topupRoom(t, user, now)
+		if err != nil {
+			return tp, false, err
+		}
+		ok = min(ok, cents)
+		switch {
+		case ok < game.payments.Topup.MinUSD*100:
+			tp.Status, tp.Reason = "rejected", fmt.Sprintf("%d cents not credited: under the $%d minimum or over the caps, to refund", cents, game.payments.Topup.MinUSD)
+		default:
+			tp.Status, tp.USDCents, tp.Fee = "credited", ok, topupFee(ok)
+			tp.Credits = toCredits(ok - tp.Fee)
+			if ok < cents {
+				tp.Reason = fmt.Sprintf("%d cents over the caps, to refund", cents-ok)
+			}
+		}
+	}
 	res, err := t.Exec(`INSERT INTO topups (tx, log_index, user_id, sender, token, amount, usd_cents, fee, gas_used, credits,
-		status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		status, reason, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (tx, log_index) DO NOTHING`,
-		tp.Tx, tp.LogIndex, user, tr.From, tp.Token, tr.Amount.String(), cents, tp.Fee, int64(gasUsed), tp.Credits,
-		tp.Status, tp.At, tp.At)
+		tp.Tx, tp.LogIndex, user, tr.From, tp.Token, tr.Amount.String(), tp.USDCents, tp.Fee, int64(gasUsed), tp.Credits,
+		tp.Status, tp.Reason, tp.At, tp.At)
 	if err != nil {
 		return tp, false, err
 	}
@@ -96,9 +114,9 @@ func (s *store) recordTopup(ctx context.Context, tr Transfer, gasUsed uint64, us
 			return tp, false, nil
 		}
 		// Recorded before the sender was known: this player's wallet sent it, so it is theirs now.
-		claim, err := t.Exec(`UPDATE topups SET user_id = ?, status = 'credited', fee = ?, credits = ?, updated_at = ?
-			WHERE tx = ? AND log_index = ? AND user_id = '' AND status = 'unknown' AND lower(sender) = lower(?)`,
-			user, tp.Fee, tp.Credits, tp.At, tp.Tx, tp.LogIndex, tr.From)
+		claim, err := t.Exec(`UPDATE topups SET user_id = ?, status = ?, usd_cents = ?, fee = ?, credits = ?, reason = ?,
+			updated_at = ? WHERE tx = ? AND log_index = ? AND user_id = '' AND status = 'unknown' AND lower(sender) = lower(?)`,
+			user, tp.Status, tp.USDCents, tp.Fee, tp.Credits, tp.Reason, tp.At, tp.Tx, tp.LogIndex, tr.From)
 		if err != nil {
 			return tp, false, err
 		}
@@ -106,15 +124,26 @@ func (s *store) recordTopup(ctx context.Context, tr Transfer, gasUsed uint64, us
 			return tp, false, nil
 		}
 	}
-	if user != "" {
+	if tp.Status == "credited" {
 		if err := creditLedger(t, user, tp.Credits, "topup", "", tp.Tx); err != nil {
 			return tp, false, err
 		}
-		if err := platformLedger(t, toCredits(tp.Fee), "fee", tp.Tx, fmt.Sprintf("%d%% of %d cents", game.payments.Topup.FeePercent, cents)); err != nil {
+		if err := platformLedger(t, toCredits(tp.Fee), "fee", tp.Tx, fmt.Sprintf("%d%% of %d cents", game.payments.Topup.FeePercent, tp.USDCents)); err != nil {
 			return tp, false, err
 		}
 	}
 	return tp, true, t.Commit()
+}
+
+// topupRoom: how many cents this player may still be credited: payments.json's caps over 24 h and in total.
+func topupRoom(t *sql.Tx, user string, now time.Time) (int64, error) {
+	var day, total int64
+	if err := t.QueryRow(`SELECT COALESCE(SUM(CASE WHEN created_at > ? THEN usd_cents END), 0), COALESCE(SUM(usd_cents), 0)
+		FROM topups WHERE user_id = ? AND status = 'credited'`, now.Unix()-86400, user).Scan(&day, &total); err != nil {
+		return 0, err
+	}
+	p := game.payments.Topup
+	return max(0, min(p.CapUSDPerDay*100-day, p.CapUSDTotal*100-total)), nil
 }
 
 // toCredits: cents of USD as credits (payments.json: 100 credits = $1, so 1 cent = 1 credit today).
@@ -137,7 +166,7 @@ func (s *store) Topups(ctx context.Context, user string, now time.Time) (credits
 		now.Unix()-86400, user).Scan(&sums.Day, &sums.Total); err != nil {
 		return
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT tx, log_index, token, usd_cents, fee, credits, status, created_at
+	rows, err := s.db.QueryContext(ctx, `SELECT tx, log_index, token, usd_cents, fee, credits, status, reason, created_at
 		FROM topups WHERE user_id = ? ORDER BY id DESC LIMIT 20`, user)
 	if err != nil {
 		return
@@ -146,7 +175,7 @@ func (s *store) Topups(ctx context.Context, user string, now time.Time) (credits
 	list = []Topup{}
 	for rows.Next() {
 		var tp Topup
-		if err = rows.Scan(&tp.Tx, &tp.LogIndex, &tp.Token, &tp.USDCents, &tp.Fee, &tp.Credits, &tp.Status, &tp.At); err != nil {
+		if err = rows.Scan(&tp.Tx, &tp.LogIndex, &tp.Token, &tp.USDCents, &tp.Fee, &tp.Credits, &tp.Status, &tp.Reason, &tp.At); err != nil {
 			return
 		}
 		list = append(list, tp)
@@ -154,11 +183,12 @@ func (s *store) Topups(ctx context.Context, user string, now time.Time) (credits
 	return credits, sums, list, rows.Err()
 }
 
-// playerByWallet: the player whose stored embedded wallet sent a transfer ("" when none).
+// playerByWallet: the player whose stored embedded wallet sent a transfer ("" when none, or when that player is
+// banned: as on POST /api/topups, a banned player isn't credited; the transfer stays "unknown" for the back office).
 func (s *store) playerByWallet(ctx context.Context, wallet string) (string, error) {
 	var id string
 	err := s.db.QueryRowContext(ctx, `SELECT id FROM users WHERE lower(wallet_address) = ? AND wallet_address != ''
-		ORDER BY created_at LIMIT 1`, strings.ToLower(wallet)).Scan(&id)
+		AND banned = 0 ORDER BY created_at LIMIT 1`, strings.ToLower(wallet)).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}
@@ -275,18 +305,22 @@ func (pl *players) routeTopups(mux *http.ServeMux) {
 				return
 			}
 		}
-		// "credited" only when this player's rows for the tx say so.
-		var credited int
-		if err := pl.db.db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM topups WHERE tx = ? AND user_id = ?
-			AND status = 'credited'`, strings.ToLower(in.Tx), id).Scan(&credited); err != nil {
+		// The answer comes from this player's rows for the tx: credited (in full or up to the caps) or rejected.
+		var credited, rejected int
+		if err := pl.db.db.QueryRowContext(r.Context(), `SELECT COUNT(CASE WHEN status = 'credited' THEN 1 END),
+			COUNT(CASE WHEN status = 'rejected' THEN 1 END) FROM topups WHERE tx = ? AND user_id = ?`,
+			strings.ToLower(in.Tx), id).Scan(&credited, &rejected); err != nil {
 			fail(w, err)
 			return
 		}
-		if credited != len(mine) {
+		switch {
+		case credited+rejected != len(mine):
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "not_yours"})
-			return
+		case credited == 0:
+			answer(w, r, id, map[string]any{"status": "rejected"})
+		default:
+			answer(w, r, id, map[string]any{"status": "credited"})
 		}
-		answer(w, r, id, map[string]any{"status": "credited"})
 	})
 }
 

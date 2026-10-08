@@ -1215,6 +1215,8 @@ export const en = {
     sending: "Confirm in your wallet…",
     confirming: "Confirming on BNB Chain… this takes about a minute.",
     done: (credits: number) => `Done: ${fmt(credits)} Credit is yours.`,
+    partly: (credits: number) =>
+      `${fmt(credits)} Credit added, up to the limit. The rest is recorded and will be refunded.`,
     viewTx: "View transaction",
     history: "Recent top-ups",
     status: {
@@ -1230,8 +1232,12 @@ export const en = {
       not_a_topup: "That transaction isn't a top-up from your wallet.",
       chain_unavailable: "BNB Chain can't be read right now. Try again soon.",
       slow: "Still confirming. Your Credit will appear within a few minutes.",
+      not_yours: "That transfer was sent from another wallet, not yours.",
+      rejected:
+        "Not added: under the minimum or over the limit. It's recorded and will be refunded.",
+      wallet: "The transfer wasn't sent. Nothing was taken.",
+      unknown: "Something went wrong. Try again in a moment.",
     } as Record<string, string>,
-    walletError: (msg: string) => `The wallet said: ${msg}`,
   },
 
   tokenDetail: {
