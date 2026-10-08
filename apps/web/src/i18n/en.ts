@@ -176,7 +176,8 @@ export const en = {
     shopClosed: "shop closed",
     daysLeft: (d: number) => `${d} day${d === 1 ? "" : "s"} of rent left`,
     partiesPlanned: (n: number) => `${n} part${n === 1 ? "y" : "ies"} planned`,
-    dayOf: (d: number) => `Day ${d} of 60`,
+    dayOf: (d: number, free?: boolean) =>
+      free ? `Day ${d}` : `Day ${d} of 60`,
     outcome: {
       victory: "Won",
       survived: "Finished",
@@ -895,6 +896,7 @@ export const en = {
     defeatText: "The lights go out. Your venue has closed.",
     survivedText: "You made it through, but the goal slipped away.",
     retry: "Retry",
+    playOn: "Keep playing",
     menu: "Main Menu",
     stats: "Final stats",
   } as Record<Outcome | string, string>,

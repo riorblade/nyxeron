@@ -20,8 +20,8 @@ Each rule is a function in `packages/core/src/rules` with a unit test.
 | ID | Rule | Where |
 | --- | --- | --- |
 | R1 | Order stock if Coin ≥ cost; it arrives after the supplier's lead time | `inventory.ts` |
-| R2 | A guest buys a token: stock −1, Coin + price; out of stock → satisfaction hit, alert | `inventory.ts` |
-| R3 | Book a DJ if Coin ≥ fee and level ≥ the DJ's requirement → hype from the fanbase | `talent.ts` |
+| R2 | A guest buys a token: stock −1, Coin + price; out of stock → satisfaction hit, alert; a guest who hit it once only orders what's in stock, and stops queueing when nothing is | `inventory.ts` |
+| R3 | Book a DJ if Coin ≥ fee and level ≥ the DJ's requirement → hype from the fanbase; not once the set slot (minute 60) has passed | `talent.ts` |
 | R4 | DJ genre matches the crowd → dancing satisfaction +20%, else −15% | `engine.ts` |
 | R5 | Promo if Coin ≥ cost and CEO Energy ≥ 1 → hype + a boost to that channel's audience | `marketing.ts` |
 | R6 | Inspection chance a night: 5% base, 40% with a missing permit, ≥ 20% with safety under 40 | `legal.ts` |
@@ -32,11 +32,11 @@ Each rule is a function in `packages/core/src/rules` with a unit test.
 | R11 | Night report: avg satisfaction ≥ 70 → rep +3..+8; < 40 → rep −5 | `reputation.ts` |
 | R12 | New day: CEO Energy back to 5, wages and rent paid | `economy.ts` |
 | R13 | Defeat: Coin < 0 for 3 days, or 3 violations, or reputation 0 | `economy.ts` |
-| R14 | Victory: Level 5 and reputation ≥ 80 (day 60 without it = survived) | `progression.ts` |
+| R14 | Victory: Level 5 and reputation ≥ 80 (day 60 without it = survived); after a victory or survived run (or The Basement's week) the club plays on with no end date (`playOn`); a survived club can still win once | `progression.ts`, `engine.ts` |
 | R15 | Entertainment tax on night revenue: L3 20%, L4 30%, L5 40% (none for booth/shop) | `economy.ts` |
 | R16 | On-premise sales with only a takeaway liquor permit → violation, venue sealed | `legal.ts` |
-| R17 | Controversial promo: hype +30, 25% chance rep −20 and a guaranteed inspection | `marketing.ts` |
-| R18 | Move up a venue if Coin ≥ cost and reputation ≥ requirement | `progression.ts` |
+| R17 | Controversial promo (daytime, rep > 20): hype +30, 25% chance rep −20 and a guaranteed inspection | `marketing.ts` |
+| R18 | Move up a venue (daytime) if Coin ≥ cost and reputation ≥ requirement; stock moves at its value (count × old price scale ÷ new) | `progression.ts` |
 | R19 | *Retired:* paid speed-ups. Value never buys progress; the economy is Coin + tokens (see the PRD) | — |
 
 Beyond the R-rules: crowd energy and crowd moves (`strategy.ts`), house rules and reservations, promoters,
