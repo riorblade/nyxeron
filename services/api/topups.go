@@ -50,6 +50,18 @@ func usdCents(amount *big.Int) int64 {
 	return c.Int64()
 }
 
+// usdCentsUp: the same, rounded up (money that left the platform's wallet).
+func usdCentsUp(amount *big.Int) int64 {
+	q, r := new(big.Int).QuoRem(amount, big.NewInt(1e16), new(big.Int))
+	if r.Sign() > 0 {
+		q.Add(q, big.NewInt(1))
+	}
+	if !q.IsInt64() {
+		return -1
+	}
+	return q.Int64()
+}
+
 // topupFee: payments.json's percentage of the top-up, in cents, rounded up (it covers the gas sponsorship).
 func topupFee(cents int64) int64 {
 	pct := int64(game.payments.Topup.FeePercent)
@@ -75,6 +87,9 @@ func (s *store) recordTopup(ctx context.Context, tr Transfer, gasUsed uint64, us
 	cents := usdCents(tr.Amount)
 	if cents < 0 {
 		return tp, false, errBad
+	}
+	if err := s.unpaused(ctx); err != nil { // a reconciliation mismatch stands: no new credits until it clears
+		return tp, false, err
 	}
 	tp = Topup{Tx: strings.ToLower(tr.Tx), LogIndex: int64(tr.LogIndex), Token: tr.Token, USDCents: cents,
 		Status: "unknown", At: now.Unix()}
@@ -248,6 +263,10 @@ func (pl *players) routeTopups(mux *http.ServeMux) {
 		}
 		if pl.chain == nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "not_configured"})
+			return
+		}
+		if why, _ := pl.db.Paused(r.Context()); why != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "paused"})
 			return
 		}
 		if tooSoon(id, time.Now()) {

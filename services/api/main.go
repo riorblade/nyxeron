@@ -126,6 +126,8 @@ func main() {
 	// Top-ups whose browser closed before reporting them: read from BSC every minute.
 	if chain := newBSC(os.Getenv("BSC_RPC_1"), os.Getenv("BSC_RPC_2")); chain != nil {
 		go db.scanTopupsEvery(ctx, chain, time.Minute)
+		// Every hour: credits and units backed by the Agentic Wallet on BSC, or payments pause.
+		go db.reconcileEvery(ctx, chain, time.Hour)
 	}
 	// Party sales settle when the party ends (+ settleGraceMinutes).
 	go db.settleEvery(ctx, time.Minute)

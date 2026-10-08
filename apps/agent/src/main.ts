@@ -57,6 +57,10 @@ async function main() {
     slippage: q.slippage,
   });
   if (!buy) return;
+  if (supply.paused)
+    throw new Error(
+      "payments are paused (reconciliation mismatch): not buying; see the back office's Payments page",
+    );
   // The daily limit binds the swap itself: the api would refuse to count one over it.
   const spent = supply.agentSpentTodayCents ?? 0;
   if (spent + usd * 100 > payments.agent.maxUsdPerDay * 100)
