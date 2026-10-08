@@ -44,12 +44,13 @@ func routes(q *quoter, origins []string, auth *privy, db *store, adm *admin) htt
 	adm.route(mux)
 	(&agent{key: os.Getenv("AGENT_KEY"), db: db}).route(mux)
 	mux.HandleFunc("GET /api/me", auth.handleMe)
-	pl := &players{auth: auth, db: db, q: q}
+	pl := &players{auth: auth, db: db, q: q, chain: newBSC(os.Getenv("BSC_RPC_1"), os.Getenv("BSC_RPC_2"))}
 	pl.route(mux)
 	pl.routeDocs(mux)
 	pl.routeCity(mux)
 	pl.routeRooms(mux, newRoomList())
 	pl.routeEvents(mux)
+	pl.routeTopups(mux)
 	// Preflight: the browser asks before sending Authorization / JSON cross-site.
 	mux.HandleFunc("OPTIONS /api/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE")
@@ -119,6 +120,10 @@ func main() {
 	}), ReadHeaderTimeout: 5 * time.Second, MaxHeaderBytes: 8 << 10}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	// Top-ups whose browser closed before reporting them: read from BSC every minute.
+	if chain := newBSC(os.Getenv("BSC_RPC_1"), os.Getenv("BSC_RPC_2")); chain != nil {
+		go db.scanTopupsEvery(ctx, chain, time.Minute)
+	}
 	go func() {
 		<-ctx.Done()
 		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

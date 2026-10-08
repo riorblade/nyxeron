@@ -1191,6 +1191,57 @@ export const en = {
     off: "Off",
   },
 
+  topup: {
+    credit: "Credit",
+    creditNote:
+      "Real money: 100 Credit = $1, backed by USDC on BNB Chain. It buys real stock in the city.",
+    open: "Top up",
+    title: "Top up Credit",
+    close: "Close",
+    balance: "Your Credit",
+    usd: (cents: number) => `$${(cents / 100).toFixed(2)}`,
+    addTitle: "1 · Add USDC",
+    addNote: "Pay by card into your game wallet (USDC on BNB Chain).",
+    add: "Add USDC by card",
+    addCancelled: "Card payment closed",
+    sendTitle: "2 · Send to the game",
+    sendNote: (fee: number) =>
+      `You pay no gas. ${fee}% goes to the game; the rest becomes your Credit.`,
+    amount: "Amount (USD)",
+    youGet: (credits: number) => `You get ${fmt(credits)} Credit`,
+    min: (usd: number) => `At least $${usd}`,
+    room: (cents: number) =>
+      `You can still add $${(cents / 100).toFixed(2)} (the limit during the hackathon)`,
+    full: "You've reached the top-up limit for now.",
+    send: (usd: string) => `Top up $${usd}`,
+    sending: "Confirm in your wallet…",
+    confirming: "Confirming on BNB Chain… this takes about a minute.",
+    done: (credits: number) => `Done: ${fmt(credits)} Credit is yours.`,
+    partly: (credits: number) =>
+      `${fmt(credits)} Credit added, up to the limit. The rest is recorded and will be refunded.`,
+    viewTx: "View transaction",
+    history: "Recent top-ups",
+    status: {
+      pending: "Confirming",
+      credited: "Added",
+      unknown: "Not matched",
+      rejected: "Not added",
+    } as Record<string, string>,
+    errors: {
+      not_configured: "Top-ups aren't open yet.",
+      no_wallet: "Your game wallet isn't ready yet. Sign in again.",
+      tx_failed: "The transfer failed on BNB Chain. Nothing was taken.",
+      not_a_topup: "That transaction isn't a top-up from your wallet.",
+      chain_unavailable: "BNB Chain can't be read right now. Try again soon.",
+      slow: "Still confirming. Your Credit will appear within a few minutes.",
+      not_yours: "That transfer was sent from another wallet, not yours.",
+      rejected:
+        "Not added: under the minimum or over the limit. It's recorded and will be refunded.",
+      wallet: "The transfer wasn't sent. Nothing was taken.",
+      unknown: "Something went wrong. Try again in a moment.",
+    } as Record<string, string>,
+  },
+
   tokenDetail: {
     title: "Token",
     stock: "Stock",

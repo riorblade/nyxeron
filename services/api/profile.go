@@ -19,9 +19,10 @@ import (
 //	POST  /api/nights           {cash, bought, pnl, room?} → Profile (a night out as a guest)
 //	POST  /api/gigs             {fee} → Profile (a DJ gig played to the end)
 type players struct {
-	auth *privy
-	db   *store
-	q    *quoter
+	auth  *privy
+	db    *store
+	q     *quoter
+	chain *bsc // BNB Smart Chain (BSC_RPC_1 + BSC_RPC_2); nil: top-ups off
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

@@ -10,6 +10,7 @@ import {
 import {
   ArrowLeft,
   Briefcase,
+  CircleDollarSign,
   Crown,
   Disc3,
   PartyPopper,
@@ -18,7 +19,14 @@ import {
   Trophy,
   Wallet,
 } from "lucide-react";
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { LOUNGE, useMusic } from "@/audio";
 import { art } from "@/lib/art";
 import { Backdrop } from "@/components/Backdrop";
@@ -40,6 +48,12 @@ import { useGame } from "@/state/store";
 import { CityGuest, ManageVenue, RentVenue, useCityLive } from "./CityPanels";
 import { EventsPanel, LiveEventBanner } from "./EventsPanel";
 import { events } from "@/api/events";
+import { topups, useTopups } from "@/api/topups";
+
+// The top-up dialog carries Privy's wallet calls: loaded when opened, never on the landing page.
+const TopUpDialog = lazy(() =>
+  import("@/components/TopUpDialog").then((m) => ({ default: m.TopUpDialog })),
+);
 
 type Step =
   "home" | "role" | "ceo" | "rent" | "venue" | "events" | "guest" | "dj";
@@ -134,6 +148,7 @@ export function Dashboard() {
 
         <Announcement />
         <LiveEventBanner />
+        <TopUp />
         <div className="grid flex-1 grid-cols-1 gap-6 lg:grid-cols-[21rem_1fr]">
           <ProfileCard />
           <section className="glass enter flex min-h-[28rem] flex-col rounded-2xl p-5 sm:p-7">
@@ -246,6 +261,8 @@ function ProfileCard() {
       </div>
 
       <AvatarPicker />
+
+      <CreditCard />
 
       <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
         <div className="flex items-center gap-2 text-[10px] tracking-[0.2em] text-white/55 uppercase">
@@ -376,6 +393,48 @@ function Portfolio() {
         <p className="text-xs text-white/50">{t.portfolioEmpty}</p>
       )}
     </div>
+  );
+}
+
+/** Credit (real money) for a signed-in player: the balance and the way to top up. */
+function CreditCard() {
+  const signedIn = useAccount((a) => !!a.account);
+  const credits = useTopups((x) => x.credits);
+  useEffect(() => {
+    if (signedIn) void topups.load();
+  }, [signedIn]);
+  if (!signedIn) return null;
+  const c = en.topup;
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+      <div className="flex items-center gap-2 text-[10px] tracking-[0.2em] text-white/55 uppercase">
+        <CircleDollarSign className="size-3.5" /> {c.credit}
+      </div>
+      <div className="mt-1 flex items-baseline gap-2 font-mono text-3xl tabular-nums">
+        {credits === null ? "—" : fmt(credits)}
+        {credits !== null && (
+          <span className="text-base text-white/50">{c.usd(credits)}</span>
+        )}
+      </div>
+      <p className="mt-1 text-[11px] text-white/50">{c.creditNote}</p>
+      <button
+        className="mt-3 h-8 rounded-md bg-white px-3 text-xs font-medium text-black"
+        onClick={topups.open}
+      >
+        {c.open}
+      </button>
+    </div>
+  );
+}
+
+function TopUp() {
+  const open = useTopups((x) => x.open);
+  const signedIn = useAccount((a) => !!a.account);
+  if (!open || !signedIn) return null;
+  return (
+    <Suspense fallback={null}>
+      <TopUpDialog />
+    </Suspense>
   );
 }
 
