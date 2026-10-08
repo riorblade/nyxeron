@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -184,6 +185,39 @@ func ledger(t *sql.Tx, id string, delta int64, kind, actor, reason string) error
 	}
 	_, err := t.Exec(`INSERT INTO ledger (user_id, delta, balance, kind, actor, reason, at)
 		SELECT id, ?, wallet, ?, ?, ?, ? FROM users WHERE id = ?`, delta, kind, actor, reason, time.Now().Unix(), id)
+	return err
+}
+
+// creditKinds: why credits (paid, backed by real money) may change. Coin paths never use these.
+var creditKinds = map[string]bool{"topup": true, "hold": true, "refund": true, "sale": true, "margin": true,
+	"wholesale": true, "rent": true}
+
+// creditLedger is the only way a player's credits change: it moves the balance (never below zero) and writes the
+// ledger row, both in the caller's transaction, next to its cause.
+func creditLedger(t *sql.Tx, id string, delta int64, kind, actor, reason string) error {
+	if delta == 0 {
+		return nil
+	}
+	if !creditKinds[kind] {
+		return fmt.Errorf("credit ledger: unknown kind %q", kind)
+	}
+	res, err := t.Exec(`UPDATE users SET credits = credits + ? WHERE id = ? AND credits + ? >= 0`, delta, id, delta)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		return errRejected // no such player, or not enough credits
+	}
+	_, err = t.Exec(`INSERT INTO ledger (user_id, delta, balance, kind, actor, reason, at, currency)
+		SELECT id, ?, credits, ?, ?, ?, ?, 'credit' FROM users WHERE id = ?`, delta, kind, actor, reason, time.Now().Unix(), id)
+	return err
+}
+
+// platformLedger records the platform's own money, in credits: top-up fees and wholesale proceeds in, the seed
+// for the first stock in, USDC spent on restocks out. Reconciliation subtracts it from the Agentic Wallet.
+func platformLedger(t *sql.Tx, delta int64, kind, ref, reason string) error {
+	_, err := t.Exec(`INSERT INTO platform_ledger (delta, kind, ref, reason, at) VALUES (?, ?, ?, ?, ?)`,
+		delta, kind, ref, reason, time.Now().Unix())
 	return err
 }
 

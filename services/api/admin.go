@@ -188,7 +188,8 @@ func (s *store) UserDetail(ctx context.Context, id string) (UserDetail, error) {
 	if d.Saves, err = s.ListDocs(ctx, id, "saves"); err != nil {
 		return d, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT delta, balance, kind, actor, reason, at FROM ledger WHERE user_id = ? ORDER BY id DESC LIMIT 100`, id)
+	rows, err := s.db.QueryContext(ctx, `SELECT delta, balance, kind, actor, reason, at FROM ledger
+		WHERE user_id = ? AND currency = 'coin' ORDER BY id DESC LIMIT 100`, id)
 	if err != nil {
 		return d, err
 	}
@@ -588,10 +589,11 @@ func (s *store) SetVenueCounts(ctx context.Context, actor string, counts map[str
 	return t.Commit()
 }
 
-// Revenue: rent the platform took (all time and the last 7 days).
+// Revenue: rent the platform took in Coin (all time and the last 7 days). Credit rent is real money: it is
+// reported apart once the city runs on credits.
 func (s *store) Revenue(ctx context.Context, now time.Time) (total, week int64) {
 	_ = s.db.QueryRowContext(ctx, `SELECT COALESCE(-SUM(delta), 0), COALESCE(-SUM(CASE WHEN at >= ? THEN delta END), 0)
-		FROM ledger WHERE kind = 'rent'`, now.Unix()-7*86400).Scan(&total, &week)
+		FROM ledger WHERE kind = 'rent' AND currency = 'coin'`, now.Unix()-7*86400).Scan(&total, &week)
 	return
 }
 

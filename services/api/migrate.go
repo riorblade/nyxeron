@@ -119,6 +119,76 @@ var migrations = []string{
 		at       INTEGER NOT NULL,
 		PRIMARY KEY (party_id, user_id)
 	);`,
+	// 5 — real money (docs/payments.md), kept apart from play money: credits (paid, minted only by verified
+	// top-ups) next to Coin, real units next to the play portfolio, top-ups, party/shop sales and the price lists
+	// (a party's, locked when it starts; a shop's), units reserved in the warehouse during a party, and the platform's own money. Credits and platform money are in credits
+	// (1 = $0.01); top-up amounts also as the token's base units (18 decimals: too big for an INTEGER).
+	`ALTER TABLE users ADD COLUMN credits INTEGER NOT NULL DEFAULT 0 CHECK (credits >= 0);
+	ALTER TABLE ledger ADD COLUMN currency TEXT NOT NULL DEFAULT 'coin' CHECK (currency IN ('coin', 'credit'));
+	CREATE TABLE backed_units (
+		user_id TEXT    NOT NULL,
+		token   TEXT    NOT NULL,
+		qty     INTEGER NOT NULL CHECK (qty >= 0),
+		PRIMARY KEY (user_id, token)
+	);
+	CREATE TABLE topups (
+		id         INTEGER PRIMARY KEY,
+		tx         TEXT    NOT NULL COLLATE NOCASE,
+		log_index  INTEGER NOT NULL,
+		user_id    TEXT    NOT NULL DEFAULT '',
+		sender     TEXT    NOT NULL,
+		token      TEXT    NOT NULL,
+		amount     TEXT    NOT NULL,
+		usd_cents  INTEGER NOT NULL CHECK (usd_cents >= 0),
+		fee        INTEGER NOT NULL DEFAULT 0 CHECK (fee >= 0),
+		gas_used   INTEGER NOT NULL DEFAULT 0,
+		credits    INTEGER NOT NULL DEFAULT 0 CHECK (credits >= 0),
+		status     TEXT    NOT NULL CHECK (status IN ('pending', 'credited', 'unknown', 'rejected')),
+		reason     TEXT    NOT NULL DEFAULT '',
+		created_at INTEGER NOT NULL,
+		updated_at INTEGER NOT NULL,
+		UNIQUE (tx, log_index)
+	);
+	CREATE INDEX topups_user ON topups(user_id, created_at);
+	CREATE TABLE sales (
+		id         INTEGER PRIMARY KEY,
+		party_id   INTEGER NOT NULL DEFAULT 0,
+		lease_id   INTEGER NOT NULL DEFAULT 0,
+		buyer      TEXT    NOT NULL,
+		seller     TEXT    NOT NULL,
+		token      TEXT    NOT NULL,
+		qty        INTEGER NOT NULL CHECK (qty > 0),
+		price      INTEGER NOT NULL CHECK (price > 0),
+		wholesale  INTEGER NOT NULL CHECK (wholesale > 0),
+		status     TEXT    NOT NULL DEFAULT 'held' CHECK (status IN ('held', 'settled', 'void')),
+		created_at INTEGER NOT NULL,
+		settled_at INTEGER NOT NULL DEFAULT 0,
+		CHECK ((party_id > 0) + (lease_id > 0) = 1),
+		CHECK (price >= wholesale)
+	);
+	CREATE INDEX sales_party ON sales(party_id, status);
+	CREATE INDEX sales_status ON sales(status, created_at);
+	CREATE TABLE party_prices (
+		party_id INTEGER NOT NULL,
+		token    TEXT    NOT NULL,
+		price    INTEGER NOT NULL CHECK (price > 0),
+		PRIMARY KEY (party_id, token)
+	);
+	CREATE TABLE shop_prices (
+		lease_id INTEGER NOT NULL,
+		token    TEXT    NOT NULL,
+		price    INTEGER NOT NULL CHECK (price > 0),
+		PRIMARY KEY (lease_id, token)
+	);
+	ALTER TABLE platform_stock ADD COLUMN reserved INTEGER NOT NULL DEFAULT 0 CHECK (reserved >= 0);
+	CREATE TABLE platform_ledger (
+		id     INTEGER PRIMARY KEY,
+		delta  INTEGER NOT NULL,
+		kind   TEXT    NOT NULL CHECK (kind IN ('fee', 'wholesale', 'rent', 'seed', 'restock')),
+		ref    TEXT    NOT NULL DEFAULT '',
+		reason TEXT    NOT NULL DEFAULT '',
+		at     INTEGER NOT NULL
+	);`,
 }
 
 func migrate(db *sql.DB) error {
