@@ -29,6 +29,10 @@ export function r05_promote(s: GameState, channel: ChannelId): ActionResult {
 /** R17: controversial promo → hype +30, but 25% backfire: rep −20 and an inspection is guaranteed tonight. */
 export function r17_controversialPromo(s: GameState): ActionResult {
   const p = legal.controversialPromo;
+  if (s.phase !== "day") return fail("wrongPhase");
+  // Not while a backfire alone would sink the club.
+  if (s.reputation <= p.repPenalty)
+    return fail("notEnoughRep", p.repPenalty + 1 - s.reputation);
   if (s.ceoEnergy < 1) return fail("notEnoughEnergy");
   if (s.coin < p.cost) return fail("notEnoughCoin", p.cost - s.coin);
   const rng = createRng(s.seed);

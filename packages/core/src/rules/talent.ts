@@ -14,6 +14,12 @@ import { clamp, type GameState, type Guest } from "../state";
 export function r03_bookDj(s: GameState, dj: TalentId): ActionResult {
   const d = djs[dj];
   if (s.level < d.minLevel) return fail("levelLocked");
+  // Too late once tonight's set slot has passed.
+  if (
+    s.phase === "report" ||
+    (s.night && s.night.minute >= night.djSetStartMinute)
+  )
+    return fail("wrongPhase");
   if (s.bookedTalent.length >= economy.maxDjsPerNight)
     return fail("alreadyBooked");
   if (s.coin < d.fee) return fail("notEnoughCoin", d.fee - s.coin);

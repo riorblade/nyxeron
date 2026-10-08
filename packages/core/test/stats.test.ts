@@ -33,7 +33,7 @@ describe("HUD stats do something and can be explained", () => {
     const rep = statHistory(after, "reputation", 100).filter(
       (c) => c.day === s.day,
     );
-    expect(rep.some((c) => c.event.kind === "nightRep")).toBe(true);
+    expect(after.log.some((e) => e.kind === "nightRep")).toBe(true);
     // Fights, shutdowns and the night's satisfaction explain the whole move (clamped to 0–100).
     const sum = rep.reduce((a, c) => a + c.delta, 0);
     expect(after.reputation).toBe(

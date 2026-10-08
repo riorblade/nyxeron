@@ -19,6 +19,9 @@ import {
   r14_checkVictory,
   r17_controversialPromo,
   r18_upgradeLevel,
+  fireStaff,
+  hireStaff,
+  runNight,
   startNight,
   type ActionResult,
   type GameState,
@@ -244,5 +247,58 @@ describe("R17 controversial promo", () => {
     expect(ok(r17_controversialPromo(club({ seed: 5 })))).toEqual(
       ok(r17_controversialPromo(club({ seed: 5 }))),
     );
+  });
+});
+
+describe("audit: actions locked to the right phase", () => {
+  it("staff are hired and fired by day only (no one-night hires that skip wages)", () => {
+    const s = club();
+    const n = startNight(ok(hireStaff(s, "security")));
+    expect(hireStaff(n, "security")).toMatchObject({ reason: "wrongPhase" });
+    expect(fireStaff(n, "security")).toMatchObject({ reason: "wrongPhase" });
+    expect(
+      ok(fireStaff(ok(hireStaff(s, "security")), "security")).staff.security,
+    ).toBe(s.staff.security);
+  });
+  it("no DJ booking once the set slot has passed, no level-up or stunt at night", () => {
+    const n = startNight(club());
+    expect(
+      r03_bookDj(
+        { ...n, night: { ...n.night!, minute: night.djSetStartMinute } },
+        "rhea",
+      ),
+    ).toMatchObject({ reason: "wrongPhase" });
+    expect(r03_bookDj(n, "rhea").ok).toBe(true);
+    expect(r18_upgradeLevel({ ...n, coin: 10_000_000 })).toMatchObject({
+      reason: "wrongPhase",
+    });
+    expect(r17_controversialPromo(n)).toMatchObject({ reason: "wrongPhase" });
+  });
+  it("the stunt needs more rep than a backfire costs", () => {
+    expect(r17_controversialPromo(club({ reputation: 20 }))).toMatchObject({
+      reason: "notEnoughRep",
+      short: 1,
+    });
+  });
+  it("level-up carries stock at its value, not its count", () => {
+    const s = ok(
+      r18_upgradeLevel({
+        ...createGameState(1),
+        coin: 60_000,
+        reputation: 20,
+        stock: { ...createGameState(1).stock, tsla: 800 },
+      }),
+    );
+    expect(s.stock.tsla).toBe(
+      Math.floor((800 * levels[1].priceScale) / levels[2].priceScale),
+    );
+  });
+});
+
+describe("audit: an empty bar", () => {
+  it("a guest who found nothing to buy stops queueing (one out-of-stock hit each at most)", () => {
+    const r = runNight({ ...createGameState(3), coin: 50_000 }).lastReport!;
+    expect(r.guests).toBeGreaterThan(0);
+    expect(r.outOfStockHits).toBeLessThanOrEqual(r.guests);
   });
 });
