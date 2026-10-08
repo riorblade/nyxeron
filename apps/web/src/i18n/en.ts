@@ -210,12 +210,25 @@ export const en = {
     room: (code: string) => `Room ${code}`,
     connecting: "Connecting to the club…",
     closed: "The club has closed.",
+    /** Relay and api error codes, as a sentence. */
     error: (code: string) =>
-      code === "room_not_found"
-        ? "No club with that code (it may have closed)."
-        : code === "room_full"
-          ? "The club is full."
-          : `Couldn't join (${code}).`,
+      (
+        ({
+          room_not_found: "No club with that code (it may have closed).",
+          room_full: "The club is full.",
+          server_full:
+            "Every room on the server is taken. Try again in a minute.",
+          rate_limited: "Too fast. Wait a second and try again.",
+          host_busy: "The club is busy. Try again in a second.",
+          city_closed: "The City isn't open yet.",
+          banned: "Your account is suspended.",
+          invalid_token: "Your sign-in expired. Sign in again.",
+          venue_limit: "You already rent as many venues as you can.",
+          kicked: "The CEO asked you to leave.",
+          seat_lost:
+            "You were away too long and lost your spot. What you had is in your wallet; join again.",
+        }) as Record<string, string>
+      )[code] ?? `Couldn't connect (${code}).`,
     hostAway: "The CEO lost connection. Hang on, the club is still here…",
     refused: (why: string) => `The door said no: ${why}`,
     doorsClosed:

@@ -28,10 +28,21 @@ type hub struct {
 	maxRooms int
 	maxPeers int
 	grace    time.Duration
+	// Rooms closed for a host gone past the grace period: the host can still resume them (same code, so links
+	// and events keep working) for keepExpired; their codes aren't handed out meanwhile.
+	expired map[string]expiredRoom
 }
 
+type expiredRoom struct {
+	token string
+	at    time.Time
+}
+
+const keepExpired = time.Hour
+
 func newHub(maxRooms, maxPeers int, grace time.Duration) *hub {
-	return &hub{rooms: map[string]*room{}, maxRooms: maxRooms, maxPeers: maxPeers, grace: grace}
+	return &hub{rooms: map[string]*room{}, maxRooms: maxRooms, maxPeers: maxPeers, grace: grace,
+		expired: map[string]expiredRoom{}}
 }
 
 func randomCode(n int) string {
@@ -57,20 +68,30 @@ func (h *hub) create(c *conn) (*room, string) {
 		return nil, "server_full"
 	}
 	code := randomCode(6)
-	for h.rooms[code] != nil {
+	for h.rooms[code] != nil || h.expired[code].token != "" {
 		code = randomCode(6)
 	}
-	r := &room{code: code, token: randomToken(), host: c, peers: map[uint16]*conn{}, nextID: 1}
-	h.rooms[code] = r
-	c.room, c.host = r, true
-	return r, ""
+	return h.open(c, code, randomToken()), ""
 }
 
-// resume puts a reconnecting host back in charge of its room.
+func (h *hub) open(c *conn, code, token string) *room {
+	r := &room{code: code, token: token, host: c, peers: map[uint16]*conn{}, nextID: 1}
+	h.rooms[code] = r
+	c.room, c.host = r, true
+	return r
+}
+
+// resume puts a reconnecting host back in charge of its room (reopened if it expired while they were away).
 func (h *hub) resume(c *conn, code, token string) (*room, string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	r := h.rooms[code]
+	if e := h.expired[code]; r == nil && token != "" && e.token == token && len(h.rooms) < h.maxRooms {
+		delete(h.expired, code)
+		r = h.open(c, code, token)
+		c.control(control{T: "created", Room: r.code, Token: r.token})
+		return r, ""
+	}
 	if r == nil || r.token != token {
 		return nil, "room_not_found"
 	}
@@ -79,6 +100,11 @@ func (h *hub) resume(c *conn, code, token string) (*room, string) {
 	}
 	r.host, r.hostGone = c, time.Time{}
 	c.room, c.host = r, true
+	// The host hears "created" and who is still here before any peer's input (peers answer "host on").
+	c.control(control{T: "created", Room: r.code, Token: r.token})
+	for _, p := range r.peers {
+		c.control(control{T: "peer", ID: p.id, Name: p.name, Role: p.role, On: boolp(true)})
+	}
 	for _, p := range r.peers {
 		p.control(control{T: "host", On: boolp(true)})
 	}
@@ -144,7 +170,29 @@ func (h *hub) kick(host *conn, id uint16) {
 	}
 	h.mu.Unlock()
 	if p != nil {
+		p.control(control{T: "kicked"}) // flushed before the socket goes: the client won't reconnect
 		p.closeWith("kicked")
+	}
+}
+
+// closeRoom: the host closed the room on purpose; its peers are told at once (no grace, no resume).
+func (h *hub) closeRoom(host *conn) {
+	h.mu.Lock()
+	r := host.room
+	if r == nil || r.host != host || h.rooms[r.code] != r {
+		h.mu.Unlock()
+		return
+	}
+	delete(h.rooms, r.code)
+	r.host, host.room, host.host = nil, nil, false
+	peers := make([]*conn, 0, len(r.peers))
+	for _, p := range r.peers {
+		peers = append(peers, p)
+	}
+	h.mu.Unlock()
+	for _, p := range peers {
+		p.control(control{T: "closed"})
+		p.closeWith("room closed")
 	}
 }
 
@@ -181,6 +229,12 @@ func (h *hub) sweep(now time.Time) {
 				closing = append(closing, p)
 			}
 			delete(h.rooms, code)
+			h.expired[code] = expiredRoom{r.token, now}
+		}
+	}
+	for code, e := range h.expired {
+		if now.Sub(e.at) > keepExpired {
+			delete(h.expired, code)
 		}
 	}
 	h.mu.Unlock()

@@ -45,21 +45,31 @@ export function useHostedClub(screen: Screen) {
   useEffect(() => {
     if (screen !== "game" || !signedIn || !clubName) return;
     if (useNet.getState().role !== "off") return;
-    hostOpen(clubName)
-      // Tonight's event at this club (if any) goes live with this room; a private event makes the club private.
-      .then((code) => events.attachRoom(clubName, code))
-      .then((priv) => priv && useNet.setState({ private: true }))
-      .catch(() => {
-        /* relay unreachable: the club still plays; RoomPanel offers to retry */
-      });
+    hostOpen(clubName).catch(() => {
+      /* relay unreachable: the club still plays; RoomPanel offers to retry */
+    });
   }, [screen, signedIn, clubName]);
 
   // Keep it listed while it's open; take it off the list when it closes.
   useEffect(() => {
     if (role !== "host" || !room || !signedIn) return;
+    // Tonight's event at this club goes live with this room as soon as it's on (from 15 minutes before, even if
+    // the club opened earlier); a private event makes the club private.
+    let attached = false;
     const announce = () => {
       const g = useGame.getState().game;
       if (!g) return;
+      if (!attached)
+        events
+          .attachRoom(g.clubName, room)
+          .then((e) => {
+            if (!e) return;
+            attached = true;
+            if (e.private) useNet.setState({ private: true });
+          })
+          .catch(() => {
+            /* the next heartbeat retries */
+          });
       call("POST", "/rooms", {
         room,
         club: g.clubName,

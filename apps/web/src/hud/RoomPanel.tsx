@@ -2,7 +2,6 @@ import { Copy, Globe, Lock, Radio, UserX } from "lucide-react";
 import { useState } from "react";
 import { en } from "@/i18n/en";
 import { cn } from "@/lib/utils";
-import { events } from "@/api/events";
 import { hostClose, hostOpen, kick, useNet } from "@/net/session";
 import { useGame } from "@/state/store";
 
@@ -27,10 +26,8 @@ export function RoomPanel({ clubName }: { clubName: string }) {
           onClick={async () => {
             setBusy(true);
             try {
-              // A scheduled party at a rented venue: list it as live with this room.
-              const code = await hostOpen(clubName);
-              if (await events.attachRoom(clubName, code))
-                useNet.setState({ private: true });
+              // A scheduled party goes live with this room via the heartbeat (api/rooms.ts).
+              await hostOpen(clubName);
             } catch (e) {
               notify(t.error((e as Error).message), true);
             } finally {

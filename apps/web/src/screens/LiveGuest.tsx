@@ -22,6 +22,7 @@ const s = en.sales;
 export function LiveGuest() {
   const { remote, me, status, refused, last, ended, room, error } = useNet();
   const go = useGame((x) => x.go);
+
   // The city event behind this room, if any: its price list makes purchases real.
   const event = useEvents((x) =>
     x.events.find((e) => e.live && e.room === room && e.leaseId > 0),

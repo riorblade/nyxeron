@@ -93,10 +93,10 @@ export const events = {
   },
   link: inviteLink,
   /**
-   * The CEO opened this club: attach the room to its event that's on now (from 15 minutes before), so guests
-   * going to it can join. Returns whether the club is private tonight.
+   * The CEO's club is open: attach the room to its event that's on now (from 15 minutes before), so guests
+   * going to it can join. Returns the event (null: none on now).
    */
-  async attachRoom(club: string, room: string): Promise<boolean> {
+  async attachRoom(club: string, room: string): Promise<ClubEvent | null> {
     await loadEvents();
     const now = Date.now() / 1000;
     const e = useEvents
@@ -108,9 +108,9 @@ export const events = {
           now >= x.startsAt - 900 &&
           now < x.startsAt + x.minutes * 60,
       );
-    if (!e) return false;
-    await call("PUT", `/events/${e.id}/room`, { room }).catch(() => {});
+    if (!e) return null;
+    await call("PUT", `/events/${e.id}/room`, { room });
     void loadEvents();
-    return e.private;
+    return e;
   },
 };
