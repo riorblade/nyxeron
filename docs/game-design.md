@@ -32,7 +32,7 @@ Each rule is a function in `packages/core/src/rules` with a unit test.
 | R11 | Night report: avg satisfaction ≥ 70 → rep +3..+8; < 40 → rep −5 | `reputation.ts` |
 | R12 | New day: CEO Energy back to 5, wages and rent paid | `economy.ts` |
 | R13 | Defeat: Coin < 0 for 3 days, or 3 violations, or reputation 0 | `economy.ts` |
-| R14 | Victory: Level 5 and reputation ≥ 80 (day 60 without it = survived) | `progression.ts` |
+| R14 | Victory: Level 5 and reputation ≥ 80 (day 60 without it = survived); after a victory or survived run (or The Basement's week) the club plays on with no end date (`playOn`); a survived club can still win once | `progression.ts`, `engine.ts` |
 | R15 | Entertainment tax on night revenue: L3 20%, L4 30%, L5 40% (none for booth/shop) | `economy.ts` |
 | R16 | On-premise sales with only a takeaway liquor permit → violation, venue sealed | `legal.ts` |
 | R17 | Controversial promo: hype +30, 25% chance rep −20 and a guaranteed inspection | `marketing.ts` |

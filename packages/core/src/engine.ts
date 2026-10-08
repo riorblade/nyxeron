@@ -699,6 +699,20 @@ export function nextDay(s: GameState): GameState {
   return applyDayEvents(r12_newDay(s));
 }
 
+/**
+ * After a win or a survived run (The Basement's week, or a career's goal) the club plays on into the next day as an
+ * ordinary career with no end date; a survived club can still win once. Defeat stays final.
+ */
+export function playOn(s: GameState): GameState {
+  if (s.outcome !== "victory" && s.outcome !== "survived") return s;
+  return nextDay({
+    ...s,
+    outcome: null,
+    mode: "career",
+    freePlay: s.freePlay === "victory" ? "victory" : s.outcome,
+  });
+}
+
 /** Headless full night: Open Club → 04:00 → Night Report. */
 export function runNight(s: GameState): GameState {
   let st = startNight(s);
