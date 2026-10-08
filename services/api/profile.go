@@ -42,6 +42,8 @@ func fail(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "sold_out"})
 	case errors.Is(err, errConflict):
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "conflict"})
+	case errors.Is(err, errStarted):
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "started"})
 	default:
 		slog.Error("players", "err", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal"})

@@ -72,10 +72,16 @@ func TestEvents(t *testing.T) {
 	}
 	tx.Rollback()
 
-	if err := s.CancelEvent(ctx, "guest", pub.ID); !errors.Is(err, errNotFound) {
+	if err := s.CancelEvent(ctx, "guest", pub.ID, now); !errors.Is(err, errNotFound) {
 		t.Fatalf("cancel someone else's: %v", err)
 	}
-	if err := s.CancelEvent(ctx, "ceo", pub.ID); err != nil {
+	// Once it has started (or ended) the host can't call it off: that would void guests' sales.
+	for _, late := range []time.Time{time.Unix(start, 0), time.Unix(start+3*3600, 0)} {
+		if err := s.CancelEvent(ctx, "ceo", pub.ID, late); !errors.Is(err, errStarted) {
+			t.Fatalf("cancel after the start: %v", err)
+		}
+	}
+	if err := s.CancelEvent(ctx, "ceo", pub.ID, now); err != nil {
 		t.Fatal(err)
 	}
 	if list, _ = s.Events(ctx, "stranger", now); len(list) != 0 {
