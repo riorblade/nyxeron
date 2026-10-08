@@ -86,15 +86,11 @@ export class Relay {
   host(name: string) {
     const saved = sessionStorage.getItem(TOKEN_KEY);
     return this.hello_(
-      saved ? { t: "resume", ...JSON.parse(saved) } : { t: "create", name },
+      saved
+        ? { t: "resume", name, ...JSON.parse(saved) }
+        : { t: "create", name },
       "created",
-    ).then((m) => {
-      sessionStorage.setItem(
-        TOKEN_KEY,
-        JSON.stringify({ room: m.room, token: m.token }),
-      );
-      return m.room!;
-    });
+    ).then((m) => m.room!);
   }
 
   /** Join a room as a guest or DJ. */
@@ -127,6 +123,8 @@ export class Relay {
 
   close() {
     this.open = false;
+    // Host: the room closes now (its players are told) instead of waiting out the grace period.
+    if (this.hello?.t === "resume") this.sendControl({ t: "close" });
     sessionStorage.removeItem(TOKEN_KEY);
     this.ws?.close();
   }
@@ -165,26 +163,34 @@ export class Relay {
         return;
       }
       const m = JSON.parse(e.data) as Control;
+      // The room expired while the host was away (also on a reconnect): start a fresh room instead.
+      if (
+        m.t === "error" &&
+        m.code === "room_not_found" &&
+        this.hello?.t === "resume"
+      ) {
+        sessionStorage.removeItem(TOKEN_KEY);
+        this.hello = { t: "create", name: this.hello.name ?? "" };
+        return this.sendControl(this.hello);
+      }
+      // Every (re)connect is answered: a reconnecting player gets a new id, a host maybe a new room.
+      if (m.t === "joined") this.id = m.id ?? this.id;
+      if (m.t === "created") {
+        const { room, token } = m;
+        this.hello = { t: "resume", name: this.hello?.name, room, token };
+        sessionStorage.setItem(
+          TOKEN_KEY,
+          JSON.stringify({ room: m.room, token: m.token }),
+        );
+      }
+      this.room = m.room ?? this.room;
       const w = this.waiting;
       if (w && (m.t === w.want || m.t === "error")) {
         this.waiting = null;
-        if (m.t === "error") {
-          // A stale resume token: start a fresh room instead.
-          if (this.hello?.t === "resume") {
-            sessionStorage.removeItem(TOKEN_KEY);
-            this.hello = { t: "create", name: this.hello.name ?? "" };
-            this.waiting = w;
-            return this.sendControl(this.hello);
-          }
-          return w.fail(new Error(m.code));
-        }
-        this.room = m.room ?? this.room;
-        if (m.t === "created")
-          this.hello = { t: "resume", room: m.room, token: m.token };
-        w.ok(m);
-        return;
+        return m.t === "error" ? w.fail(new Error(m.code)) : w.ok(m);
       }
-      if (m.t === "closed") this.open = false;
+      // Closed or kicked: don't walk straight back in.
+      if (m.t === "closed" || m.t === "kicked") this.open = false;
       this.onControl?.(m);
     };
     ws.onclose = () => {

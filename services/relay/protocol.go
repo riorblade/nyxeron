@@ -12,13 +12,15 @@
 // Control (text, JSON), client → relay:
 //
 //	{"t":"create","name":"…"}                     host opens a room → {"t":"created","room":"K7QX9P","token":"…"}
-//	{"t":"resume","room":"…","token":"…"}          host reconnects within the grace period → {"t":"created",…}
+//	{"t":"resume","room":"…","token":"…"}          host reconnects (a room expired past the grace period reopens
+//	                                               with the same code for an hour) → {"t":"created",…}
 //	{"t":"join","room":"…","name":"…","role":"guest|dj"} → {"t":"joined","room":"…","id":N}
-//	{"t":"kick","id":N}                            host only
+//	{"t":"kick","id":N}                            host only; the peer gets {"t":"kicked"}, then is dropped
+//	{"t":"close"}                                  host only: close the room now, peers get {"t":"closed"}
 //
-// Relay → clients: {"t":"peer","id":N,"name":"…","role":"…","on":true|false} (to the host),
-// {"t":"host","on":true|false} (to peers), {"t":"closed"}, {"t":"error","code":"…"}.
-// Error codes: room_not_found, room_full, server_full, bad_request, already_in_room, rate_limited, host_busy.
+// Relay → clients: {"t":"peer","id":N,"name":"…","role":"…","on":true|false} (to the host; after a resume, again for
+// everyone still in the room), {"t":"host","on":true|false} (to peers), {"t":"closed"}, {"t":"kicked"},
+// {"t":"error","code":"…"}. Error codes: room_not_found, room_full, server_full, bad_request, already_in_room, rate_limited, host_busy.
 package main
 
 const (

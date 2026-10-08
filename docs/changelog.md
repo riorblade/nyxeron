@@ -3,6 +3,16 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-09 · Multiplayer: reconnects that hold
+
+- **Live clubs survive a bad connection:** a guest whose connection drops says hello again and gets their own seat
+  back (cash and tokens; the host keeps it a minute), a reconnecting DJ is back on the decks, and a host back after
+  more than 60 s reopens the room with the same code (for an hour) instead of a silent new one. **Kick** sticks (the
+  player isn't let back in automatically), **Close room** tells guests at once instead of "lost connection" for a
+  minute, a guest whose club closes or who is kicked still takes their cash and tokens home (Nights out counts), and
+  an event goes live with the room as soon as it's on even if the CEO opened the club earlier. Server and City
+  errors (server full, City closed, suspended, sign-in expired…) read as sentences.
+
 ## 2026-10-03 · CEO: your clubs
 
 - **Classic and City (owner decision):** the play currency is now **NYX Points (NP)** everywhere (was "Coin" / C);

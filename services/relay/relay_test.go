@@ -168,6 +168,9 @@ func TestHostResumeAndGrace(t *testing.T) {
 	back.expect("error")
 	back.send(control{T: "resume", Room: c.Room, Token: c.Token})
 	back.expect("created")
+	if m := back.expect("peer"); !*m.On {
+		t.Fatal("peers still here not re-announced")
+	}
 	if m := guest.expect("host"); !*m.On {
 		t.Fatal("host return not reported")
 	}
@@ -181,6 +184,47 @@ func TestHostResumeAndGrace(t *testing.T) {
 	if rooms, _ := h.stats(); rooms != 0 {
 		t.Fatalf("rooms left: %d", rooms)
 	}
+
+	// The host comes back later: the same code reopens with its token (not with another).
+	late := dial(t, url)
+	late.send(control{T: "resume", Room: c.Room, Token: "wrong"})
+	late.expect("error")
+	late.send(control{T: "resume", Room: c.Room, Token: c.Token})
+	if m := late.expect("created"); m.Room != c.Room {
+		t.Fatalf("reopened as %q", m.Room)
+	}
+	again := dial(t, url)
+	again.send(control{T: "join", Room: c.Room, Role: "guest"})
+	again.expect("joined")
+}
+
+func TestCloseAndKick(t *testing.T) {
+	h, url := setup(t, time.Minute)
+	host := dial(t, url)
+	host.send(control{T: "create"})
+	c := host.expect("created")
+	guest := dial(t, url)
+	guest.send(control{T: "join", Room: c.Room, Role: "guest"})
+	g := guest.expect("joined")
+	host.expect("peer")
+
+	// Kicked: told so before the socket goes, so the client knows not to reconnect.
+	host.send(control{T: "kick", ID: g.ID})
+	guest.expect("kicked")
+	host.expect("peer")
+
+	// Close: peers are told at once and the room is gone (no grace, no resume).
+	other := dial(t, url)
+	other.send(control{T: "join", Room: c.Room, Role: "guest"})
+	other.expect("joined")
+	host.expect("peer")
+	host.send(control{T: "close"})
+	other.expect("closed")
+	if rooms, _ := h.stats(); rooms != 0 {
+		t.Fatalf("rooms left: %d", rooms)
+	}
+	host.send(control{T: "resume", Room: c.Room, Token: c.Token})
+	host.expect("error")
 }
 
 func TestRateLimit(t *testing.T) {

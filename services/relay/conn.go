@@ -234,7 +234,7 @@ func (c *conn) handleControl(b []byte) bool {
 		c.control(control{T: "error", Code: "bad_request"})
 		return false
 	}
-	if c.room != nil && m.T != "kick" {
+	if c.room != nil && m.T != "kick" && m.T != "close" {
 		c.control(control{T: "error", Code: "already_in_room"})
 		return true
 	}
@@ -247,13 +247,10 @@ func (c *conn) handleControl(b []byte) bool {
 			return true
 		}
 		c.control(control{T: "created", Room: r.code, Token: r.token})
-	case "resume":
-		r, code := c.hub.resume(c, m.Room, m.Token)
-		if r == nil {
+	case "resume": // the hub answers "created" itself (before the peers hear the host is back)
+		if r, code := c.hub.resume(c, m.Room, m.Token); r == nil {
 			c.control(control{T: "error", Code: code})
-			return true
 		}
-		c.control(control{T: "created", Room: r.code, Token: r.token})
 	case "join":
 		if m.Role != "guest" && m.Role != "dj" {
 			c.control(control{T: "error", Code: "bad_request"})
@@ -269,6 +266,10 @@ func (c *conn) handleControl(b []byte) bool {
 	case "kick":
 		if c.host {
 			c.hub.kick(c, m.ID)
+		}
+	case "close":
+		if c.host {
+			c.hub.closeRoom(c)
 		}
 	default:
 		c.control(control{T: "error", Code: "bad_request"})

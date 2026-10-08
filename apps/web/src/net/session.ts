@@ -17,6 +17,7 @@ import { acquireEngine, getEngine, releaseEngine } from "@/dj/session";
 import type { DjAct } from "@/dj/engine";
 import { applyMix, mixSnapshot, type MixSync } from "@/dj/mixsync";
 import { KIND, pack, Relay, unpack, type Frame } from "./relay";
+import { Seats } from "./seats";
 import { audio } from "@/audio";
 import type { PadId } from "@/dj/sampler";
 import { firePyro, type PyroCue } from "@/venue/pyro";
@@ -30,15 +31,18 @@ import {
  * Live multiplayer on top of the relay. The CEO's browser is the host: it runs the sim, applies players' input and
  * broadcasts gzipped snapshots. Guests render those snapshots and send what they want to do.
  *
- * Player → host: {t:"hello",name,avatar,cash} · {t:"buy",token,qty} · {t:"bye"}
+ * Player → host: {t:"hello",name,avatar,cash,key} · {t:"buy",token,qty} · {t:"bye"}
  * DJ → host:     {t:"djhello",name,avatar} · {t:"mix",m} (4×/s) · {t:"act",a} (pads, brake, backspin)
- * Host → player: {t:"welcome",ok,reason?,short?} · {t:"result",ok,reason?,short?,token,qty,cost} · {t:"dj",…}
+ * Host → player: {t:"welcome",ok,reason?,short?,me?} · {t:"result",ok,reason?,short?,token,qty,cost} · {t:"dj",…}
  * Host → all:    state frames (gzipped GameState); events {t:"dj",on,name,avatar} · {t:"mix",m} · {t:"act",a}
+ *
+ * Players say hello again after any reconnect (theirs or the host's); the host gives them their visitor back.
  *
  * A live DJ's music isn't streamed: every player's browser plays the same crate tracks and follows the DJ's mix
  * state (dj/mixsync.ts), so the relay carries a few hundred bytes a second.
  */
-type Hello = { name: string; avatar: number; cash: number };
+/** `key`: the guest's secret for this night, so a reconnect gets their own visitor back (net/seats.ts). */
+type Hello = { name: string; avatar: number; cash: number; key?: string };
 type DjHello = { name: string; avatar: number };
 type Input =
   | ({ t: "hello" } & Hello)
@@ -59,7 +63,7 @@ type Show =
 type Reply =
   | Live
   | Show
-  | { t: "welcome"; ok: boolean; reason?: string; short?: number }
+  | { t: "welcome"; ok: boolean; reason?: string; short?: number; me?: string }
   | {
       t: "result";
       ok: boolean;
@@ -164,6 +168,10 @@ function unfollow() {
 let djPeer = 0;
 
 const hellos = new Map<number, Hello>();
+const seats = new Seats();
+/** Visitors whose connection dropped: they keep their place a minute, for a reconnect. */
+const away = new Map<string, number>();
+const AWAY_MS = 60_000;
 let unsubscribe: (() => void) | null = null;
 let timer = 0;
 let lastSent = 0;
@@ -200,20 +208,36 @@ function admitWaiting() {
   const g = useGame.getState().game;
   if (!g || g.phase !== "night") return;
   for (const [peer, h] of hellos) {
-    if (g.night?.visitors?.[String(peer)]) continue;
-    const r = act((s) =>
-      visitorJoin(s, String(peer), h.name, h.cash, h.avatar),
-    );
+    const v = crypto.randomUUID().slice(0, 8);
+    const r = act((s) => visitorJoin(s, v, h.name, h.cash, h.avatar));
     if (!r) continue;
     hellos.delete(peer);
+    if (r.ok) seats.seat(peer, v, h.key ?? "");
     reply(
       peer,
       r.ok
-        ? { t: "welcome", ok: true }
+        ? { t: "welcome", ok: true, me: v }
         : { t: "welcome", ok: false, reason: r.reason, short: r.short },
     );
     markInside(peer, r.ok);
   }
+}
+
+/** The visitor id this connection plays as ("" if it isn't inside). */
+const visitorOf = (peer: number) => seats.of(peer) ?? "";
+
+/** A connection dropped: its visitor waits a minute for the player to reconnect, then goes home. */
+function letGo(peer: number) {
+  const v = seats.drop(peer);
+  if (!v || away.has(v)) return;
+  away.set(
+    v,
+    window.setTimeout(() => {
+      away.delete(v);
+      const g = useGame.getState().game;
+      if (g) useGame.getState().set(visitorLeave(g, v));
+    }, AWAY_MS),
+  );
 }
 
 function markInside(peer: number, inside: boolean) {
@@ -232,14 +256,26 @@ function onHostFrame(f: Frame) {
   } catch {
     return;
   }
-  const id = String(f.peer);
+  const id = visitorOf(f.peer);
   if (m.t === "hello") {
+    const key = String(m.key ?? "").slice(0, 64);
+    // Back after a reconnect (theirs or ours): the same visitor, now on this connection.
+    const back = seats.held(key) ?? id;
+    if (back && useGame.getState().game?.night?.visitors?.[back]) {
+      clearTimeout(away.get(back));
+      away.delete(back);
+      seats.bind(f.peer, back);
+      reply(f.peer, { t: "welcome", ok: true, me: back });
+      markInside(f.peer, true);
+      return;
+    }
     const cash = Number(m.cash);
     hellos.set(f.peer, {
       name: String(m.name ?? "").slice(0, 24) || "Guest",
       avatar: Number(m.avatar) || 1,
       // ponytail: the wallet is the player's word for now (play money); validate server-side before real funds.
       cash: Number.isFinite(cash) && cash >= 0 ? Math.min(cash, 1e9) : 0,
+      key,
     });
     admitWaiting();
   } else if (m.t === "buy") {
@@ -281,6 +317,7 @@ function onHostFrame(f: Frame) {
     return;
   } else if (m.t === "bye") {
     hellos.delete(f.peer);
+    seats.drop(f.peer);
     const g = useGame.getState().game;
     if (g) useGame.getState().set(visitorLeave(g, id));
     markInside(f.peer, false);
@@ -296,6 +333,18 @@ export async function hostOpen(clubName: string) {
   relay.onStatus = (on) => set({ status: on ? "live" : "connecting" });
   relay.onFrame = onHostFrame;
   relay.onControl = (c) => {
+    if (c.t === "created") {
+      // Back after a drop: the relay re-announces who is still here (they say hello again); the rest left.
+      for (const id of Object.keys(useNet.getState().players)) letGo(+id);
+      hellos.clear();
+      if (djPeer) {
+        djPeer = 0;
+        relay?.event(pack({ t: "dj", on: false }));
+        follow({ t: "dj", on: false });
+      }
+      set({ room: c.room, players: {} });
+      return;
+    }
     if (c.t !== "peer" || c.id == null) return;
     const players = { ...useNet.getState().players };
     if (c.on) {
@@ -318,8 +367,7 @@ export async function hostOpen(clubName: string) {
       }
       delete players[c.id];
       hellos.delete(c.id);
-      const g = useGame.getState().game;
-      if (g) useGame.getState().set(visitorLeave(g, String(c.id)));
+      letGo(c.id);
     }
     set({ players });
   };
@@ -353,6 +401,9 @@ export function hostClose() {
   clearTimeout(timer);
   timer = 0;
   hellos.clear();
+  seats.clear();
+  for (const t of away.values()) clearTimeout(t);
+  away.clear();
   relay?.close();
   relay = null;
   djPeer = 0;
@@ -367,7 +418,13 @@ export function hostClose() {
   });
 }
 
-export const kick = (id: number) => relay?.kick(id);
+/** Kicked: out of the club now (no minute to come back, unlike a dropped connection). */
+export function kick(id: number) {
+  relay?.kick(id);
+  const v = seats.drop(id);
+  const g = useGame.getState().game;
+  if (v && g) useGame.getState().set(visitorLeave(g, v));
+}
 
 /**
  * Share the CEO's show with the room (reliable, in order): every pyro burst (auto or manual) and every sampler
@@ -403,13 +460,27 @@ export async function guestJoin(
     last: null,
     ended: false,
   });
+  // This night's secret: after a reconnect it gets me my own visitor back (cash and tokens).
+  const key = crypto.randomUUID();
+  const sayHello = () =>
+    relay?.input(
+      pack(
+        as === "dj"
+          ? { t: "djhello", name: hello.name, avatar: hello.avatar }
+          : { t: "hello", ...hello, key },
+      ),
+    );
   relay.onStatus = (on) => {
-    if (useNet.getState().status !== "closed")
+    const { status } = useNet.getState();
+    if (status !== "closed" && status !== "error")
       set({ status: on ? "live" : "connecting" });
   };
   relay.onControl = (c) => {
     if (c.t === "host") set({ status: c.on ? "live" : "host-away" });
     if (c.t === "closed") set({ status: "closed" });
+    if (c.t === "kicked") set({ status: "error", error: "kicked" });
+    // I reconnected (new relay id) or the host did: say hello again to be let back in.
+    if (c.t === "joined" || (c.t === "host" && c.on)) sayHello();
   };
   relay.onFrame = async (f) => {
     if (f.kind === KIND.state) {
@@ -442,7 +513,11 @@ export async function guestJoin(
       if (useNet.getState().role === "guest" || m.t === "dj") follow(m);
       return;
     }
-    if (m.t === "welcome") set({ refused: m.ok ? "" : why(m.reason, m.short) });
+    if (m.t === "welcome")
+      set({
+        refused: m.ok ? "" : why(m.reason, m.short),
+        ...(m.me ? { me: m.me } : {}),
+      });
     if (m.t === "result")
       useGame
         .getState()
@@ -452,15 +527,10 @@ export async function guestJoin(
         );
   };
   try {
-    const id = await relay.join(code.trim().toUpperCase(), hello.name, as);
-    set({ me: String(id), status: "live" });
-    relay.input(
-      pack(
-        as === "dj"
-          ? { t: "djhello", name: hello.name, avatar: hello.avatar }
-          : { t: "hello", ...hello },
-      ),
-    );
+    await relay.join(code.trim().toUpperCase(), hello.name, as);
+    // Who I am in the club comes with the host's welcome.
+    set({ me: "", status: "live" });
+    sayHello();
   } catch (e) {
     set({ status: "error", error: (e as Error).message });
     relay?.close();

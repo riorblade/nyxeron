@@ -1,7 +1,8 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { Backdrop } from "@/components/Backdrop";
 import { Button } from "@/components/ui/button";
 import { en } from "@/i18n/en";
+import { player } from "@/api/player";
 import { guestBuy, guestLeave, useNet } from "@/net/session";
 import { useGame } from "@/state/store";
 import { GuestNight, type OnlineGuest } from "./GuestNight";
@@ -12,6 +13,14 @@ const t = en.live;
 export function LiveGuest() {
   const { remote, me, status, refused, last, ended, room, error } = useNet();
   const go = useGame((x) => x.go);
+
+  // The club closed (or I was kicked) with me in it: my cash and tokens still go home, once.
+  useEffect(() => {
+    if (status !== "closed" && status !== "error") return;
+    if (!last || useNet.getState().role !== "guest") return;
+    player.settle(last.v.cash, last.v.holdings, last.pnl);
+    useNet.setState({ last: null });
+  }, [status, last]);
   const inside = !!remote?.night?.visitors?.[me];
   const waiting = inside
     ? null
