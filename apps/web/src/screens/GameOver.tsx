@@ -1,5 +1,5 @@
 import { LOUNGE, useMusic } from "@/audio";
-import { levels, type GameState } from "@nyxeron/core";
+import { levels, playOn, type GameState } from "@nyxeron/core";
 import type { CSSProperties } from "react";
 import { Backdrop } from "@/components/Backdrop";
 import { Brand, HomeButton } from "@/components/Brand";
@@ -11,7 +11,7 @@ const d = (ms: number) => ({ "--d": `${ms}ms` }) as CSSProperties;
 
 export function GameOver({ s }: { s: GameState }) {
   useMusic(LOUNGE, true); // the club, heard through the wall
-  const { origin, slot, start, home } = useGame();
+  const { origin, slot, start, home, set, go } = useGame();
   const o = s.outcome ?? "survived";
   const stats: [string, string][] = [
     ["Day", String(s.day)],
@@ -56,10 +56,25 @@ export function GameOver({ s }: { s: GameState }) {
           className="enter flex w-full flex-col gap-3 sm:w-auto sm:flex-row"
           style={d(900)}
         >
-          {origin && (
-            <Cta className="w-full sm:w-48" onClick={() => start(origin, slot)}>
-              {en.outcome.retry}
+          {o !== "defeat" ? (
+            <Cta
+              className="w-full sm:w-48"
+              onClick={() => {
+                set(playOn(s));
+                go("game");
+              }}
+            >
+              {en.outcome.playOn}
             </Cta>
+          ) : (
+            origin && (
+              <Cta
+                className="w-full sm:w-48"
+                onClick={() => start(origin, slot)}
+              >
+                {en.outcome.retry}
+              </Cta>
+            )
           )}
           <button
             className="glass h-12 rounded-lg px-6 text-sm tracking-[0.14em] whitespace-nowrap uppercase"

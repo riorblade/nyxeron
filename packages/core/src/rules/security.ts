@@ -2,7 +2,9 @@ import { night, staffRoles, type StaffRole } from "../data";
 import { fail, type ActionResult } from "../result";
 import type { GameState } from "../state";
 
+// Staffing is a day decision: wages are paid at the new day for whoever is on the books, so no hiring for one night.
 export function hireStaff(s: GameState, role: StaffRole): ActionResult {
+  if (s.phase !== "day") return fail("wrongPhase");
   if (s.level < staffRoles[role].minLevel) return fail("levelLocked");
   return {
     ok: true,
@@ -11,6 +13,7 @@ export function hireStaff(s: GameState, role: StaffRole): ActionResult {
 }
 
 export function fireStaff(s: GameState, role: StaffRole): ActionResult {
+  if (s.phase !== "day") return fail("wrongPhase");
   if (s.staff[role] <= 0) return fail("noStaff");
   return {
     ok: true,

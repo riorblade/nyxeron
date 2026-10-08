@@ -3,6 +3,27 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-09 · CEO: rules that couldn't be gamed or trap you
+
+- **Staff by day only:** hiring and firing are daytime actions, so a bouncer hired for one night and fired at 04:00
+  no longer skips the wage. **Booking a DJ** stops once the set slot (minute 60) has passed, instead of charging a fee
+  for a DJ who never plays. **Moving up** and the **controversial promo** are daytime only.
+- **No more day-one loss from the stunt:** the controversial promo needs more than 20 rep, so one backfire can't end a
+  fresh club (it starts at 20). Its price shows NP, not "C".
+- **Empty bar:** a guest who found nothing in stock stops queueing instead of losing satisfaction every minute; an idle
+  club no longer dies by Day 4. Leaving guests now free their spot for the fight ratio.
+- **Move-up arbitrage closed:** stock moves to the new venue at its value (count × old price scale ÷ new), so buying
+  cheap before moving up and selling at the new venue's prices (up to 4×) is gone. `pnpm balance 300`: still 100%
+  victory, Level 2/3/4/5 at day 17.0/28.1/37.0/46.4 (was 17.0/27.7/35.2/43.9).
+
+## 2026-10-08 · CEO: play on
+
+- **Keep playing instead of a dead end:** a club that won or survived (The Basement after Day 7, a career at Level 5
+  / Day 60) used to stop on the result screen for good. The result screen now has **Keep playing**: the club goes on
+  to the next day as an ordinary club with no end date (its card reads "Day N", not "of 60", and keeps its Won /
+  Finished tag). A survived club can still win at Level 5 with Rep 80. Defeat is still final. The Basement's late
+  supplier now lasts its one day instead of the rest of the game.
+
 ## 2026-10-08 · Top-ups
 
 - **Top up Credit:** players send USDC from their game wallet to the platform's Agentic Wallet (no gas, 1% fee) and

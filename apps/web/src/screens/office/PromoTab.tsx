@@ -110,7 +110,7 @@ export function PromoTab({ s }: { s: GameState }) {
           <div className="font-medium">{en.promo.controversial}</div>
           <div className="text-xs text-white/55">
             {en.promo.controversialDesc} · {fmt(legal.controversialPromo.cost)}{" "}
-            C
+            {en.unit}
           </div>
         </div>
         <button
