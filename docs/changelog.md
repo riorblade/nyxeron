@@ -13,6 +13,55 @@ teammate would notice.
   an event goes live with the room as soon as it's on even if the CEO opened the club earlier. Server and City
   errors (server full, City closed, suspended, sign-in expired…) read as sentences.
 
+## 2026-10-09 · CEO: rules that couldn't be gamed or trap you
+
+- **Staff by day only:** hiring and firing are daytime actions, so a bouncer hired for one night and fired at 04:00
+  no longer skips the wage. **Booking a DJ** stops once the set slot (minute 60) has passed, instead of charging a fee
+  for a DJ who never plays. **Moving up** and the **controversial promo** are daytime only.
+- **No more day-one loss from the stunt:** the controversial promo needs more than 20 rep, so one backfire can't end a
+  fresh club (it starts at 20). Its price shows NP, not "C".
+- **Empty bar:** a guest who found nothing in stock stops queueing instead of losing satisfaction every minute; an idle
+  club no longer dies by Day 4. Leaving guests now free their spot for the fight ratio.
+- **Move-up arbitrage closed:** stock moves to the new venue at its value (count × old price scale ÷ new), so buying
+  cheap before moving up and selling at the new venue's prices (up to 4×) is gone. `pnpm balance 300`: still 100%
+  victory, Level 2/3/4/5 at day 17.0/28.1/37.0/46.4 (was 17.0/27.7/35.2/43.9).
+
+## 2026-10-08 · CEO: play on
+
+- **Keep playing instead of a dead end:** a club that won or survived (The Basement after Day 7, a career at Level 5
+  / Day 60) used to stop on the result screen for good. The result screen now has **Keep playing**: the club goes on
+  to the next day as an ordinary club with no end date (its card reads "Day N", not "of 60", and keeps its Won /
+  Finished tag). A survived club can still win at Level 5 with Rep 80. Defeat is still final. The Basement's late
+  supplier now lasts its one day instead of the rest of the game.
+
+## 2026-10-08 · The city runs on Credit (on-chain cutover)
+
+- **Rent in Credit:** venue rent is paid in Credit at new, low weekly prices (`payments.json → rentCredits`:
+  Level 1 100 · Level 2 200 · Level 3 500 · Level 4 1,000 · Level 5 2,000 Credit; the back office's rent table
+  sets them). Coin-era prices would have made a Level 3 party venue cost $200 a week against a $100 top-up cap.
+  Leases paid in Coin run to their end date; extending them costs Credit.
+- **The Coin shop is closed:** shops are Credit menus over the warehouse (tokens by venue level). What CEOs still
+  held on their Coin shelves was bought back in NYX Points at their own shelf price (migration 6, one ledger row
+  `buyback` per player). A city party no longer pays its host Coin from guests' play nights.
+- **Warehouse:** only units bought by swaps verified on BNB Chain remain; the 100 hand-typed units per token from
+  2026-10-02 were removed by migration 6 (each removal is a stock move by `cutover`).
+- **Back office:** Payments (hourly reconciliation, top-ups, unknown transfers, sales, seed); rent shown in Credit
+  (rent is booked as the platform's money); Stock shows units sold to players instead of CEO shelves.
+
+## 2026-10-08 · Top-ups
+
+- **Top up Credit:** players send USDC from their game wallet to the platform's Agentic Wallet (no gas, 1% fee) and
+  get Credit (100 = $1) once BNB Chain confirms it. Minimum $3; at most $20 a day and $100 in all during the
+  hackathon. The api enforces the caps: it credits up to the room left and records the rest for a refund.
+
+## 2026-10-08 · Real stock at parties and shops
+
+- **Buy real stock with Credit:** at a live city party or an open shop, guests buy real tokenized stock (units of
+  0.001 share) at the CEO's Credit price; the CEO keeps the margin over the live wholesale price, the platform gets
+  wholesale. A party's sales are held while it runs and settle when it ends. Every buy carries the price the guest
+  saw (`maxPrice`) and a guest buys one at a time.
+- **Events can't be cancelled once they start** (guests may have bought); only an admin voids a sale.
+
 ## 2026-10-03 · CEO: your clubs
 
 - **Classic and City (owner decision):** the play currency is now **NYX Points (NP)** everywhere (was "Coin" / C);

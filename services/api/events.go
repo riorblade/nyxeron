@@ -265,12 +265,21 @@ func (s *store) eventHost(ctx context.Context, pid int64) (string, error) {
 	return host, err
 }
 
-func (s *store) CancelEvent(ctx context.Context, id string, pid int64) error {
+// CancelEvent: the host calls an event off, only before it starts. Once a party has started its guests may have
+// bought real stock, and cancelling would void their sales (sales.go): a free option against the price. After the
+// start only an admin voids sales (payments.md §4.4).
+func (s *store) CancelEvent(ctx context.Context, id string, pid int64, now time.Time) error {
 	if host, err := s.eventHost(ctx, pid); err != nil || host != id {
 		return errNotFound
 	}
-	_, err := s.db.ExecContext(ctx, `UPDATE parties SET cancelled = 1 WHERE id = ?`, pid)
-	return err
+	res, err := s.db.ExecContext(ctx, `UPDATE parties SET cancelled = 1 WHERE id = ? AND starts_at > ?`, pid, now.Unix())
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errStarted
+	}
+	return nil
 }
 
 // EventRoom: the host opened the club for their event (from 15 minutes before it starts until it ends).
@@ -291,20 +300,6 @@ func (s *store) EventRoom(ctx context.Context, id string, pid int64, room string
 		return errRejected
 	}
 	return nil
-}
-
-// partyHost: whose live city event a guest was at (by relay room), for paying out what they spent; "" if none.
-// Only city venues pay out: a practice club's takings stay in its own (offline) game.
-func partyHost(t *sql.Tx, room string, now time.Time) string {
-	if room == "" {
-		return ""
-	}
-	var host string
-	grace := int64(game.city.Party.SettleGraceMinutes) * 60
-	_ = t.QueryRow(`SELECT host_id FROM parties WHERE room = ? AND cancelled = 0 AND lease_id > 0
-		AND starts_at - 900 <= ? AND starts_at + minutes * 60 + ? > ? ORDER BY starts_at DESC LIMIT 1`,
-		strings.ToUpper(room), now.Unix(), grace, now.Unix()).Scan(&host)
-	return host
 }
 
 func (pl *players) routeEvents(mux *http.ServeMux) {
@@ -359,7 +354,7 @@ func (pl *players) routeEvents(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("DELETE /api/events/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if id, ok := pl.who(w, r); ok {
-			reply(w, map[string]bool{"ok": true}, pl.db.CancelEvent(r.Context(), id, pid(r)))
+			reply(w, map[string]bool{"ok": true}, pl.db.CancelEvent(r.Context(), id, pid(r), time.Now()))
 		}
 	})
 	mux.HandleFunc("PUT /api/events/{id}/room", func(w http.ResponseWriter, r *http.Request) {

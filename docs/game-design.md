@@ -20,8 +20,8 @@ Each rule is a function in `packages/core/src/rules` with a unit test.
 | ID | Rule | Where |
 | --- | --- | --- |
 | R1 | Order stock if Coin ≥ cost; it arrives after the supplier's lead time | `inventory.ts` |
-| R2 | A guest buys a token: stock −1, Coin + price; out of stock → satisfaction hit, alert | `inventory.ts` |
-| R3 | Book a DJ if Coin ≥ fee and level ≥ the DJ's requirement → hype from the fanbase | `talent.ts` |
+| R2 | A guest buys a token: stock −1, Coin + price; out of stock → satisfaction hit, alert; a guest who hit it once only orders what's in stock, and stops queueing when nothing is | `inventory.ts` |
+| R3 | Book a DJ if Coin ≥ fee and level ≥ the DJ's requirement → hype from the fanbase; not once the set slot (minute 60) has passed | `talent.ts` |
 | R4 | DJ genre matches the crowd → dancing satisfaction +20%, else −15% | `engine.ts` |
 | R5 | Promo if Coin ≥ cost and CEO Energy ≥ 1 → hype + a boost to that channel's audience | `marketing.ts` |
 | R6 | Inspection chance a night: 5% base, 40% with a missing permit, ≥ 20% with safety under 40 | `legal.ts` |
@@ -32,11 +32,11 @@ Each rule is a function in `packages/core/src/rules` with a unit test.
 | R11 | Night report: avg satisfaction ≥ 70 → rep +3..+8; < 40 → rep −5 | `reputation.ts` |
 | R12 | New day: CEO Energy back to 5, wages and rent paid | `economy.ts` |
 | R13 | Defeat: Coin < 0 for 3 days, or 3 violations, or reputation 0 | `economy.ts` |
-| R14 | Victory: Level 5 and reputation ≥ 80 (day 60 without it = survived) | `progression.ts` |
+| R14 | Victory: Level 5 and reputation ≥ 80 (day 60 without it = survived); after a victory or survived run (or The Basement's week) the club plays on with no end date (`playOn`); a survived club can still win once | `progression.ts`, `engine.ts` |
 | R15 | Entertainment tax on night revenue: L3 20%, L4 30%, L5 40% (none for booth/shop) | `economy.ts` |
 | R16 | On-premise sales with only a takeaway liquor permit → violation, venue sealed | `legal.ts` |
-| R17 | Controversial promo: hype +30, 25% chance rep −20 and a guaranteed inspection | `marketing.ts` |
-| R18 | Move up a venue if Coin ≥ cost and reputation ≥ requirement | `progression.ts` |
+| R17 | Controversial promo (daytime, rep > 20): hype +30, 25% chance rep −20 and a guaranteed inspection | `marketing.ts` |
+| R18 | Move up a venue (daytime) if Coin ≥ cost and reputation ≥ requirement; stock moves at its value (count × old price scale ÷ new) | `progression.ts` |
 | R19 | *Retired:* paid speed-ups. Value never buys progress; the economy is Coin + tokens (see the PRD) | — |
 
 Beyond the R-rules: crowd energy and crowd moves (`strategy.ts`), house rules and reservations, promoters,
@@ -83,24 +83,29 @@ Every stat opens an explanation in the game (`hud/StatInfo.tsx`, history from `s
 
 ## The city (multiplayer)
 
-From `city.json`:
+The city runs on Credit (real money, 100 = $1; `docs/payments.md`). Venues from `city.json`, rent from
+`payments.json → rentCredits`:
 
-| Lv | Venues | Rent / week |
+| Lv | Venues | Rent / week (Credit) |
 | --- | --- | --- |
-| 1 | 24 | 2,000 |
-| 2 | 12 | 6,000 |
-| 3 | 6 | 20,000 |
-| 4 | 4 | 60,000 |
-| 5 | 2 | 150,000 |
+| 1 | 24 | 100 ($1) |
+| 2 | 12 | 200 ($2) |
+| 3 | 6 | 500 ($5) |
+| 4 | 4 | 1,000 ($10) |
+| 5 | 2 | 2,000 ($20) |
 
 - Up to 5 venues per player (`maxVenuesPerPlayer`), rented in whole weeks, up to 4 ahead. The back office can
   change both the number of venues per level (never below a level's highest rented slot) and the weekly rent.
-- A player's shop stock is one pool shared by all their venues; its storage is the venues' storage combined.
-- Shops: stock bought from the platform warehouse at `buyCost × priceScale × spot factor`; shelf price up to
-  3× the venue's usual price; a buyer takes up to 50 at once.
+  Rent is the platform's money.
+- Shops hold no stock: a shop's menu is a Credit price per token, for tokens whitelisted in `payments.json` that
+  the venue's level may sell (`tokens.json → minLevel`). Each sale takes real units (0.001 share) from the
+  platform's warehouse. The price must sit between the live wholesale price (`price × 0.001 × 100`, rounded up)
+  and 3× it; the buyer takes up to 50 at once and pays at most the price they saw.
+- Of each sale the platform gets wholesale, the tenant keeps the margin, the guest gets the units.
 - Events (parties): at any club the player runs (city venue or Classic club), Level 3+, 5–60 minutes (default
-  10), up to 7 days ahead, public or private with an invite link; the host opens the club from 15 minutes before.
-  At a city venue, guest spend at a live event (and up to 30 minutes after) goes to the tenant.
+  10), up to 7 days ahead, public or private with an invite link; the host opens the club from 15 minutes before
+  and can cancel only until it starts. At a city venue the host sets Credit prices before the start; guests'
+  purchases are held while it runs and settle when it ends. Guests' play-money spend pays the host nothing.
 
 ## Balance
 

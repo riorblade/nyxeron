@@ -1,4 +1,4 @@
-import { tokens, type TokenId } from "@nyxeron/core";
+import { payments, tokens, type TokenId } from "@nyxeron/core";
 import { Info, PackagePlus } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { api, fmt, when, type Supply } from "../api";
@@ -17,11 +17,14 @@ import { cn } from "../ui/cn";
 type Row = Supply["tokens"][number];
 const name = (t: string) => tokens[t as TokenId]?.name ?? t;
 const ticker = (t: string) => tokens[t as TokenId]?.ticker ?? t.toUpperCase();
-const QUICK = [100, 500, 1000, 5000];
+// Tokens that may hold real stock (payments.json): a swap for anything else is refused.
+const whitelisted = (t: string) => t in payments.tokens;
 
 /**
- * The platform's warehouse. CEOs buy their shop stock from it, so an empty warehouse means no shop can restock.
- * Fill it here by hand, or let the stock agent do it (POST /api/agent/restock with the on-chain purchase).
+ * The platform's warehouse: real bStock in the Agentic Wallet. Parties and shops sell from it, so an empty token
+ * can't be bought anywhere.
+ * Units come in only from a swap the api verified on BNB Chain: the stock agent reports its own, and here an
+ * admin reports one by its tx. Typing a number can only take units out (a correction).
  */
 export function Stock({ canEdit }: { canEdit: boolean }) {
   const { data, error, reload } = useLoad(
@@ -37,15 +40,14 @@ export function Stock({ canEdit }: { canEdit: boolean }) {
   const total = data.tokens.reduce((n, r) => n + r.onHand, 0);
   const empty = data.tokens.filter((r) => r.onHand === 0).length;
   const sold7d = data.tokens.reduce((n, r) => n + r.sold7d, 0);
-  const shelves = data.tokens.reduce((n, r) => n + r.inShops, 0);
 
   return (
     <>
-      <Title sub="CEOs buy the stock for their shops from this warehouse. If a token is empty here, no shop can restock it.">
+      <Title sub="Real stock the platform holds in the Agentic Wallet. Parties and shops sell from it; if a token is empty here, nobody can buy it.">
         Platform stock
       </Title>
 
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
         <Kpi
           label="In the warehouse"
           value={fmt(total)}
@@ -54,24 +56,25 @@ export function Stock({ canEdit }: { canEdit: boolean }) {
         <Kpi
           label="Empty tokens"
           value={`${empty} / ${data.tokens.length}`}
-          note="CEOs can't stock these"
+          note="nobody can buy these"
         />
-        <Kpi
-          label="On CEOs' shelves"
-          value={fmt(shelves)}
-          note="already sold to shops"
-        />
-        <Kpi label="Bought by CEOs" value={fmt(sold7d)} note="last 7 days" />
+        <Kpi label="Sold to players" value={fmt(sold7d)} note="last 7 days" />
       </div>
 
-      {canEdit && empty > 0 && (
-        <FillAll
-          rows={data.tokens}
-          done={(m) => {
-            setNotice(m);
-            reload();
-          }}
-        />
+      {empty > 0 && (
+        <div className="mb-4 rounded-xl border border-white/30 bg-white/[0.05] p-4">
+          <div className="font-medium">
+            {empty === data.tokens.length
+              ? "The warehouse is empty"
+              : `${empty} tokens are empty`}
+          </div>
+          <p className="text-sm text-white/60">
+            Stock is real bStock in the Agentic Wallet. Buy it with the wallet
+            (or let the stock agent do it), then report the swap's tx on the
+            token below: the api reads it on BNB Chain and adds the units it
+            bought.
+          </p>
+        </div>
       )}
       {notice && (
         <p role="status" className="mb-4 text-sm text-white/80">
@@ -90,15 +93,12 @@ export function Stock({ canEdit }: { canEdit: boolean }) {
         {help && (
           <dl className="mb-4 grid gap-x-6 gap-y-1.5 rounded-lg border border-white/10 p-3 text-xs text-white/70 sm:grid-cols-2">
             <Term k="In warehouse">
-              Units the platform holds; CEOs buy from here.
+              Units the platform holds (0.001 share each); parties and shops
+              sell from here.
             </Term>
-            <Term k="On CEO shelves">
-              Units CEOs already bought and haven't sold to players yet.
+            <Term k="Sold (24h / 7d)">
+              Units players bought at parties and shops: this is demand.
             </Term>
-            <Term k="CEOs bought (24h / 7d)">
-              Units CEOs took from the warehouse: this is demand.
-            </Term>
-            <Term k="Shops">How many CEO shops hold this token.</Term>
             <Term k="Runs out in">
               Days the warehouse lasts at the last 7 days' pace (— = no demand
               yet).
@@ -113,9 +113,7 @@ export function Stock({ canEdit }: { canEdit: boolean }) {
           head={[
             "Token",
             "In warehouse",
-            "On CEO shelves",
-            "CEOs bought 24h / 7d",
-            "Shops",
+            "Sold 24h / 7d",
             "Runs out in",
             "Suggested",
             ...(canEdit ? [""] : []),
@@ -232,12 +230,15 @@ function TokenRow({
         </td>
         <td>
           {n(r.onHand)} {r.onHand === 0 && <Badge>empty</Badge>}
+          {r.reserved > 0 && (
+            <span className="ml-1 text-xs text-white/50">
+              · {fmt(r.reserved)} held
+            </span>
+          )}
         </td>
-        <td>{n(r.inShops)}</td>
         <td>
           {n(r.sold24h)} <span className="text-white/40">/</span> {n(r.sold7d)}
         </td>
-        <td>{n(r.shops)}</td>
         <td className="font-mono tabular-nums">
           {r.daysLeft < 0 ? "—" : `${r.daysLeft.toFixed(1)} days`}
         </td>
@@ -272,65 +273,78 @@ function TokenRow({
   );
 }
 
-/** Add units of one token (or, under "Correct a count", take some away). */
+const reasons: Record<string, string> = {
+  pending:
+    "Not final yet on BNB Chain (15 confirmations). Report it again in a minute.",
+  tx_used: "This swap was already counted.",
+  not_a_restock:
+    "That transaction didn't bring this token's bStock into the Agentic Wallet.",
+  over_limit: "The swap is over the agent's limits ($ per swap / per day).",
+  not_configured: "BNB Chain isn't configured on the api (BSC_RPC_1/2).",
+  chain_unavailable: "BNB Chain can't be read right now. Try again soon.",
+  bad_request: "Check the tx hash (0x + 64 hex characters).",
+  sold_out: "The warehouse doesn't have that many to remove.",
+};
+
+/** Report a swap for one token (units come from the chain), or take units out under "Correct a count". */
 function RestockForm({ r, done }: { r: Row; done: (msg: string) => void }) {
-  const [qty, setQty] = useState(r.suggested || 500);
-  const [remove, setRemove] = useState(false);
+  const real = whitelisted(r.token);
+  const [remove, setRemove] = useState(!real);
+  const [qty, setQty] = useState(0);
   const [reason, setReason] = useState(
     r.onHand === 0 ? "Initial stock" : "Restock",
   );
   const [tx, setTx] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const delta = remove ? -qty : qty;
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError("");
     try {
-      await api("PUT", `/admin/stock/${r.token}`, { delta, reason, tx });
-      done(
-        `✓ ${remove ? "Removed" : "Added"} ${fmt(qty)} ${ticker(r.token)}: ${fmt(Math.max(0, r.onHand + delta))} in the warehouse`,
+      if (remove) {
+        await api("PUT", `/admin/stock/${r.token}`, { delta: -qty, reason });
+        done(`✓ Removed ${fmt(qty)} ${ticker(r.token)}`);
+        return;
+      }
+      const got = await api<{ units?: number; error?: string }>(
+        "PUT",
+        `/admin/stock/${r.token}`,
+        { tx: tx.trim(), reason },
       );
+      if (got.error) setError(reasons[got.error] ?? got.error);
+      else
+        done(`✓ Added ${fmt(got.units ?? 0)} ${ticker(r.token)} from the swap`);
     } catch (err) {
-      setError(
-        (err as Error).message === "sold_out"
-          ? "The warehouse doesn't have that many to remove."
-          : (err as Error).message,
-      );
+      const code = (err as Error).message;
+      setError(reasons[code] ?? code);
     } finally {
       setBusy(false);
     }
   };
   return (
     <form className="flex flex-col gap-3 py-2" onSubmit={submit}>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm">{remove ? "Remove" : "Add"}</span>
-        {QUICK.map((q) => (
-          <button
-            key={q}
-            type="button"
-            className={cn(
-              "btn h-8 font-mono text-xs",
-              qty === q && "btn-primary",
-            )}
-            onClick={() => setQty(q)}
-          >
-            {fmt(q)}
-          </button>
-        ))}
-        <input
-          className="field h-8 w-28 font-mono"
-          inputMode="numeric"
-          aria-label="Units"
-          value={qty || ""}
-          onChange={(e) => setQty(Number(e.target.value.replace(/\D/g, "")))}
-        />
-        <span className="text-sm text-white/60">
-          units of {name(r.token)} → {fmt(Math.max(0, r.onHand + delta))} in the
-          warehouse
-        </span>
-      </div>
+      {remove ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm">Remove</span>
+          <input
+            className="field h-8 w-28 font-mono"
+            inputMode="numeric"
+            aria-label="Units to remove"
+            value={qty || ""}
+            onChange={(e) => setQty(Number(e.target.value.replace(/\D/g, "")))}
+          />
+          <span className="text-sm text-white/60">
+            units of {name(r.token)} → {fmt(Math.max(0, r.onHand - qty))} in the
+            warehouse
+          </span>
+        </div>
+      ) : (
+        <p className="text-sm text-white/60">
+          Paste the tx of a swap that bought {ticker(r.token)} into the Agentic
+          Wallet. The units come from what the chain shows it received.
+        </p>
+      )}
       <div className="grid gap-2 md:grid-cols-[1fr_1fr_auto]">
         <input
           className="field"
@@ -339,94 +353,44 @@ function RestockForm({ r, done }: { r: Row; done: (msg: string) => void }) {
           onChange={(e) => setReason(e.target.value)}
           required
         />
-        <input
-          className="field font-mono"
-          placeholder="On-chain purchase tx (optional)"
-          value={tx}
-          onChange={(e) => setTx(e.target.value)}
-        />
+        {!remove && (
+          <input
+            className="field font-mono"
+            placeholder="Swap tx (0x…)"
+            aria-label="Swap tx"
+            value={tx}
+            onChange={(e) => setTx(e.target.value)}
+            required
+          />
+        )}
         <button
           className="btn btn-primary"
-          disabled={busy || !qty || !reason.trim()}
+          disabled={busy || !reason.trim() || (remove ? !qty : !tx.trim())}
         >
           {busy
-            ? "Saving…"
-            : `${remove ? "Remove" : "Add"} ${fmt(qty)} ${ticker(r.token)}`}
+            ? "Checking…"
+            : remove
+              ? `Remove ${fmt(qty)} ${ticker(r.token)}`
+              : "Report swap"}
         </button>
       </div>
-      <label className="flex items-center gap-2 text-xs text-white/55">
-        <input
-          type="checkbox"
-          className="accent-white"
-          checked={remove}
-          onChange={(e) => setRemove(e.target.checked)}
-        />
-        Correct a count instead (remove units, e.g. after a miscount)
-      </label>
+      {real ? (
+        <label className="flex items-center gap-2 text-xs text-white/55">
+          <input
+            type="checkbox"
+            className="accent-white"
+            checked={remove}
+            onChange={(e) => setRemove(e.target.checked)}
+          />
+          Correct a count instead (remove units, e.g. after a miscount)
+        </label>
+      ) : (
+        <p className="text-xs text-white/55">
+          {ticker(r.token)} isn't in the paid economy yet: units can only be
+          removed.
+        </p>
+      )}
       <Err>{error}</Err>
     </form>
-  );
-}
-
-/** Empty warehouse: fill every empty token in one go. */
-function FillAll({ rows, done }: { rows: Row[]; done: (msg: string) => void }) {
-  const [qty, setQty] = useState(1000);
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState("");
-  const targets = rows.filter((r) => r.onHand === 0);
-  const fill = async () => {
-    setBusy(true);
-    setMsg("");
-    let ok = 0;
-    for (const r of targets) {
-      try {
-        await api("PUT", `/admin/stock/${r.token}`, {
-          delta: qty,
-          reason: "Initial stock",
-        });
-        ok++;
-      } catch (e) {
-        setMsg(`Stopped at ${ticker(r.token)}: ${(e as Error).message}`);
-        break;
-      }
-    }
-    setBusy(false);
-    if (ok === targets.length)
-      done(`✓ Added ${fmt(qty)} units to each of ${ok} tokens`);
-    else if (ok) done(`Added ${fmt(qty)} units to ${ok} tokens, then stopped`);
-  };
-  return (
-    <div className="mb-4 flex flex-col gap-3 rounded-xl border border-white/30 bg-white/[0.05] p-4 shadow-[0_0_24px_rgba(255,255,255,.06)] md:flex-row md:items-center">
-      <div className="flex-1">
-        <div className="font-medium">
-          {targets.length === rows.length
-            ? "The warehouse is empty"
-            : `${targets.length} tokens are empty`}
-        </div>
-        <p className="text-sm text-white/60">
-          CEOs can't stock their shops until there's stock here. Fill every
-          empty token at once, then fine-tune per token with Restock.
-        </p>
-      </div>
-      <div className="flex items-center gap-2">
-        <select
-          className="field h-9 w-32 font-mono"
-          value={qty}
-          onChange={(e) => setQty(Number(e.target.value))}
-          aria-label="Units per token"
-        >
-          {QUICK.map((q) => (
-            <option key={q} value={q}>
-              {fmt(q)} each
-            </option>
-          ))}
-        </select>
-        <button className="btn btn-primary" disabled={busy} onClick={fill}>
-          <PackagePlus className="size-4" />{" "}
-          {busy ? "Filling…" : `Fill ${targets.length} tokens`}
-        </button>
-      </div>
-      {msg && <p className="text-sm text-white/70 md:basis-full">{msg}</p>}
-    </div>
   );
 }

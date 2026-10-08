@@ -2,6 +2,7 @@ import { PrivyProvider, usePrivy } from "@privy-io/react-auth";
 import {
   Boxes,
   Building2,
+  Landmark,
   LayoutDashboard,
   LogOut,
   ScrollText,
@@ -11,6 +12,7 @@ import {
 import { useEffect, useState, type ReactNode } from "react";
 import { api, setToken, type Role } from "./api";
 import { Audit } from "./pages/Audit";
+import { Payments } from "./pages/Payments";
 import { Stock } from "./pages/Stock";
 import { Venues } from "./pages/Venues";
 import { Overview } from "./pages/Overview";
@@ -90,7 +92,7 @@ function Gate() {
   return <Shell email={me.email} role={me.role} logout={logout} />;
 }
 
-/** Hash routes: #/, #/users, #/users/<id>, #/audit, #/settings. */
+/** Hash routes: #/, #/users, #/users/<id>, #/venues, #/stock, #/payments, #/audit, #/settings. */
 function useRoute() {
   const [hash, setHash] = useState(location.hash);
   useEffect(() => {
@@ -106,6 +108,7 @@ const NAV = [
   { path: "users", label: "Players", Icon: UsersIcon },
   { path: "venues", label: "Venues", Icon: Building2 },
   { path: "stock", label: "Stock", Icon: Boxes },
+  { path: "payments", label: "Payments", Icon: Landmark },
   { path: "audit", label: "Audit log", Icon: ScrollText },
   { path: "settings", label: "Settings", Icon: Cog },
 ];
@@ -164,6 +167,7 @@ function Shell({
           (id ? <UserPage id={id} canEdit={canEdit} /> : <Users />)}
         {page === "venues" && <Venues canEdit={canEdit} />}
         {page === "stock" && <Stock canEdit={canEdit} />}
+        {page === "payments" && <Payments canEdit={canEdit} />}
         {page === "audit" && <Audit />}
         {page === "settings" && <Settings role={role} />}
       </main>

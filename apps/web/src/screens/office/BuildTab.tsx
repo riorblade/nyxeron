@@ -103,8 +103,10 @@ export function BuildTab({ s }: { s: GameState }) {
                 )}
                 {next && (
                   <button
+                    disabled={s.phase !== "day"}
+                    title={s.phase !== "day" ? en.office.dayOnly : undefined}
                     onClick={upgrade}
-                    className="mt-1 h-9 w-full rounded-lg bg-white text-xs font-semibold tracking-[0.14em] text-black uppercase shadow-[0_0_24px_rgba(255,255,255,.18)]"
+                    className="mt-1 h-9 w-full rounded-lg bg-white text-xs font-semibold tracking-[0.14em] text-black uppercase shadow-[0_0_24px_rgba(255,255,255,.18)] disabled:opacity-40"
                   >
                     {en.build.upgrade}
                   </button>

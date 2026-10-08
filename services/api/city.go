@@ -6,7 +6,6 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
-	"math"
 	"net/http"
 	"os"
 	"strconv"
@@ -14,19 +13,17 @@ import (
 	"time"
 )
 
-// The shared city (packages/core/src/rules/city.ts has the same rules for the browser). Venues are rented by the
-// week with the account's Coin — the platform's income. A tenant's shop sells to other players while they are
-// away, as long as there is stock; from Level 3 the tenant can also schedule parties (10 minutes by default), and
-// what guests spend at a live party goes to the tenant's wallet. Everything is settled here, never in the browser.
+// The shared city, on credits (real money; docs/payments.md). Venues are rented by the week in credits
+// (payments.json → rentCredits, the back office's table over it): the platform's income. A tenant's shop resells
+// real stock from the platform's warehouse at the tenant's credit prices while they are away, and from Level 3 the
+// tenant can also schedule parties; both sell through sales.go. Everything is settled here, never in the browser.
 //
-//	GET    /api/city                       → venues (free / rented, shops, stock), upcoming + live parties, rent
-//	POST   /api/city/lease                 {level, slot?, club, weeks} → rent (or extend) a venue
-//	POST   /api/city/stock                 {token, qty} → buy stock for my shop from the platform's warehouse
+//	GET    /api/city                       → venues (free / rented, shop menus), upcoming + live parties, rent
+//	POST   /api/city/lease                 {level, slot?, club, weeks} → rent (or extend) a venue, in credits
 //	PUT    /api/city/venue                 {club} → rename my venue
-//	PUT    /api/city/shop                  {lease, open?, prices?} → open/close that venue's shop, set my prices
-//	POST   /api/city/shops/{lease}/buy     {token, qty} → buy from someone's shop
+//	PUT    /api/city/shop                  {lease, open} → open/close that venue's shop
 //
-// Parties at city venues are events (events.go): /api/events with a lease.
+// Shop menus and purchases, party prices and sales: sales.go. Parties are events (events.go): /api/events + lease.
 //
 // Game numbers come from gamedata/ — a copy of packages/core/src/data that a test keeps identical.
 
@@ -34,27 +31,21 @@ import (
 var gameFS embed.FS
 
 type tokenInfo struct {
-	Ticker       string  `json:"ticker"`
-	BuyCost      float64 `json:"buyCost"`
-	DefaultPrice float64 `json:"defaultPrice"`
-	MinLevel     int     `json:"minLevel"`
-	Legs         [][]any `json:"legs"`
+	Ticker   string `json:"ticker"`
+	MinLevel int    `json:"minLevel"` // the smallest venue that may sell it (tokens.json)
 }
 
 var game struct {
 	tokens map[string]tokenInfo
 	levels map[string]struct {
-		Name       string  `json:"name"`
-		PriceScale float64 `json:"priceScale"`
-		Storage    int64   `json:"storage"`
+		Name string `json:"name"`
 	}
 	city struct {
 		LeaseDays     int `json:"leaseDays"`
 		MaxWeeksAhead int `json:"maxWeeksAhead"`
 		MaxVenues     int `json:"maxVenuesPerPlayer"`
 		Venues        map[string]struct {
-			Count      int   `json:"count"`
-			WeeklyRent int64 `json:"weeklyRent"`
+			Count int `json:"count"`
 		} `json:"venues"`
 		Shop struct {
 			MaxMarkup float64 `json:"maxMarkup"`
@@ -69,17 +60,23 @@ var game struct {
 			SettleGraceMinutes int `json:"settleGraceMinutes"`
 		} `json:"party"`
 	}
-	strategy struct {
-		Platform struct {
-			SpotFactorRange [2]float64 `json:"spotFactorRange"`
-		} `json:"platform"`
-	}
 	payments struct {
-		ChainID       int    `json:"chainId"`
-		Confirmations uint64 `json:"confirmations"`
-		AgenticWallet string `json:"agenticWallet"`
-		Topup         struct {
-			Tokens map[string]string `json:"tokens"`
+		ChainID       int              `json:"chainId"`
+		Confirmations uint64           `json:"confirmations"`
+		AgenticWallet string           `json:"agenticWallet"`
+		CreditsPerUSD int              `json:"creditsPerUsd"`
+		SharesPerUnit float64          `json:"sharesPerUnit"`
+		RentCredits   map[string]int64 `json:"rentCredits"` // weekly rent per venue level, in credits
+		Agent         struct {
+			MaxUsdPerSwap int64 `json:"maxUsdPerSwap"`
+			MaxUsdPerDay  int64 `json:"maxUsdPerDay"`
+		} `json:"agent"`
+		Topup struct {
+			FeePercent   int               `json:"feePercent"`
+			MinUSD       int64             `json:"minUsd"`
+			CapUSDPerDay int64             `json:"capUsdPerDay"`
+			CapUSDTotal  int64             `json:"capUsdTotal"`
+			Tokens       map[string]string `json:"tokens"`
 		} `json:"topup"`
 		Tokens map[string]struct {
 			Symbol   string `json:"symbol"`
@@ -90,7 +87,7 @@ var game struct {
 
 func init() {
 	for name, v := range map[string]any{
-		"tokens": &game.tokens, "levels": &game.levels, "city": &game.city, "strategy": &game.strategy,
+		"tokens": &game.tokens, "levels": &game.levels, "city": &game.city,
 		"payments": &game.payments,
 	} {
 		b, err := gameFS.ReadFile("gamedata/" + name + ".json")
@@ -105,49 +102,9 @@ func init() {
 
 func lv(level int) string { return strconv.Itoa(level) }
 
-// factorFn: a token's spot factor (spot now / spot when the server first saw it); 1 without prices.
-type factorFn func(token string) float64
-
-func spotFactorOf(quotes, ref map[string]float64, token string) float64 {
-	var sum, w float64
-	legs := game.tokens[token].Legs
-	if len(legs) == 0 {
-		legs = [][]any{{game.tokens[token].Ticker, 100.0}}
-	}
-	for _, leg := range legs {
-		ticker, _ := leg[0].(string)
-		weight, _ := leg[1].(float64)
-		now, was := quotes[ticker], ref[ticker]
-		if now <= 0 || was <= 0 {
-			continue
-		}
-		sum += now / was * weight
-		w += weight
-	}
-	if w == 0 {
-		return 1
-	}
-	r := game.strategy.Platform.SpotFactorRange
-	return max(r[0], min(r[1], sum/w))
-}
-
-func scale(level int) float64 { return game.levels[lv(level)].PriceScale }
-
-func wholesale(token string, level int, f float64) int64 {
-	return max(1, int64(math.Round(game.tokens[token].BuyCost*scale(level)*f)))
-}
-
-func shelfPrice(token string, level int, f float64) int64 {
-	base := math.Round(game.tokens[token].DefaultPrice * scale(level))
-	return max(1, int64(math.Round(base*f)))
-}
-
-func maxShelfPrice(token string, level int, f float64) int64 {
-	return int64(float64(shelfPrice(token, level, f)) * game.city.Shop.MaxMarkup)
-}
-
 // ---------- store ----------
 
+// Shelf: one token on a shop's menu: the warehouse's units and the tenant's price in credits.
 type Shelf struct {
 	Token string `json:"token"`
 	Qty   int64  `json:"qty"`
@@ -179,8 +136,10 @@ type CityView struct {
 	Rent    map[string]int64 `json:"rent"`
 	Counts  map[string]int   `json:"counts"`
 	Now     int64            `json:"now"`
-	// Prices[level][token]: what stock costs, the usual shelf price and the most a shop may ask, right now.
-	Prices map[string]map[string]PriceRow `json:"prices,omitempty"`
+	// Wholesale[token]: what one unit (0.001 share) costs the platform now, in credits: a shop's floor (its
+	// ceiling is maxMarkup × it). Only tokens with a live price.
+	Wholesale map[string]int64 `json:"wholesale,omitempty"`
+	MaxMarkup float64          `json:"maxMarkup"`
 	// Supply[token]: what the platform's warehouse holds (shops restock from it).
 	Supply map[string]int64 `json:"supply,omitempty"`
 	// Open: renting, shops and city parties are on. Off until Credit (real money) top-ups are live.
@@ -200,35 +159,15 @@ func cityClosed(w http.ResponseWriter) bool {
 	return true
 }
 
-type PriceRow struct {
-	Wholesale int64 `json:"wholesale"`
-	Shelf     int64 `json:"shelf"`
-	Max       int64 `json:"max"`
-}
-
-func priceTable(f factorFn) map[string]map[string]PriceRow {
-	out := map[string]map[string]PriceRow{}
-	for l := range game.city.Venues {
-		level, _ := strconv.Atoi(l)
-		out[l] = map[string]PriceRow{}
-		for tok, info := range game.tokens {
-			if info.MinLevel <= level {
-				fx := f(tok)
-				out[l][tok] = PriceRow{wholesale(tok, level, fx), shelfPrice(tok, level, fx), maxShelfPrice(tok, level, fx)}
-			}
-		}
-	}
-	return out
-}
-
-// Rent: the back office's table (settings "rent") over the game data.
+// Rent: weekly rent per venue level, in credits (real money): payments.json's rentCredits, overridden by the back
+// office's table (settings "rent_credits"; the Coin-era "rent" table no longer applies).
 func (s *store) Rent(ctx context.Context) map[string]int64 {
 	out := map[string]int64{}
-	for l, v := range game.city.Venues {
-		out[l] = v.WeeklyRent
+	for l := range game.city.Venues {
+		out[l] = game.payments.RentCredits[l]
 	}
 	var raw string
-	if s.db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = 'rent'`).Scan(&raw) == nil {
+	if s.db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = 'rent_credits'`).Scan(&raw) == nil {
 		var o map[string]int64
 		if json.Unmarshal([]byte(raw), &o) == nil {
 			for l, v := range o {
@@ -288,10 +227,10 @@ func (s *store) City(ctx context.Context, viewer string, admin bool, now time.Ti
 		byVenue[[2]int{level, slot}] = &l
 	}
 	rows.Close()
-	// Shelves: the tenant's stock (stock belongs to the player and moves with them to another venue).
+	// Shelves: the shop's menu in credits (sales.go), with what the platform's warehouse has of each token.
 	for _, l := range byVenue {
-		r, err := s.db.QueryContext(ctx, `SELECT token, qty, price FROM shop_stock
-			WHERE user_id = (SELECT user_id FROM leases WHERE id = ?) AND qty > 0 ORDER BY token`, l.ID)
+		r, err := s.db.QueryContext(ctx, `SELECT sp.token, COALESCE(ps.qty, 0), sp.price FROM shop_prices sp
+			LEFT JOIN platform_stock ps ON ps.token = sp.token WHERE sp.lease_id = ? ORDER BY sp.token`, l.ID)
 		if err != nil {
 			return v, err
 		}
@@ -363,20 +302,6 @@ var (
 	errVenueLimit = errors.New("venue limit reached")
 )
 
-func pay(t *sql.Tx, id string, amount int64, kind, reason string) error {
-	var wallet int64
-	if err := t.QueryRow(`SELECT wallet FROM users WHERE id = ?`, id).Scan(&wallet); err != nil {
-		return err
-	}
-	if wallet < amount {
-		return errRejected
-	}
-	if _, err := t.Exec(`UPDATE users SET wallet = wallet - ? WHERE id = ?`, amount, id); err != nil {
-		return err
-	}
-	return ledger(t, id, -amount, kind, "", reason)
-}
-
 // Lease rents a venue (slot 0: the first free one of that level) for whole weeks, or, when the slot is already
 // the player's, extends it. A player may run up to maxVenuesPerPlayer venues; at most maxWeeksAhead paid ahead.
 func (s *store) Lease(ctx context.Context, id string, level, slot int, club string, weeks int, now time.Time) (p Profile, err error) {
@@ -403,7 +328,10 @@ func (s *store) Lease(ctx context.Context, id string, level, slot int, club stri
 			if endsAt+int64(weeks)*week > now.Unix()+int64(game.city.MaxWeeksAhead)*week {
 				return errRejected
 			}
-			if e := pay(t, id, rent, "rent", "extend"); e != nil {
+			if e := creditLedger(t, id, -rent, "rent", "", "extend"); e != nil {
+				return e
+			}
+			if e := platformLedger(t, rent, "rent", "lease:"+strconv.FormatInt(leaseID, 10), "extend"); e != nil {
 				return e
 			}
 			if _, e := t.Exec(`UPDATE leases SET ends_at = ends_at + ?, rent = rent + ?, club = CASE WHEN ? != '' THEN ? ELSE club END
@@ -433,11 +361,16 @@ func (s *store) Lease(ctx context.Context, id string, level, slot int, club stri
 					return e
 				}
 			}
-			if e := pay(t, id, rent, "rent", game.levels[lv(level)].Name); e != nil {
+			if e := creditLedger(t, id, -rent, "rent", "", game.levels[lv(level)].Name); e != nil {
 				return e
 			}
-			if _, e := t.Exec(`INSERT INTO leases (level, slot, user_id, club, rent, starts_at, ends_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-				level, slot, id, club, rent, now.Unix(), now.Unix()+int64(weeks)*week); e != nil {
+			res, e := t.Exec(`INSERT INTO leases (level, slot, user_id, club, rent, starts_at, ends_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+				level, slot, id, club, rent, now.Unix(), now.Unix()+int64(weeks)*week)
+			if e != nil {
+				return e
+			}
+			leaseID, _ = res.LastInsertId()
+			if e := platformLedger(t, rent, "rent", "lease:"+strconv.FormatInt(leaseID, 10), game.levels[lv(level)].Name); e != nil {
 				return e
 			}
 		}
@@ -467,71 +400,12 @@ func (s *store) Rename(ctx context.Context, id string, lease int64, club string,
 	})
 }
 
-// Stock buys units for the player's shops from the warehouse. Stock belongs to the player and every one of their
-// open venues sells from it; it must fit their venues' storage combined, and a token must be allowed at their
-// biggest venue.
-// ponytail: one stock pool and one price list per player; per-venue shelves if tenants ask for them.
-func (s *store) Stock(ctx context.Context, id, token string, qty int64, f factorFn, now time.Time) (p Profile, err error) {
-	tok, known := game.tokens[token]
-	if !known || qty < 1 || qty > 10_000 {
-		return p, errBad
-	}
-	err = s.tx(ctx, id, func(t *sql.Tx) error {
-		leases, e := myLeases(t, id, now)
-		if e != nil {
-			return e
-		}
-		l := leases[0] // the biggest
-		if tok.MinLevel > l.level {
-			return errRejected
-		}
-		var held, storage int64
-		if e := t.QueryRow(`SELECT COALESCE(SUM(qty), 0) FROM shop_stock WHERE user_id = ?`, id).Scan(&held); e != nil {
-			return e
-		}
-		for _, x := range leases {
-			storage += game.levels[lv(x.level)].Storage
-		}
-		if held+qty > storage {
-			return errRejected
-		}
-		factor := f(token)
-		// From the platform's warehouse: what isn't there can't be sold.
-		if e := moveStock(t, token, -qty, "sold", id, "", "", ""); e != nil {
-			return e
-		}
-		if e := pay(t, id, wholesale(token, l.level, factor)*qty, "stock", token); e != nil {
-			return e
-		}
-		if _, e := t.Exec(`INSERT INTO shop_stock (user_id, token, qty, price) VALUES (?, ?, ?, ?)
-			ON CONFLICT (user_id, token) DO UPDATE SET qty = qty + excluded.qty`,
-			id, token, qty, shelfPrice(token, l.level, factor)); e != nil {
-			return e
-		}
-		if e := touch(t, id); e != nil {
-			return e
-		}
-		p, e = read(t, id)
-		return e
-	})
-	return
-}
-
-// SetShop opens or closes one venue's shop and sets the player's shelf prices (up to maxMarkup times the usual
-// price at that venue).
-func (s *store) SetShop(ctx context.Context, id string, lease int64, open *bool, prices map[string]int64, f factorFn, now time.Time) error {
+// SetShop opens or closes one venue's shop (its menu is set in sales.go: SetShopPrices).
+func (s *store) SetShop(ctx context.Context, id string, lease int64, open *bool, now time.Time) error {
 	return s.tx(ctx, id, func(t *sql.Tx) error {
 		l, e := ownLease(t, id, lease, now)
 		if e != nil {
 			return e
-		}
-		for tok, price := range prices {
-			if _, ok := game.tokens[tok]; !ok || price < 1 || price > maxShelfPrice(tok, l.level, f(tok)) {
-				return errBad
-			}
-			if _, e := t.Exec(`UPDATE shop_stock SET price = ? WHERE user_id = ? AND token = ?`, price, id, tok); e != nil {
-				return e
-			}
 		}
 		if open != nil {
 			if _, e := t.Exec(`UPDATE leases SET open = ? WHERE id = ?`, map[bool]int{true: 1}[*open], l.id); e != nil {
@@ -542,86 +416,7 @@ func (s *store) SetShop(ctx context.Context, id string, lease int64, open *bool,
 	})
 }
 
-// ShopBuy: a player buys from an open shop. The money goes straight to the tenant; the tokens to the buyer's
-// portfolio at what they paid.
-func (s *store) ShopBuy(ctx context.Context, buyer string, leaseID int64, token string, qty int64, now time.Time) (p Profile, err error) {
-	if qty < 1 || qty > game.city.Shop.MaxBuy {
-		return p, errBad
-	}
-	err = s.tx(ctx, buyer, func(t *sql.Tx) error {
-		var owner, club string
-		var open, banned int
-		e := t.QueryRow(`SELECT l.user_id, l.club, l.open, u.banned FROM leases l JOIN users u ON u.id = l.user_id
-			WHERE l.id = ? AND l.ends_at > ?`, leaseID, now.Unix()).Scan(&owner, &club, &open, &banned)
-		if errors.Is(e, sql.ErrNoRows) {
-			return errNotFound
-		} else if e != nil {
-			return e
-		}
-		if owner == buyer || open == 0 || banned == 1 {
-			return errRejected
-		}
-		var have, price int64
-		if e := t.QueryRow(`SELECT qty, price FROM shop_stock WHERE user_id = ? AND token = ?`, owner, token).Scan(&have, &price); e != nil || have < qty {
-			return errRejected
-		}
-		total := price * qty
-		if e := pay(t, buyer, total, "shop", club); e != nil {
-			return e
-		}
-		if _, e := t.Exec(`UPDATE users SET wallet = wallet + ? WHERE id = ?`, total, owner); e != nil {
-			return e
-		}
-		if e := ledger(t, owner, total, "sale", "", token); e != nil {
-			return e
-		}
-		if _, e := t.Exec(`UPDATE shop_stock SET qty = qty - ? WHERE user_id = ? AND token = ?`, qty, owner, token); e != nil {
-			return e
-		}
-		if e := addHoldings(t, buyer, map[string]Holding{token: {Qty: qty, Cost: total}}); e != nil {
-			return e
-		}
-		if e := touch(t, buyer); e != nil {
-			return e
-		}
-		p, e = read(t, buyer)
-		return e
-	})
-	return
-}
-
-// ---------- spot prices for the city ----------
-
-// factors: spot factors against the server's reference prices (settings "quoteRef": the first price seen per
-// ticker, kept for good so city prices move with the market from launch on).
-func (s *store) factors(ctx context.Context, quotes map[string]float64) factorFn {
-	ref := map[string]float64{}
-	var raw string
-	if s.db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = 'quoteRef'`).Scan(&raw) == nil {
-		_ = json.Unmarshal([]byte(raw), &ref)
-	}
-	grew := false
-	for k, v := range quotes {
-		if _, ok := ref[k]; !ok && v > 0 {
-			ref[k], grew = v, true
-		}
-	}
-	if grew {
-		b, _ := json.Marshal(ref)
-		_, _ = s.db.ExecContext(ctx, `INSERT INTO settings (key, value, updated_at) VALUES ('quoteRef', ?, ?)
-			ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`, string(b), time.Now().Unix())
-	}
-	return func(tok string) float64 { return spotFactorOf(quotes, ref, tok) }
-}
-
 // ---------- routes ----------
-
-func (pl *players) factor(ctx context.Context) factorFn {
-	if pl.q == nil {
-		return func(string) float64 { return 1 }
-	}
-	return pl.db.factors(ctx, pl.q.get().Quotes)
-}
 
 // viewer: the signed-in player if the request carries a valid token, else "" (the city is public).
 func (pl *players) viewer(r *http.Request) string {
@@ -654,7 +449,13 @@ func (pl *players) routeCity(mux *http.ServeMux) {
 			return
 		}
 		v, err := pl.db.City(r.Context(), pl.viewer(r), false, time.Now())
-		v.Prices = priceTable(pl.factor(r.Context()))
+		v.Wholesale = map[string]int64{}
+		for token := range game.payments.Tokens {
+			if w, err := wholesaleOf(token, freshQuotes(pl.q, time.Now())); err == nil {
+				v.Wholesale[token] = w
+			}
+		}
+		v.MaxMarkup = game.city.Shop.MaxMarkup
 		v.Supply = pl.db.supplyFor(r.Context())
 		v.Open = cityOpen
 		reply(w, v, err)
@@ -686,48 +487,20 @@ func (pl *players) routeCity(mux *http.ServeMux) {
 			reply(w, map[string]bool{"ok": true}, pl.db.Rename(r.Context(), id, in.Lease, in.Club, time.Now()))
 		}
 	})
-	mux.HandleFunc("POST /api/city/stock", func(w http.ResponseWriter, r *http.Request) {
-		if cityClosed(w) {
-			return
-		}
-		id, ok := pl.who(w, r)
-		var in struct {
-			Token string
-			Qty   int64
-		}
-		if ok && body(w, r, &in) {
-			p, err := pl.db.Stock(r.Context(), id, in.Token, in.Qty, pl.factor(r.Context()), time.Now())
-			reply(w, p, err)
-		}
-	})
 	mux.HandleFunc("PUT /api/city/shop", func(w http.ResponseWriter, r *http.Request) {
 		if cityClosed(w) {
 			return
 		}
 		id, ok := pl.who(w, r)
 		var in struct {
-			Lease  int64
-			Open   *bool
-			Prices map[string]int64
+			Lease int64
+			Open  *bool
 		}
+		// Open / close only: since the cutover a shop sells real stock at its credit prices
+		// (PUT /api/city/shops/{lease}/prices, sales.go); it holds no stock of its own.
 		if ok && body(w, r, &in) {
-			err := pl.db.SetShop(r.Context(), id, in.Lease, in.Open, in.Prices, pl.factor(r.Context()), time.Now())
+			err := pl.db.SetShop(r.Context(), id, in.Lease, in.Open, time.Now())
 			reply(w, map[string]bool{"ok": true}, err)
-		}
-	})
-	mux.HandleFunc("POST /api/city/shops/{lease}/buy", func(w http.ResponseWriter, r *http.Request) {
-		if cityClosed(w) {
-			return
-		}
-		id, ok := pl.who(w, r)
-		lease, _ := strconv.ParseInt(r.PathValue("lease"), 10, 64)
-		var in struct {
-			Token string
-			Qty   int64
-		}
-		if ok && body(w, r, &in) {
-			p, err := pl.db.ShopBuy(r.Context(), id, lease, in.Token, in.Qty, time.Now())
-			reply(w, p, err)
 		}
 	})
 }

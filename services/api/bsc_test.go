@@ -26,7 +26,8 @@ type fakeRPC struct {
 	head     uint64
 	receipts map[string]string // tx → receipt JSON
 	balance  string
-	down     bool // answers HTTP 503, like a provider having an outage
+	balances map[string]string // per token contract (lower case), else balance
+	down     bool              // answers HTTP 503, like a provider having an outage
 	mu       sync.Mutex
 	methods  []string
 	callTags []string // the block tag of each eth_call
@@ -72,13 +73,49 @@ func (f *fakeRPC) serve(t *testing.T) string {
 			if rc, ok := f.receipts[tx]; ok {
 				result = rc
 			}
+		case "eth_getLogs": // the logs of the known receipts that match the filter (address, recipient, blocks)
+			var q struct {
+				Address   string    `json:"address"`
+				FromBlock string    `json:"fromBlock"`
+				ToBlock   string    `json:"toBlock"`
+				Topics    []*string `json:"topics"`
+			}
+			_ = json.Unmarshal(req.Params[0], &q)
+			lo, _ := hexUint(q.FromBlock)
+			hi, _ := hexUint(q.ToBlock)
+			var out []json.RawMessage
+			for _, rc := range f.receipts {
+				var r struct{ Logs []json.RawMessage }
+				_ = json.Unmarshal([]byte(rc), &r)
+				for _, raw := range r.Logs {
+					var l rpcLog
+					_ = json.Unmarshal(raw, &l)
+					lower(&l)
+					b, _ := hexUint(l.BlockNumber)
+					if l.Address == q.Address && len(l.Topics) == 3 && len(q.Topics) == 3 && q.Topics[2] != nil &&
+						l.Topics[2] == *q.Topics[2] && b >= lo && b <= hi {
+						out = append(out, raw)
+					}
+				}
+			}
+			if out == nil {
+				out = []json.RawMessage{}
+			}
+			b, _ := json.Marshal(out)
+			result = string(b)
 		case "eth_call":
 			var tag string
+			var call struct{ To string }
 			_ = json.Unmarshal(req.Params[1], &tag)
+			_ = json.Unmarshal(req.Params[0], &call)
 			f.mu.Lock()
 			f.callTags = append(f.callTags, tag)
+			bal, ok := f.balances[strings.ToLower(call.To)]
 			f.mu.Unlock()
-			result = strconv.Quote(f.balance)
+			if !ok {
+				bal = f.balance
+			}
+			result = strconv.Quote(bal)
 		}
 		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":` + result + `}`))
 	}))

@@ -4,24 +4,19 @@
   "maxVenuesPerPlayer": 5,
   "venues": {
     "1": {
-      "count": 24,
-      "weeklyRent": 2000
+      "count": 24
     },
     "2": {
-      "count": 12,
-      "weeklyRent": 6000
+      "count": 12
     },
     "3": {
-      "count": 6,
-      "weeklyRent": 20000
+      "count": 6
     },
     "4": {
-      "count": 4,
-      "weeklyRent": 60000
+      "count": 4
     },
     "5": {
-      "count": 2,
-      "weeklyRent": 150000
+      "count": 2
     }
   },
   "shop": {

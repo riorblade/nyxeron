@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -42,6 +43,7 @@ type admin struct {
 	relayURL string
 	dbPath   string
 	client   *http.Client
+	chain    *bsc // verifies reported restocks; nil: restocks can't be reported
 }
 
 func parseOwners(env string) map[string]bool {
@@ -536,7 +538,7 @@ func (s *store) SetRent(ctx context.Context, actor string, rent map[string]int64
 		return err
 	}
 	defer t.Rollback()
-	if _, err := t.Exec(`INSERT INTO settings (key, value, updated_at) VALUES ('rent', ?, ?)
+	if _, err := t.Exec(`INSERT INTO settings (key, value, updated_at) VALUES ('rent_credits', ?, ?)
 		ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`, string(b), time.Now().Unix()); err != nil {
 		return err
 	}
@@ -589,11 +591,11 @@ func (s *store) SetVenueCounts(ctx context.Context, actor string, counts map[str
 	return t.Commit()
 }
 
-// Revenue: rent the platform took in Coin (all time and the last 7 days). Credit rent is real money: it is
-// reported apart once the city runs on credits.
+// Revenue: rent the platform took, in credits (all time and the last 7 days). The city runs on credits since the
+// cutover; Coin-era rent isn't real money.
 func (s *store) Revenue(ctx context.Context, now time.Time) (total, week int64) {
 	_ = s.db.QueryRowContext(ctx, `SELECT COALESCE(-SUM(delta), 0), COALESCE(-SUM(CASE WHEN at >= ? THEN delta END), 0)
-		FROM ledger WHERE kind = 'rent' AND currency = 'coin'`, now.Unix()-7*86400).Scan(&total, &week)
+		FROM ledger WHERE kind = 'rent' AND currency = 'credit'`, now.Unix()-7*86400).Scan(&total, &week)
 	return
 }
 
@@ -741,6 +743,70 @@ func (a *admin) route(mux *http.ServeMux) {
 			ok(w, a.db.SetUser(r.Context(), actor, r.PathValue("id"), in))
 		}
 	})
+	mux.HandleFunc("GET /api/admin/payments", func(w http.ResponseWriter, r *http.Request) {
+		if _, _, yes := a.who(w, r, roleViewer); yes {
+			p, err := a.db.Payments(r.Context())
+			if err != nil {
+				fail(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, p)
+		}
+	})
+	// Run the reconciliation now (it also runs every hour): a match resumes paused payments.
+	mux.HandleFunc("POST /api/admin/reconcile", func(w http.ResponseWriter, r *http.Request) {
+		actor, _, yes := a.who(w, r, roleAdmin)
+		var in struct {
+			Reason string `json:"reason"`
+		}
+		if yes && body(w, r, &in) {
+			if strings.TrimSpace(in.Reason) == "" { // it can resume payments: say why (audit log)
+				fail(w, errBad)
+				return
+			}
+			rec, err := a.db.Reconcile(r.Context(), a.chain, actor, in.Reason, time.Now())
+			switch {
+			case errors.Is(err, errNotConfigured):
+				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "not_configured"})
+			case err != nil:
+				slog.Warn("reconcile", "err", err)
+				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "chain_unavailable"})
+			default:
+				writeJSON(w, http.StatusOK, rec)
+			}
+		}
+	})
+	// Book USDC/USDT the team sent to the Agentic Wallet as the platform's own money (read on BSC).
+	mux.HandleFunc("POST /api/admin/seed", func(w http.ResponseWriter, r *http.Request) {
+		actor, _, yes := a.who(w, r, roleAdmin)
+		var in struct {
+			Tx     string `json:"tx"`
+			Reason string `json:"reason"`
+		}
+		if !yes || !body(w, r, &in) {
+			return
+		}
+		cents, err := a.db.RecordSeed(r.Context(), a.chain, actor, in.Tx, in.Reason, time.Now())
+		if errors.Is(err, errRejected) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "credited_to_a_player"})
+			return
+		}
+		if err != nil {
+			restockError(w, err) // pending, tx_used, not_a_restock (nothing came in), bad_request, not_configured…
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]int64{"usdCents": cents})
+	})
+	mux.HandleFunc("POST /api/admin/sales/{id}/void", func(w http.ResponseWriter, r *http.Request) {
+		actor, _, yes := a.who(w, r, roleAdmin)
+		var in struct {
+			Reason string `json:"reason"`
+		}
+		if yes && body(w, r, &in) {
+			n, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+			ok(w, a.db.VoidSale(r.Context(), actor, n, in.Reason))
+		}
+	})
 	mux.HandleFunc("POST /api/admin/users/{id}/clear-saves", func(w http.ResponseWriter, r *http.Request) {
 		actor, _, yes := a.who(w, r, roleAdmin)
 		var in struct {
@@ -861,13 +927,29 @@ func (a *admin) route(mux *http.ServeMux) {
 			Reason string
 			Tx     string
 		}
-		if yes && body(w, r, &in) {
-			kind := "adjust"
-			if in.Delta > 0 {
-				kind = "restock"
-			}
-			ok(w, a.db.Restock(r.Context(), actor, r.PathValue("token"), in.Delta, kind, in.Reason, in.Tx))
+		if !yes || !body(w, r, &in) {
+			return
 		}
+		// Units come in only from a swap verified on BSC (the same check as the agent's); by hand an admin can
+		// only take units out (a correction, audited with its reason).
+		if in.Tx != "" {
+			if strings.TrimSpace(in.Reason) == "" { // back-office changes always say why (audit log)
+				fail(w, errBad)
+				return
+			}
+			got, err := a.db.VerifiedRestock(r.Context(), a.chain, actor, r.PathValue("token"), in.Tx, in.Reason, time.Now())
+			if err != nil {
+				restockError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, got)
+			return
+		}
+		if in.Delta >= 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "report_a_tx"})
+			return
+		}
+		ok(w, a.db.Restock(r.Context(), actor, r.PathValue("token"), in.Delta, "adjust", in.Reason, ""))
 	})
 	// Public: the banner players see.
 	mux.HandleFunc("GET /api/announcement", func(w http.ResponseWriter, r *http.Request) {

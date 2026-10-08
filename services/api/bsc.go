@@ -42,19 +42,25 @@ type Receipt struct {
 	OK        bool     `json:"ok"`
 	Block     uint64   `json:"block"`
 	BlockHash string   `json:"blockHash"`
+	GasUsed   uint64   `json:"gasUsed"`
 	Logs      []rpcLog `json:"logs"`
 }
 
 type rpcLog struct {
-	Address  string   `json:"address"`
-	Topics   []string `json:"topics"`
-	Data     string   `json:"data"`
-	LogIndex string   `json:"logIndex"`
+	Address     string   `json:"address"`
+	Topics      []string `json:"topics"`
+	Data        string   `json:"data"`
+	LogIndex    string   `json:"logIndex"`
+	TxHash      string   `json:"transactionHash"`
+	BlockNumber string   `json:"blockNumber"`
+	Removed     bool     `json:"removed"`
 }
 
 // Transfer: one decoded ERC-20 Transfer log. Addresses are lower-case; Amount is in the token's base units
 // (every locked token, USDC, USDT and the bStocks, has 18 decimals).
 type Transfer struct {
+	Tx       string   `json:"tx"`
+	Block    uint64   `json:"block"`
 	Token    string   `json:"token"`
 	From     string   `json:"from"`
 	To       string   `json:"to"`
@@ -98,17 +104,20 @@ func (b *bsc) Receipt(ctx context.Context, tx string) (Receipt, error) {
 	if !hashRe.MatchString(tx) {
 		return Receipt{}, errBad
 	}
+	tx = strings.ToLower(tx)
 	return both(ctx, b, "eth_getTransactionReceipt", []any{tx}, func(raw json.RawMessage) (Receipt, error) {
 		var r struct {
 			TransactionHash string   `json:"transactionHash"`
 			Status          string   `json:"status"`
 			BlockNumber     string   `json:"blockNumber"`
 			BlockHash       string   `json:"blockHash"`
+			GasUsed         string   `json:"gasUsed"`
 			Logs            []rpcLog `json:"logs"`
 		}
 		if err := json.Unmarshal(raw, &r); err != nil {
 			return Receipt{}, err
 		}
+		gas, _ := hexUint(r.GasUsed)
 		if !strings.EqualFold(r.TransactionHash, tx) {
 			return Receipt{}, fmt.Errorf("bsc: asked for %s, got the receipt of %s", tx, r.TransactionHash)
 		}
@@ -117,15 +126,18 @@ func (b *bsc) Receipt(ctx context.Context, tx string) (Receipt, error) {
 			return Receipt{}, fmt.Errorf("bsc: receipt of %s has no block: %w", tx, err)
 		}
 		for i := range r.Logs {
-			r.Logs[i].Address = strings.ToLower(r.Logs[i].Address)
-			r.Logs[i].Data = strings.ToLower(r.Logs[i].Data)
-			for j := range r.Logs[i].Topics {
-				r.Logs[i].Topics[j] = strings.ToLower(r.Logs[i].Topics[j])
-			}
+			lower(&r.Logs[i])
 		}
 		return Receipt{Tx: strings.ToLower(r.TransactionHash), OK: r.Status == "0x1", Block: block,
-			BlockHash: strings.ToLower(r.BlockHash), Logs: r.Logs}, nil
+			BlockHash: strings.ToLower(r.BlockHash), GasUsed: gas, Logs: r.Logs}, nil
 	})
+}
+
+func lower(l *rpcLog) {
+	l.Address, l.Data, l.TxHash = strings.ToLower(l.Address), strings.ToLower(l.Data), strings.ToLower(l.TxHash)
+	for j := range l.Topics {
+		l.Topics[j] = strings.ToLower(l.Topics[j])
+	}
 }
 
 // Transfers: the token's Transfer logs in a successful transaction. The token must be locked in payments.json.
@@ -137,28 +149,91 @@ func (b *bsc) Transfers(ctx context.Context, tx, token string) ([]Transfer, erro
 	if err != nil {
 		return nil, err
 	}
+	return transfersIn(r, token)
+}
+
+// transfersIn: the token's Transfer logs in a receipt both rpcs agreed on (a failed transaction moved nothing).
+func transfersIn(r Receipt, token string) ([]Transfer, error) {
 	if !r.OK {
 		return nil, errTxFailed
 	}
-	token = strings.ToLower(token)
 	out := []Transfer{}
 	for _, l := range r.Logs {
-		if l.Address != token || len(l.Topics) != 3 || l.Topics[0] != transferTopic {
-			continue
-		}
-		// Strict shapes only: 32-byte padded addresses, one unsigned 256-bit amount (no sign, no extra bytes).
-		if !topicRe.MatchString(l.Topics[1]) || !topicRe.MatchString(l.Topics[2]) || !hashRe.MatchString(l.Data) {
-			return nil, fmt.Errorf("bsc: malformed Transfer log in %s", tx)
-		}
-		amount, _ := new(big.Int).SetString(l.Data[2:], 16)
-		idx, err := hexUint(l.LogIndex)
+		tr, ok, err := decodeTransfer(l, token)
 		if err != nil {
-			return nil, fmt.Errorf("bsc: malformed Transfer log in %s", tx)
+			return nil, fmt.Errorf("bsc: malformed Transfer log in %s", r.Tx)
 		}
-		out = append(out, Transfer{Token: token, From: topicAddr(l.Topics[1]), To: topicAddr(l.Topics[2]),
-			Amount: amount, LogIndex: idx})
+		if ok {
+			tr.Tx, tr.Block = r.Tx, r.Block
+			out = append(out, tr)
+		}
 	}
 	return out, nil
+}
+
+// decodeTransfer: the log as a Transfer of token (ok false: another token or event). Strict shapes only:
+// 32-byte padded addresses, one unsigned 256-bit amount (no sign, no extra bytes).
+func decodeTransfer(l rpcLog, token string) (Transfer, bool, error) {
+	token = strings.ToLower(token)
+	if l.Address != token || len(l.Topics) != 3 || l.Topics[0] != transferTopic {
+		return Transfer{}, false, nil
+	}
+	if !topicRe.MatchString(l.Topics[1]) || !topicRe.MatchString(l.Topics[2]) || !hashRe.MatchString(l.Data) {
+		return Transfer{}, false, errors.New("malformed")
+	}
+	amount, _ := new(big.Int).SetString(l.Data[2:], 16)
+	idx, err := hexUint(l.LogIndex)
+	if err != nil {
+		return Transfer{}, false, err
+	}
+	return Transfer{Token: token, From: topicAddr(l.Topics[1]), To: topicAddr(l.Topics[2]), Amount: amount,
+		LogIndex: idx}, true, nil
+}
+
+// TransfersTo: every Transfer of a locked token to addr in blocks [from, to], as both rpcs report them.
+// What the top-up scanner reads to find transfers nobody reported.
+func (b *bsc) TransfersTo(ctx context.Context, token, addr string, from, to uint64) ([]Transfer, error) {
+	if !lockedToken(token) {
+		return nil, errNotLocked
+	}
+	if !addrRe.MatchString(addr) || to < from {
+		return nil, errBad
+	}
+	filter := map[string]any{"address": strings.ToLower(token),
+		"fromBlock": "0x" + strconv.FormatUint(from, 16), "toBlock": "0x" + strconv.FormatUint(to, 16),
+		"topics": []any{transferTopic, nil, "0x" + strings.Repeat("0", 24) + strings.ToLower(addr[2:])}}
+	return both(ctx, b, "eth_getLogs", []any{filter}, func(raw json.RawMessage) ([]Transfer, error) {
+		var logs []rpcLog
+		if err := json.Unmarshal(raw, &logs); err != nil {
+			return nil, err
+		}
+		out := []Transfer{}
+		for _, l := range logs {
+			lower(&l)
+			if l.Removed {
+				continue
+			}
+			tr, ok, err := decodeTransfer(l, token)
+			block, berr := hexUint(l.BlockNumber)
+			if err != nil || berr != nil || !hashRe.MatchString(l.TxHash) || block < from || block > to {
+				return nil, fmt.Errorf("bsc: malformed log in blocks %d-%d", from, to)
+			}
+			if ok && tr.To == strings.ToLower(addr) {
+				tr.Tx, tr.Block = l.TxHash, block
+				out = append(out, tr)
+			}
+		}
+		return out, nil
+	})
+}
+
+// SafeHead: the newest block with payments.json's confirmations on both rpcs (0 when the chain is too short).
+func (b *bsc) SafeHead(ctx context.Context) (uint64, error) {
+	head, err := b.head(ctx)
+	if err != nil || head < game.payments.Confirmations {
+		return 0, err
+	}
+	return head - game.payments.Confirmations + 1, nil
 }
 
 // Confirmations: blocks since the transaction's, counted from the lower of the two rpcs' heads (they are rarely

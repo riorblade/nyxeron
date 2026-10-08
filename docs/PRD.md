@@ -34,13 +34,15 @@ a markup costs you by running or partying in a club, with friends, in real time.
   may claim it again).
 - **Tokens** (tokenized stocks and baskets) are the utility: what clubs sell, what guests collect.
 - **Platform revenue:**
-  1. **Venue rent**: venues are rented weekly in Coin (fixed supply per level; the scarce Premium Venue is the
-     prize).
-  2. **Warehouse sales**: CEOs buy shop stock from the platform's warehouse at the market price.
+  1. **Venue rent**: venues are rented weekly in Credit (real money; `payments.json → rentCredits`, fixed supply
+     per level; the scarce Premium Venue is the prize).
+  2. **Wholesale**: every party or shop sale of real stock pays the platform the live wholesale price
+     (`docs/payments.md`); the CEO keeps the margin.
   3. **Fee on club sales**: a share of the spread over spot on token sales in single-player careers
      (`strategy.json → platform.feeShare`).
-- **Flows:** guest Coin → CEO (party spend, shop purchases) · CEO Coin → platform (rent, stock) · platform →
-  warehouse (agent buys real tokenized stock on-chain and reports it).
+- **Flows (City, Credit):** guest Credit → CEO margin + platform wholesale (party and shop sales) · CEO Credit →
+  platform (rent) · platform → warehouse (agent buys real tokenized stock on-chain and reports it). Classic stays
+  NYX Points (play money).
 
 ## 4. Features
 
@@ -127,7 +129,7 @@ a markup costs you by running or partying in a club, with friends, in real time.
 | Venues rented / available | ≥ 60% |
 | Parties hosted per week | ≥ 1 per rented Level 3+ venue |
 | Guest sessions per party | ≥ 5 |
-| Rent revenue (Coin/week) | tracked on the back office overview |
+| Rent revenue (Credit/week) | tracked on the back office overview |
 | Warehouse sold-out hours | → 0 once the agent restocks |
 
 ## 7. Out of scope (for now)

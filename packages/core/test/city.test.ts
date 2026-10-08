@@ -3,13 +3,11 @@ import {
   canHostParty,
   city,
   levels,
-  maxShelfPrice,
-  shelfPrice,
+  payments,
   shopTokens,
   spotFactorOf,
   venueCount,
   weeklyRent,
-  wholesale,
 } from "../src";
 
 describe("city rentals", () => {
@@ -17,20 +15,12 @@ describe("city rentals", () => {
     for (const l of [1, 2, 3, 4] as const)
       expect(weeklyRent((l + 1) as 2)).toBeGreaterThan(weeklyRent(l));
     expect(weeklyRent(5, { 5: 99 })).toBe(99);
-    expect(weeklyRent(4, { 5: 99 })).toBe(city.venues[4].weeklyRent);
+    expect(weeklyRent(4, { 5: 99 })).toBe(payments.rentCredits[4]);
     // Few big venues: the Premium Venue is scarce.
     expect(venueCount(5)).toBeLessThan(venueCount(1));
   });
 
-  it("a shop buys below its shelf price and follows the real market", () => {
-    for (const l of [1, 5] as const)
-      for (const t of shopTokens(l)) {
-        expect(wholesale(t, l)).toBeLessThan(shelfPrice(t, l));
-        expect(maxShelfPrice(t, l)).toBe(
-          shelfPrice(t, l) * city.shop.maxMarkup,
-        );
-      }
-    expect(shelfPrice("tsla", 1, 2)).toBe(2 * shelfPrice("tsla", 1));
+  it("club prices follow the real market", () => {
     expect(spotFactorOf({ TSLA: 300 }, { TSLA: 200 }, "tsla")).toBe(1.5);
     expect(spotFactorOf({}, {}, "tsla")).toBe(1);
     // Baskets weigh their legs.

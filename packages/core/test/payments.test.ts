@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { payments, tokens } from "../src";
+import { city, payments, tokens } from "../src";
 
 const address = /^0x[0-9a-fA-F]{40}$/;
 
@@ -13,6 +13,13 @@ describe("payments.json (real money)", () => {
       expect(t.quote.usdc).toBe(3);
       expect(Number(t.quote.received)).toBeGreaterThan(0);
     }
+  });
+
+  it("prices every venue level's weekly rent in credits", () => {
+    for (const lv of Object.keys(city.venues))
+      expect(
+        payments.rentCredits[lv as keyof typeof payments.rentCredits],
+      ).toBeGreaterThan(0);
   });
 
   it("locks the wallet and top-up token addresses", () => {

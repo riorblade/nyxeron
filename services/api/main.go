@@ -40,16 +40,20 @@ func routes(q *quoter, origins []string, auth *privy, db *store, adm *admin) htt
 	if adm == nil {
 		adm = &admin{owners: map[string]bool{}}
 	}
-	adm.auth, adm.db, adm.quotes = auth, db, q
+	// BNB Smart Chain through two providers (bsc.go); nil without both: top-ups and restocks are off.
+	chain := newBSC(os.Getenv("BSC_RPC_1"), os.Getenv("BSC_RPC_2"))
+	adm.auth, adm.db, adm.quotes, adm.chain = auth, db, q, chain
 	adm.route(mux)
-	(&agent{key: os.Getenv("AGENT_KEY"), db: db}).route(mux)
+	(&agent{key: os.Getenv("AGENT_KEY"), db: db, chain: chain}).route(mux)
 	mux.HandleFunc("GET /api/me", auth.handleMe)
-	pl := &players{auth: auth, db: db, q: q}
+	pl := &players{auth: auth, db: db, q: q, chain: chain}
 	pl.route(mux)
 	pl.routeDocs(mux)
 	pl.routeCity(mux)
 	pl.routeRooms(mux, newRoomList())
 	pl.routeEvents(mux)
+	pl.routeTopups(mux)
+	pl.routeSales(mux)
 	// Preflight: the browser asks before sending Authorization / JSON cross-site.
 	mux.HandleFunc("OPTIONS /api/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE")
@@ -119,6 +123,14 @@ func main() {
 	}), ReadHeaderTimeout: 5 * time.Second, MaxHeaderBytes: 8 << 10}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	// Top-ups whose browser closed before reporting them: read from BSC every minute.
+	if chain := newBSC(os.Getenv("BSC_RPC_1"), os.Getenv("BSC_RPC_2")); chain != nil {
+		go db.scanTopupsEvery(ctx, chain, time.Minute)
+		// Every hour: credits and units backed by the Agentic Wallet on BSC, or payments pause.
+		go db.reconcileEvery(ctx, chain, time.Hour)
+	}
+	// Party sales settle when the party ends (+ settleGraceMinutes).
+	go db.settleEvery(ctx, time.Minute)
 	go func() {
 		<-ctx.Done()
 		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

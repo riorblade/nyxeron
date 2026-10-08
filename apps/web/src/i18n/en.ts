@@ -176,7 +176,8 @@ export const en = {
     shopClosed: "shop closed",
     daysLeft: (d: number) => `${d} day${d === 1 ? "" : "s"} of rent left`,
     partiesPlanned: (n: number) => `${n} part${n === 1 ? "y" : "ies"} planned`,
-    dayOf: (d: number) => `Day ${d} of 60`,
+    dayOf: (d: number, free?: boolean) =>
+      free ? `Day ${d}` : `Day ${d} of 60`,
     outcome: {
       victory: "Won",
       survived: "Finished",
@@ -267,42 +268,42 @@ export const en = {
     rentTitle: "Rent a new venue",
     gone: "This venue isn't yours any more (the lease ended).",
     rentNote:
-      "Paid weekly from your Coin. Any venue runs a shop that sells while you're away (as long as you have stock). From Level 3 you can host parties.",
+      "Paid weekly in Credit (real money). Any venue runs a shop that resells real stock while you're away. From Level 3 you can host parties.",
     free: (n: number, of: number) => `${n} of ${of} free`,
-    perWeek: (c: string) => `${c} C / week`,
+    perWeek: (c: string) => `${c} Credit / week`,
     clubName: "Venue name",
     weeks: (n: number) => `${n} week${n === 1 ? "" : "s"}`,
-    rent: (c: string) => `Rent · ${c} C`,
+    rent: (c: string) => `Rent · ${c} Credit`,
     full: "All taken",
     yours: "Your venue",
     until: (d: string) => `Rented until ${d}`,
-    extend: (c: string) => `Extend 1 week · ${c} C`,
     shop: "Shop",
     shopOpen: "Open: other players can buy",
-    storage: (n: number, of: number) => `Storage ${n} / ${of}`,
-    inStock: (n: number) => `${n} in stock`,
-    cost: (c: string) => `stock costs ${c} C`,
     shelf: "Your price",
-    maxPrice: (c: string) => `max ${c}`,
-    restock: (n: number, c: string) => `Restock +${n} · ${c} C`,
-    margin: (c: string) => `+${c} C each`,
+    margin: (c: string) => `+${c} Credit each`,
+    floor: (min: string, max: string) => `${min}–${max}`,
+    menuNote:
+      "Real stock from the platform's warehouse, at your price in Credit per unit (0.001 share). You hold no stock: each sale pays you the margin. Blank = not sold.",
+    credit: (c: string) => `${c} Credit`,
     venueLevel: (lv: number, name: string) => `Level ${lv} · ${name}`,
     enter: "Enter club",
     enterHint: "Starts a public party now",
     scheduleLater: "Schedule",
     daysLeft: (d: number) =>
       d <= 1 ? "Last day of rent" : `${d} days of rent left`,
-    extendShort: (c: string) => `Extend · ${c} C`,
+    extendShort: (c: string) => `Extend · ${c} Credit`,
     shopLine: (open: boolean, n: number) =>
       open
-        ? `Shop open · ${n} on the shelf · sells while you're away`
-        : `Shop closed · ${n} on the shelf`,
+        ? `Shop open · ${n} on the menu · sells while you're away`
+        : `Shop closed · ${n} on the menu`,
     manage: "Manage",
     done: "Done",
-    emptyShelf: "Your shelf is empty. Add a stock to start selling.",
-    addStock: "Add a stock",
+    emptyShelf: "Your menu is empty. Set a price to start selling.",
     partyLocked: "Parties open at Level 3. Until then your shop sells for you.",
     savePrices: "Save prices",
+    outOfRange: "A price is outside its range (wholesale to 3×).",
+    noLivePrice:
+      "A token on your menu has no live price right now. Try again in a minute.",
     parties: "Parties",
     partiesLocked:
       "Parties need a Level 3 venue or bigger. Smaller venues sell.",
@@ -333,7 +334,6 @@ export const en = {
     rename: "Rename",
     warehouse: (n: number) =>
       n ? `platform has ${n}` : "sold out at the platform",
-    stocked: "Stock delivered",
     saved: "Shop updated",
     bought: (n: number, t: string) => `Bought ${n} ${t}`,
     scheduled: "Party scheduled",
@@ -399,6 +399,8 @@ export const en = {
           "Not possible: check the venue level, the lease dates or your event limit.",
         conflict: "That overlaps another event at this club.",
         not_found: "That event isn't available (cancelled, over, or private).",
+        started:
+          "It has started: guests may have bought, so it can't be cancelled now.",
         bad_request: "Check the date, time and length.",
         no_lease: "That venue isn't yours any more.",
       })[code] ?? `Couldn't do that (${code}).`,
@@ -906,6 +908,7 @@ export const en = {
     defeatText: "The lights go out. Your venue has closed.",
     survivedText: "You made it through, but the goal slipped away.",
     retry: "Retry",
+    playOn: "Keep playing",
     menu: "Main Menu",
     stats: "Final stats",
   } as Record<Outcome | string, string>,
@@ -1198,6 +1201,81 @@ export const en = {
     introDesc: "The short video before each night",
     on: "On",
     off: "Off",
+  },
+
+  topup: {
+    credit: "Credit",
+    creditNote:
+      "Real money: 100 Credit = $1, backed by USDC on BNB Chain. It buys real stock in the city.",
+    open: "Top up",
+    title: "Top up Credit",
+    close: "Close",
+    balance: "Your Credit",
+    usd: (cents: number) => `$${(cents / 100).toFixed(2)}`,
+    addTitle: "1 · Add USDC",
+    addNote: "Pay by card into your game wallet (USDC on BNB Chain).",
+    add: "Add USDC by card",
+    addCancelled: "Card payment closed",
+    sendTitle: "2 · Send to the game",
+    sendNote: (fee: number) =>
+      `You pay no gas. ${fee}% goes to the game; the rest becomes your Credit.`,
+    amount: "Amount (USD)",
+    youGet: (credits: number) => `You get ${fmt(credits)} Credit`,
+    min: (usd: number) => `At least $${usd}`,
+    room: (cents: number) =>
+      `You can still add $${(cents / 100).toFixed(2)} (the limit during the hackathon)`,
+    full: "You've reached the top-up limit for now.",
+    send: (usd: string) => `Top up $${usd}`,
+    sending: "Confirm in your wallet…",
+    confirming: "Confirming on BNB Chain… this takes about a minute.",
+    done: (credits: number) => `Done: ${fmt(credits)} Credit is yours.`,
+    partly: (credits: number) =>
+      `${fmt(credits)} Credit added, up to the limit. The rest is recorded and will be refunded.`,
+    viewTx: "View transaction",
+    history: "Recent top-ups",
+    status: {
+      pending: "Confirming",
+      credited: "Added",
+      unknown: "Not matched",
+      rejected: "Not added",
+    } as Record<string, string>,
+    errors: {
+      not_configured: "Top-ups aren't open yet.",
+      no_wallet: "Your game wallet isn't ready yet. Sign in again.",
+      tx_failed: "The transfer failed on BNB Chain. Nothing was taken.",
+      not_a_topup: "That transaction isn't a top-up from your wallet.",
+      chain_unavailable: "BNB Chain can't be read right now. Try again soon.",
+      slow: "Still confirming. Your Credit will appear within a few minutes.",
+      not_yours: "That transfer was sent from another wallet, not yours.",
+      rejected:
+        "Not added: under the minimum or over the limit. It's recorded and will be refunded.",
+      wallet: "The transfer wasn't sent. Nothing was taken.",
+      unknown: "Something went wrong. Try again in a moment.",
+    } as Record<string, string>,
+  },
+
+  sales: {
+    prices: "Credit prices",
+    pricesNote:
+      "Real stock sold at this party, per unit (0.001 share), in Credit. Blank = not sold. Set before it starts; locked after.",
+    floor: (w: number, max: number) => `${fmt(w)}–${fmt(max)}`,
+    save: "Save prices",
+    saved: "Prices saved",
+    menu: "Real stock here",
+    each: (credits: number) => `${fmt(credits)} Credit`,
+    yourCredit: (credits: number) => `Your Credit: ${fmt(credits)}`,
+    bought: (qty: number, ticker: string, left: number) =>
+      `Bought ${qty} ${ticker} with Credit · ${fmt(left)} left`,
+    busy: "Still buying the last one…",
+    errors: {
+      rejected: "Not enough Credit, or this token isn't on the menu.",
+      sold_out: "The warehouse is out of this token right now.",
+      not_live: "The party isn't on.",
+      prices_locked: "The party has started: prices are locked.",
+      no_price: "No live price right now. Try again in a minute.",
+      bad_request: "Check the prices: each between the two numbers shown.",
+      price_changed: "The price changed. Check it and buy again.",
+    } as Record<string, string>,
   },
 
   tokenDetail: {

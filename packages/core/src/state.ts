@@ -284,6 +284,8 @@ export interface GameState {
   night: NightState | null;
   lastReport: NightReport | null;
   outcome: Outcome | null;
+  /** Played on after this result: no end date any more; a survived club can still win once (defeat still ends it). */
+  freePlay?: "victory" | "survived";
   log: GameEvent[];
   seed: number;
 }

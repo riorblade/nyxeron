@@ -95,15 +95,17 @@ SQLite (pure-Go driver, WAL, one connection) on a Docker volume. Schema changes 
 | `portfolio` | tokens each player holds (qty, cost) |
 | `docs` | per-player documents (saves, DJ sets, layouts, shoutouts), gzipped |
 | `ledger` | every wallet change with the balance after it |
-| `leases`, `shop_stock`, `parties` | the city |
+| `leases`, `parties`, `shop_prices`, `party_prices` | the city (shop and party menus in Credit) |
+| `topups`, `sales`, `platform_ledger` | real money: top-ups, sales of real stock, the platform's own credits |
 | `platform_stock`, `stock_moves` | the warehouse and every movement in or out |
 | `admins`, `audit`, `settings` | back office (roles, audit log, announcement, rent table, price references) |
 
 ## Prices
 
 The api signs requests to Binance Web3's RWA endpoint and caches the answer (`/api/quotes`). The game turns a
-spot price into Coin with a **spot factor**: spot now ÷ the first spot seen (per club in a career; per server for
-the city), weighted over a basket's legs and clamped (`strategy.json → platform.spotFactorRange`).
+spot price into Coin with a **spot factor**: spot now ÷ the first spot seen per club in a career, weighted over a
+basket's legs and clamped (`strategy.json → platform.spotFactorRange`). The city prices real stock in Credit from
+the live spot itself (wholesale per 0.001 share; quotes older than 10 minutes aren't sold against).
 
 ## Deployment
 
