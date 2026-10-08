@@ -478,6 +478,7 @@ export function tickNight(s: GameState): GameState {
         g.leaveMinute = m + enc.minutes;
       } else {
         g.state = "left";
+        inside--;
         continue;
       }
     }
@@ -521,7 +522,8 @@ export function tickNight(s: GameState): GameState {
     const price = marketPrice(st, drink, list);
     // A list price above default → fewer orders; a rising token → FOMO; tilted guests slow down.
     const barChance =
-      barBoost *
+      // A disappointed guest with nothing left to buy stops queueing (R2).
+      (g.disappointed && !inStock.length ? 0 : barBoost) *
       night.barChancePerMinute *
       Math.min(1.5, standardPrice(st, drink) / list) *
       fomoFactor(n, drink) *
@@ -697,6 +699,20 @@ export function endNight(s: GameState): GameState {
 export function nextDay(s: GameState): GameState {
   if (s.phase !== "report" || s.outcome) return s;
   return applyDayEvents(r12_newDay(s));
+}
+
+/**
+ * After a win or a survived run (The Basement's week, or a career's goal) the club plays on into the next day as an
+ * ordinary career with no end date; a survived club can still win once. Defeat stays final.
+ */
+export function playOn(s: GameState): GameState {
+  if (s.outcome !== "victory" && s.outcome !== "survived") return s;
+  return nextDay({
+    ...s,
+    outcome: null,
+    mode: "career",
+    freePlay: s.freePlay === "victory" ? "victory" : s.outcome,
+  });
 }
 
 /** Headless full night: Open Club → 04:00 → Night Report. */

@@ -23,6 +23,7 @@ export function r12_newDay(s: GameState): GameState {
     phase: "day",
     ceoEnergy: economy.ceoEnergyPerDay,
     ceoCallUsed: false,
+    supplierDelay: 0, // a scenario's late supplier is for that day only
     coin: s.coin - wages - rent,
     hype: Math.max(0, s.hype - economy.hypeDecayPerDay),
     safety: Math.min(100, s.safety + economy.safetyRecoveryPerDay),

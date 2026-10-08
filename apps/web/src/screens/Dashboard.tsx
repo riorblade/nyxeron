@@ -657,11 +657,13 @@ function CeoPanel({
                 <span className="flex items-center gap-2">
                   <span className="truncate font-medium">{g.clubName}</span>
                   <Tag>{t.tagPractice}</Tag>
-                  {g.outcome && <Tag>{t.outcome[g.outcome]}</Tag>}
+                  {(g.outcome ?? g.freePlay) && (
+                    <Tag>{t.outcome[(g.outcome ?? g.freePlay)!]}</Tag>
+                  )}
                 </span>
                 <span className="block text-xs text-white/60">
-                  {levels[g.level].name} · {t.dayOf(g.day)} · {fmt(g.coin)}{" "}
-                  {en.unit}
+                  {levels[g.level].name} · {t.dayOf(g.day, !!g.freePlay)} ·{" "}
+                  {fmt(g.coin)} {en.unit}
                 </span>
               </span>
               {closing === slot ? (

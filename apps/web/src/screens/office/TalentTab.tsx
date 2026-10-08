@@ -83,7 +83,12 @@ export function TalentTab({ s }: { s: GameState }) {
                       {fmt(d.fee)} {en.unit}
                     </span>
                     <button
-                      disabled={locked || booked}
+                      disabled={
+                        locked ||
+                        booked ||
+                        s.phase === "report" ||
+                        (s.night?.minute ?? 0) >= night.djSetStartMinute
+                      }
                       onClick={() => act((g) => r03_bookDj(g, id))}
                       className={cn(
                         "flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-semibold tracking-[0.12em] uppercase",

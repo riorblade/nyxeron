@@ -4,12 +4,14 @@ import {
   ceoCall,
   createBasement,
   createGameState,
+  economy,
   endNight,
   escortGuest,
   isInside,
   nextDay,
   nightOver,
   nightPromote,
+  playOn,
   objectives,
   r05_promote,
   r01_orderStock,
@@ -125,6 +127,38 @@ describe("The Basement scenario", () => {
     }
     expect(["victory", "survived", "defeat"]).toContain(s.outcome);
     expect(nextDay(s)).toBe(s);
+  });
+
+  it("plays on into Week 2 after the week is won or survived; defeat stays final", () => {
+    const done: GameState = {
+      ...createBasement(1),
+      phase: "report",
+      outcome: "survived",
+    };
+    const s = playOn(done);
+    expect(s.outcome).toBeNull();
+    expect(s.day).toBe(done.day + 1);
+    expect(s.phase).toBe("day");
+    expect(s.mode).toBe("career");
+    // No end date any more: past the career's last day, a good night doesn't end the club.
+    const late = runNight({ ...s, day: economy.maxDays + 5 });
+    expect(late.outcome).toBeNull();
+    expect(playOn({ ...done, outcome: "defeat" }).outcome).toBe("defeat");
+    // A survived club can still win once; a won club plays on without winning every night.
+    const top = { ...s, level: 5 as const, reputation: 100 };
+    expect(runNight(top).outcome).toBe("victory");
+    const won = playOn({ ...runNight(top) });
+    expect(won.freePlay).toBe("victory");
+    expect(runNight({ ...won, reputation: 100 }).outcome).toBeNull();
+  });
+
+  it("the late supplier lasts its one day", () => {
+    const s = nextDay({
+      ...createBasement(1),
+      phase: "report",
+      supplierDelay: 1,
+    });
+    expect(s.supplierDelay).toBe(0);
   });
 });
 
