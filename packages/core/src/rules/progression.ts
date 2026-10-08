@@ -15,11 +15,13 @@ export function r14_checkVictory(s: GameState): GameState {
 /** R18: upgrade level if coin ≥ cost and rep ≥ requirement. */
 export function r18_upgradeLevel(s: GameState): ActionResult {
   if (s.level === 5) return fail("maxLevel");
+  if (s.phase !== "day") return fail("wrongPhase");
   const level = (s.level + 1) as Level;
   const { cost, repRequired } = levels[level];
   if (s.reputation < repRequired)
     return fail("notEnoughRep", repRequired - s.reputation);
   if (s.coin < cost) return fail("notEnoughCoin", cost - s.coin);
+  const rescale = priceScale(s.level) / priceScale(level);
   return {
     ok: true,
     state: {
@@ -28,6 +30,14 @@ export function r18_upgradeLevel(s: GameState): ActionResult {
       coin: s.coin - cost,
       // A new venue comes with its own house rig.
       upgrades: { sound: 0, lighting: 0, vip: 0, capacity: 0, storage: 0 },
+      // Old stock moves at its value, not its count: no buying cheap and selling at the new venue's prices.
+      stock: Object.fromEntries(
+        Object.entries(s.stock).map(([d, q]) => [d, Math.floor(q * rescale)]),
+      ) as GameState["stock"],
+      pendingOrders: s.pendingOrders.map((o) => ({
+        ...o,
+        qty: Math.floor(o.qty * rescale),
+      })),
       // Keep the player's markup: prices move with the venue's price scale.
       prices: Object.fromEntries(
         Object.entries(s.prices).map(([d, p]) => [

@@ -59,7 +59,8 @@ export function StaffTab({ s }: { s: GameState }) {
                   <div className="mt-auto flex items-center justify-between pt-3">
                     <button
                       aria-label={en.staff.fire}
-                      disabled={locked || s.staff[r] === 0}
+                      disabled={locked || s.staff[r] === 0 || s.phase !== "day"}
+                      title={s.phase !== "day" ? en.office.dayOnly : undefined}
                       onClick={() => act((g) => fireStaff(g, r))}
                       className="flex size-9 items-center justify-center rounded-lg border border-white/20 hover:bg-white/10 disabled:opacity-30"
                     >
@@ -70,7 +71,8 @@ export function StaffTab({ s }: { s: GameState }) {
                     </span>
                     <button
                       aria-label={en.staff.hire}
-                      disabled={locked}
+                      disabled={locked || s.phase !== "day"}
+                      title={s.phase !== "day" ? en.office.dayOnly : undefined}
                       onClick={() => act((g) => hireStaff(g, r))}
                       className="flex size-9 items-center justify-center rounded-lg bg-white text-black disabled:opacity-30"
                     >

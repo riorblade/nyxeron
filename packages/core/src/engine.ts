@@ -478,6 +478,7 @@ export function tickNight(s: GameState): GameState {
         g.leaveMinute = m + enc.minutes;
       } else {
         g.state = "left";
+        inside--;
         continue;
       }
     }
@@ -521,7 +522,8 @@ export function tickNight(s: GameState): GameState {
     const price = marketPrice(st, drink, list);
     // A list price above default → fewer orders; a rising token → FOMO; tilted guests slow down.
     const barChance =
-      barBoost *
+      // A disappointed guest with nothing left to buy stops queueing (R2).
+      (g.disappointed && !inStock.length ? 0 : barBoost) *
       night.barChancePerMinute *
       Math.min(1.5, standardPrice(st, drink) / list) *
       fomoFactor(n, drink) *
