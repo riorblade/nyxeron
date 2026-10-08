@@ -7,6 +7,7 @@ import economyJson from "./data/economy.json";
 import legalJson from "./data/legal.json";
 import levelsJson from "./data/levels.json";
 import nightJson from "./data/night.json";
+import paymentsJson from "./data/payments.json";
 import permitsJson from "./data/permits.json";
 import promotersJson from "./data/promoters.json";
 import segmentsJson from "./data/segments.json";
@@ -32,6 +33,8 @@ export const scenarios = scenariosJson;
 export const strategy = strategyJson;
 export const promoters = promotersJson;
 export const city = cityJson;
+/** Real money: top-up, credit, units backed by real shares, the agent's limits (BNB Chain). */
+export const payments = paymentsJson;
 
 export type TokenId = keyof typeof tokens;
 export type SupplierId = keyof typeof suppliers;

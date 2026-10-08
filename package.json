@@ -13,10 +13,11 @@
     "build:admin": "pnpm --filter admin build",
     "test": "vitest run",
     "test:go": "cd services/relay && test -z \"$(gofmt -l .)\" && go test -race ./... && cd ../api && test -z \"$(gofmt -l .)\" && go test -race ./...",
-    "lint": "tsc -p packages/core && tsc -p apps/web && tsc -p apps/admin && eslint . && prettier --check .",
+    "lint": "tsc -p packages/core && tsc -p apps/web && tsc -p apps/admin && tsc -p apps/agent && eslint . && prettier --check .",
     "format": "prettier --write .",
     "balance": "tsx packages/core/scripts/balance.ts",
     "balance:levels": "tsx packages/core/scripts/levelstats.ts",
+    "agent": "tsx apps/agent/src/main.ts",
     "sync:gamedata": "sh scripts/sync-gamedata.sh"
   },
   "devDependencies": {
