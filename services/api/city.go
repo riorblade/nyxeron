@@ -85,8 +85,11 @@ var game struct {
 			MaxUsdPerDay  int64 `json:"maxUsdPerDay"`
 		} `json:"agent"`
 		Topup struct {
-			FeePercent int               `json:"feePercent"`
-			Tokens     map[string]string `json:"tokens"`
+			FeePercent   int               `json:"feePercent"`
+			MinUSD       int64             `json:"minUsd"`
+			CapUSDPerDay int64             `json:"capUsdPerDay"`
+			CapUSDTotal  int64             `json:"capUsdTotal"`
+			Tokens       map[string]string `json:"tokens"`
 		} `json:"topup"`
 		Tokens map[string]struct {
 			Symbol   string `json:"symbol"`

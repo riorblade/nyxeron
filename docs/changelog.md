@@ -3,6 +3,12 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-08 · Top-ups
+
+- **Top up Credit:** players send USDC from their game wallet to the platform's Agentic Wallet (no gas, 1% fee) and
+  get Credit (100 = $1) once BNB Chain confirms it. Minimum $3; at most $20 a day and $100 in all during the
+  hackathon. The api enforces the caps: it credits up to the room left and records the rest for a refund.
+
 ## 2026-10-03 · CEO: your clubs
 
 - **Classic and City (owner decision):** the play currency is now **NYX Points (NP)** everywhere (was "Coin" / C);

@@ -89,7 +89,8 @@ from guest, units from the warehouse, wholesale to the platform, margin to the t
 
 - Before credits: Privy token verified; tx hash + log index unused; chain 56, success, ≥ 15 confirmations; Transfer
   log from the locked USDC/USDT contract; recipient = Agentic Wallet; sender = the player's stored wallet; amount
-  from the log ≥ $3 and within the player's caps; two RPCs agree.
+  from the log ≥ $3 and within the player's caps (credited up to the room left; what isn't credited is recorded as
+  `rejected`, or in the row's reason, for the back office to refund); two RPCs agree.
 - Before restock units: as above for the bStock transfer into the Agentic Wallet; USDC spent ≤ the agent's limits.
 - Before a sale: credits and warehouse checked and held in the same transaction; prices from the server, never from
   the browser.
