@@ -225,6 +225,8 @@ export const en = {
           invalid_token: "Your sign-in expired. Sign in again.",
           venue_limit: "You already rent as many venues as you can.",
           kicked: "The CEO asked you to leave.",
+          seat_lost:
+            "You were away too long and lost your spot. What you had is in your wallet; join again.",
         }) as Record<string, string>
       )[code] ?? `Couldn't connect (${code}).`,
     hostAway: "The CEO lost connection. Hang on, the club is still here…",

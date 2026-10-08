@@ -190,7 +190,12 @@ export class Relay {
         return m.t === "error" ? w.fail(new Error(m.code)) : w.ok(m);
       }
       // Closed or kicked: don't walk straight back in.
-      if (m.t === "closed" || m.t === "kicked") this.open = false;
+      if (
+        m.t === "closed" ||
+        m.t === "kicked" ||
+        (m.t === "error" && m.code === "room_not_found")
+      )
+        this.open = false;
       this.onControl?.(m);
     };
     ws.onclose = () => {

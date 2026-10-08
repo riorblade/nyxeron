@@ -12,6 +12,7 @@ import {
 import { create } from "zustand";
 import { en, reasonText } from "@/i18n/en";
 import { useGame } from "@/state/store";
+import { player } from "@/api/player";
 import { packState, unpackState } from "./codec";
 import { acquireEngine, getEngine, releaseEngine } from "@/dj/session";
 import type { DjAct } from "@/dj/engine";
@@ -32,7 +33,7 @@ import {
  * broadcasts gzipped snapshots. Guests render those snapshots and send what they want to do.
  *
  * Player → host: {t:"hello",name,avatar,cash,key} · {t:"buy",token,qty} · {t:"bye"}
- * DJ → host:     {t:"djhello",name,avatar} · {t:"mix",m} (4×/s) · {t:"act",a} (pads, brake, backspin)
+ * DJ → host:     {t:"djhello",name,avatar,key} · {t:"mix",m} (4×/s) · {t:"act",a} (pads, brake, backspin)
  * Host → player: {t:"welcome",ok,reason?,short?,me?} · {t:"result",ok,reason?,short?,token,qty,cost} · {t:"dj",…}
  * Host → all:    state frames (gzipped GameState); events {t:"dj",on,name,avatar} · {t:"mix",m} · {t:"act",a}
  *
@@ -43,7 +44,7 @@ import {
  */
 /** `key`: the guest's secret for this night, so a reconnect gets their own visitor back (net/seats.ts). */
 type Hello = { name: string; avatar: number; cash: number; key?: string };
-type DjHello = { name: string; avatar: number };
+type DjHello = { name: string; avatar: number; key?: string };
 type Input =
   | ({ t: "hello" } & Hello)
   | { t: "buy"; token: TokenId; qty: number }
@@ -166,6 +167,8 @@ function unfollow() {
 
 /** The player DJ's relay id (one DJ at a time). */
 let djPeer = 0;
+/** The DJ's secret for tonight: a reconnecting DJ takes the decks back from their own dead connection. */
+let djKey = "";
 
 const hellos = new Map<number, Hello>();
 const seats = new Seats();
@@ -295,11 +298,13 @@ function onHostFrame(f: Frame) {
       cost: before - after,
     });
   } else if (m.t === "djhello") {
-    if (djPeer && djPeer !== f.peer) {
+    const key = String(m.key ?? "").slice(0, 64);
+    if (djPeer && djPeer !== f.peer && (!key || key !== djKey)) {
       reply(f.peer, { t: "welcome", ok: false, reason: "dj_taken" });
       return;
     }
     djPeer = f.peer;
+    djKey = key;
     const dj: Live = {
       t: "dj",
       on: true,
@@ -407,6 +412,7 @@ export function hostClose() {
   relay?.close();
   relay = null;
   djPeer = 0;
+  djKey = "";
   unfollow();
   set({
     role: "off",
@@ -466,7 +472,7 @@ export async function guestJoin(
     relay?.input(
       pack(
         as === "dj"
-          ? { t: "djhello", name: hello.name, avatar: hello.avatar }
+          ? { t: "djhello", name: hello.name, avatar: hello.avatar, key }
           : { t: "hello", ...hello, key },
       ),
     );
@@ -477,8 +483,15 @@ export async function guestJoin(
   };
   relay.onControl = (c) => {
     if (c.t === "host") set({ status: c.on ? "live" : "host-away" });
-    if (c.t === "closed") set({ status: "closed" });
-    if (c.t === "kicked") set({ status: "error", error: "kicked" });
+    // Closed, kicked, or gone while I was reconnecting: what I had still goes home.
+    if (c.t === "closed" || (c.t === "error" && c.code === "room_not_found")) {
+      settleLast();
+      set({ status: "closed" });
+    }
+    if (c.t === "kicked") {
+      settleLast();
+      set({ status: "error", error: "kicked" });
+    }
     // I reconnected (new relay id) or the host did: say hello again to be let back in.
     if (c.t === "joined" || (c.t === "host" && c.on)) sayHello();
   };
@@ -486,7 +499,9 @@ export async function guestJoin(
     if (f.kind === KIND.state) {
       try {
         const remote = await unpackState(f.payload);
-        const { me, last } = useNet.getState();
+        const { me, last, status } = useNet.getState();
+        // A snapshot that lands after the night was settled must not bring it back.
+        if (status === "closed" || status === "error") return;
         const v = remote.night?.visitors?.[me];
         set({
           remote,
@@ -513,6 +528,14 @@ export async function guestJoin(
       if (useNet.getState().role === "guest" || m.t === "dj") follow(m);
       return;
     }
+    const prev = useNet.getState().me;
+    if (m.t === "welcome" && m.ok && m.me && prev && m.me !== prev) {
+      // My seat was let go while I was away: take home what I had and leave (a new seat would start from stale cash).
+      settleLast();
+      relay?.input(pack({ t: "bye" }));
+      relay?.close();
+      return set({ status: "error", error: "seat_lost" });
+    }
     if (m.t === "welcome")
       set({
         refused: m.ok ? "" : why(m.reason, m.short),
@@ -537,6 +560,14 @@ export async function guestJoin(
     relay = null;
     throw e;
   }
+}
+
+/** A guest's night ended without a goodbye: the last cash and tokens go home, exactly once. */
+function settleLast() {
+  const { last, role } = useNet.getState();
+  if (!last || role !== "guest") return;
+  set({ last: null });
+  player.settle(last.v.cash, last.v.holdings, last.pnl);
 }
 
 export function guestBuy(token: TokenId, qty: number) {

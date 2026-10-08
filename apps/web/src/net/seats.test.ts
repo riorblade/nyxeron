@@ -90,6 +90,26 @@ describe("relay reconnects", () => {
     expect(FakeWS.all).toHaveLength(2);
   });
 
+  it("a player whose club closed while they were away stops reconnecting", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    const r = new Relay("ws://x");
+    const seen: Control[] = [];
+    r.onControl = (m) => seen.push(m);
+    const joined = r.join("ROOM01", "Ana", "guest");
+    await Promise.resolve();
+    FakeWS.all[0]!.say({ t: "joined", room: "ROOM01", id: 3 });
+    await joined;
+
+    FakeWS.all[0]!.close();
+    vi.advanceTimersByTime(500);
+    await Promise.resolve();
+    FakeWS.all[1]!.say({ t: "error", code: "room_not_found" });
+    expect(seen.at(-1)).toMatchObject({ code: "room_not_found" });
+    FakeWS.all[1]!.close();
+    vi.advanceTimersByTime(10_000);
+    expect(FakeWS.all).toHaveLength(2);
+  });
+
   it("a host whose room expired opens a fresh one and says so", async () => {
     const r = new Relay("ws://x");
     const seen: Control[] = [];
