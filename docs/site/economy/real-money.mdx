@@ -32,52 +32,23 @@ browser for the amount: it reads the transfer from BNB Chain itself and waits fo
 crediting anything. Transfers nobody reported (a closed tab, a lost connection) are picked up too, so a top-up is
 never lost, and each transfer is credited at most once.
 
-### Limits and fee
+### Limits
 
 | | Value |
 | --- | --- |
-| Exchange rate $\kappa$ | 100 Credits per USD (one Credit per cent) |
-| Minimum top-up $m$ | 3 USD |
-| Daily cap $K_{\text{day}}$ | 20 USD per rolling 24 hours |
-| Lifetime cap $K_{\text{tot}}$ | 100 USD |
-| Fee $\varphi$ | 1 % (pays for sponsored gas) |
+| Exchange rate | 100 Credits = 1 USD |
+| Minimum top-up | 3 USD |
+| Daily cap | 20 USD per rolling 24 hours |
+| Lifetime cap | 100 USD |
 
-### Credits received
+A small fee is kept to pay for the gas the platform sponsors. A top-up is credited only up to the room left under
+both caps; anything over a cap, or a transfer below the minimum, earns no Credits and is recorded so it can be
+refunded by hand. Two top-ups arriving at the same moment can't both use the same room under the cap.
 
-With $a$ the transfer in whole US cents (rounded down), and $D$, $T$ the cents already credited to this player in the
-last 24 hours and in total:
-
-$$
-R = \max\!\Big(0,\; \min\big(100K_{\text{day}} - D,\; 100K_{\text{tot}} - T\big)\Big),
-\qquad
-a^{*} = \min(a, R)
-$$
-
-$$
-f = \left\lceil \frac{\varphi \, a^{*}}{100} \right\rceil,
-\qquad
-C =
-\begin{cases}
-0 & \text{if } a^{*} < 100\,m \quad \text{(rejected)}\\[4pt]
-a^{*} - f & \text{otherwise}
-\end{cases}
-$$
-
-where $R$ is the room left under both caps, $a^{*}$ the part that may be credited, $f$ the fee in cents (rounded
-**up**) and $C$ the Credits received. Whatever is not credited ($a - a^{*}$ cents, or all of $a$ when rejected) is
-recorded with the reason so it can be refunded by hand. Two top-ups arriving at the same moment cannot both use the
-same cap room.
-
-<Accordion title="Worked example">
-A new player sends **10 USDC**: $a = 1000$ cents. Nothing credited yet, so $R = \min(2000, 10000) = 2000$ and
-$a^{*} = 1000 \ge 300$. Fee $f = \lceil 1000 / 100 \rceil = 10$ cents. The player gets **990 Credits**.
-
-Later the same day they send **15 USDC**: $a = 1500$, and 1000 cents are already credited in the last 24 hours, so
-$R = \min(2000 - 1000,\; 10000 - 1000) = 1000$ and $a^{*} = \min(1500, 1000) = 1000$. Fee $f = 10$, and the player
-gets another **990 Credits**. The other 500 cents are recorded as over the cap, to be refunded.
-
-A third transfer that day finds $R = \min(2000 - 2000,\; 10000 - 2000) = 0$, so $a^{*} = 0 < 300$ and the whole
-transfer is recorded as rejected, with no Credits minted.
+<Accordion title="Example">
+A new player sends **10 USDC** and receives about 1,000 Credits, less the small gas fee. Later that day they send
+**15 USDC**: only 10 USD of daily room is left, so 10 USD is credited and the other 5 USD is recorded for a refund.
+A third transfer the same day finds no room left and is recorded as rejected.
 </Accordion>
 
 If BNB Chain has not confirmed the transfer yet, the game says the top-up is pending and simply checks again later.
