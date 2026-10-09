@@ -9,7 +9,10 @@ const definite = new Set([
   "invalid_token",
   "banned",
   "not_configured",
-  "404", // an api from before tickets: none to be had (a relay that needs one can't be running yet either)
+  // An api from before tickets (404, or 405: its OPTIONS /api/ route catches the path): none to be had, and a relay
+  // that needs one can't be running yet either.
+  "404",
+  "405",
 ]);
 
 /** Forget the ticket (the relay refused it): the next one is fetched from the api. */

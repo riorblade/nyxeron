@@ -24,6 +24,8 @@ describe("relay ticket cache", () => {
   it("an api without the endpoint (404) means no ticket; a 502 means try again later", async () => {
     fail = "404";
     expect(await relayTicket()).toBe("");
+    fail = "405"; // what the production api before tickets actually answers
+    expect(await relayTicket()).toBe("");
     fail = "502";
     await expect(relayTicket()).rejects.toThrow("502");
   });
