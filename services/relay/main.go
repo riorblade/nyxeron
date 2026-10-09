@@ -170,7 +170,7 @@ func serverWith(h *hub, origins []string, trusted *proxies) http.Handler {
 		}
 		defer h.gone(ip)
 		c := newConn(ws, h)
-		c.ip = ip
+		c.ip, c.who = ip, "ip:"+ip
 		ctx, cancel := context.WithCancel(r.Context())
 		c.cancel = cancel
 		go c.writeLoop(ctx)
@@ -206,7 +206,8 @@ func main() {
 	h := newHub(envInt("MAX_ROOMS", 2000), envInt("MAX_PEERS", 64), time.Duration(envInt("GRACE_SEC", 60))*time.Second)
 	h.maxConns = envInt("MAX_CONNS", h.maxConns)
 	h.maxConnsPerIP = envInt("MAX_CONNS_PER_IP", h.maxConnsPerIP)
-	h.maxRoomsPerIP = envInt("MAX_ROOMS_PER_IP", 8)
+	h.maxRoomsPer = envInt("MAX_ROOMS_PER_PLAYER", 8)
+	h.ticketKey = []byte(env("RELAY_TICKET_SECRET", ""))
 	h.kickBan = time.Duration(envInt("KICK_BAN_SEC", int(h.kickBan.Seconds()))) * time.Second
 	h.queueBudget = int64(envInt("QUEUE_BUDGET_MB", int(h.queueBudget>>20))) << 20
 	trusted := newProxies(env("TRUST_PROXY", ""))
@@ -232,7 +233,10 @@ func main() {
 		_ = srv.Shutdown(sctx)
 	}()
 	slog.Info("relay listening", "addr", addr, "origins", origins, "max_conns", h.maxConns,
-		"max_conns_per_ip", h.maxConnsPerIP, "max_rooms_per_ip", h.maxRoomsPerIP, "trust_proxy", trusted.entries)
+		"max_conns_per_ip", h.maxConnsPerIP, "max_rooms_per_player", h.maxRoomsPer, "trust_proxy", trusted.entries, "tickets", len(h.ticketKey) > 0)
+	if len(h.ticketKey) == 0 {
+		slog.Warn("RELAY_TICKET_SECRET empty: anyone can open rooms, limits and kicks go by IP")
+	}
 	if len(trusted.entries) == 0 {
 		slog.Warn("TRUST_PROXY empty: behind a proxy every player shares its IP and the per-IP limits apply to all")
 	}

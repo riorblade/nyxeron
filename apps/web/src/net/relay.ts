@@ -16,6 +16,8 @@ export interface Control {
   id?: number;
   on?: boolean;
   code?: string;
+  /** The api's pass (POST /api/relay/ticket) on create/join/resume. */
+  ticket?: string;
 }
 
 export interface Frame {
@@ -66,6 +68,7 @@ const retryable = new Set([
   "server_full",
   "rate_limited",
   "too_many_connections",
+  "bad_ticket",
 ]);
 
 /**
@@ -91,7 +94,17 @@ export class Relay {
     want: string;
   } | null = null;
 
-  constructor(private url = relayUrl()) {}
+  /** Set after the relay refused a ticket: the next hello asks the api for a new one. */
+  private freshTicket = false;
+
+  /**
+   * `ticket`: the api's pass for the relay (signed in, not banned); asked for on every (re)connect, `fresh` after
+   * the relay refused the last one. Without it (dev, tests) hellos go out bare.
+   */
+  constructor(
+    private url = relayUrl(),
+    private ticket?: (fresh: boolean) => Promise<string>,
+  ) {}
 
   /** Open a room as its host. */
   host(name: string) {
@@ -140,6 +153,22 @@ export class Relay {
     this.ws?.close();
   }
 
+  /** The hello (create/resume/join), with a ticket when the app has a ticket source. */
+  private sayHello() {
+    if (!this.hello) return;
+    this.helloOut = true;
+    if (!this.ticket) return this.sendControl(this.hello);
+    const ws = this.ws;
+    void this.ticket(this.freshTicket)
+      .catch(() => "")
+      .then((ticket) => {
+        this.freshTicket = false;
+        // Still the same socket (not closed or replaced while the api answered); the hello may have moved on.
+        if (this.ws === ws && this.hello)
+          this.sendControl(ticket ? { ...this.hello, ticket } : this.hello);
+      });
+  }
+
   private send(b: Uint8Array<ArrayBuffer>) {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(b);
   }
@@ -152,7 +181,7 @@ export class Relay {
     this.hello = m;
     return new Promise<Control>((ok, fail) => {
       this.waiting = { ok, fail, want };
-      if (this.ws?.readyState === WebSocket.OPEN) this.sendControl(m);
+      if (this.ws?.readyState === WebSocket.OPEN) this.sayHello();
       else this.connect();
     });
   }
@@ -165,10 +194,7 @@ export class Relay {
     ws.onopen = () => {
       this.openedAt = Date.now();
       this.onStatus?.(true);
-      if (this.hello) {
-        this.helloOut = true;
-        this.sendControl(this.hello);
-      }
+      this.sayHello();
     };
     ws.onmessage = (e) => {
       if (typeof e.data !== "string") {
@@ -185,8 +211,7 @@ export class Relay {
       ) {
         sessionStorage.removeItem(TOKEN_KEY);
         this.hello = { t: "create", name: this.hello.name ?? "" };
-        this.helloOut = true;
-        return this.sendControl(this.hello);
+        return this.sayHello();
       }
       // Every (re)connect is answered: a reconnecting player gets a new id, a host maybe a new room.
       if (m.t === "joined") this.id = m.id ?? this.id;
@@ -210,6 +235,8 @@ export class Relay {
       }
       // Turned away for now (full, busy, throttled) while reconnecting: hang up and try again after the backoff.
       // In a room, "rate_limited" only means slow down (the relay throttles messages too): stay.
+      if (answer && m.t === "error" && m.code === "bad_ticket")
+        this.freshTicket = true; // expired or rotated: get a new one, then try again
       if (answer && m.t === "error" && m.code && retryable.has(m.code))
         return ws.close();
       // Closed or kicked: don't walk straight back in.

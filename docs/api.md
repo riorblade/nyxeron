@@ -37,6 +37,7 @@ Base URL: `https://api.nyxeron.xyz` (dev: same origin, Vite proxies `/api` to `:
 | GET | `/api/me` | — | verified id, email, embedded wallet |
 | POST | `/api/rooms` | `{room, club, level, players, night, private?}` | announce / heartbeat your open club (every ~20 s; dropped 45 s after the last; a private club isn't listed) |
 | DELETE | `/api/rooms/{room}` | — | your club closed |
+| POST | `/api/relay/ticket` | — | `{ticket, exp}`: a 10-minute pass for the multiplayer relay (403 banned, 503 when `RELAY_TICKET_SECRET` isn't set); see docs/multiplayer.md |
 | GET | `/api/profile` | — | profile (created with the starter wallet on first call) |
 | POST | `/api/profile/import` | profile | once: this device's pre-account data, bounded |
 | PATCH | `/api/profile` | `{name?, avatar?}` | |
@@ -147,3 +148,4 @@ curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application
 | `AGENT_KEY` | stock agent secret (empty = agent API off) |
 | `BSC_RPC_1`, `BSC_RPC_2` | BNB Smart Chain JSON-RPC, two independent providers that must agree (`bsc.go`); both needed |
 | `RELAY_URL` | the relay's internal base URL, for live-room stats |
+| `RELAY_TICKET_SECRET` | signs relay tickets (`POST /api/relay/ticket`); the relay has the same value (empty = no tickets) |

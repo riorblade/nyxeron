@@ -19,6 +19,7 @@ import type { DjAct } from "@/dj/engine";
 import { applyMix, mixSnapshot, type MixSync } from "@/dj/mixsync";
 import { KIND, pack, Relay, unpack, type Frame } from "./relay";
 import { Seats } from "./seats";
+import { relayTicket } from "./ticket";
 import { audio } from "@/audio";
 import type { PadId } from "@/dj/sampler";
 import { firePyro, type PyroCue } from "@/venue/pyro";
@@ -333,7 +334,7 @@ function onHostFrame(f: Frame) {
 /** The CEO opens tonight's club to other players. Resolves to the room code. */
 export async function hostOpen(clubName: string) {
   if (relay) return useNet.getState().room;
-  relay = new Relay();
+  relay = new Relay(undefined, relayTicket);
   set({ role: "host", status: "connecting", error: "", players: {} });
   relay.onStatus = (on) => set({ status: on ? "live" : "connecting" });
   relay.onFrame = onHostFrame;
@@ -458,7 +459,7 @@ export async function guestJoin(
   as: "guest" | "dj" = "guest",
 ) {
   guestLeave();
-  relay = new Relay();
+  relay = new Relay(undefined, relayTicket);
   set({
     role: as,
     room: code,

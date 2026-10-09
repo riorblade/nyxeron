@@ -21,7 +21,8 @@
 // Relay → clients: {"t":"peer","id":N,"name":"…","role":"…","on":true|false} (to the host; after a resume, again for
 // everyone still in the room), {"t":"host","on":true|false} (to peers), {"t":"closed"}, {"t":"kicked"},
 // {"t":"error","code":"…"}. Error codes: room_not_found, room_full, server_full, bad_request, already_in_room, rate_limited, host_busy,
-// kicked, replaced, too_many_rooms, too_many_connections. Abuse limits: docs/multiplayer.md.
+// kicked, replaced, too_many_rooms, too_many_connections, bad_ticket. With RELAY_TICKET_SECRET set, create, join and
+// resume carry "ticket" (ticket.go). Abuse limits: docs/multiplayer.md.
 package main
 
 const (
@@ -43,6 +44,8 @@ type control struct {
 	ID    uint16 `json:"id,omitempty"`
 	On    *bool  `json:"on,omitempty"`
 	Code  string `json:"code,omitempty"`
+	// Ticket: from the api (POST /api/relay/ticket), on create/join/resume when the relay requires one.
+	Ticket string `json:"ticket,omitempty"`
 }
 
 func boolp(b bool) *bool { return &b }

@@ -129,6 +129,32 @@ describe("relay reconnects", () => {
     expect(FakeWS.all).toHaveLength(1);
   });
 
+  it("hellos carry the api's ticket; a refused one is fetched fresh on the next try", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    const micro = async () => {
+      for (let n = 0; n < 6; n++) await Promise.resolve();
+    };
+    const asked: boolean[] = [];
+    const r = new Relay("ws://x", async (fresh) => {
+      asked.push(fresh);
+      return fresh ? "new" : "old";
+    });
+    const joined = r.join("ROOM01", "Ana", "guest");
+    await micro();
+    expect(FakeWS.all[0]!.sent[0]).toMatchObject({ t: "join", ticket: "old" });
+    FakeWS.all[0]!.say({ t: "joined", room: "ROOM01", id: 3 });
+    await joined;
+
+    FakeWS.all[0]!.close();
+    vi.advanceTimersByTime(500);
+    await micro();
+    FakeWS.all[1]!.say({ t: "error", code: "bad_ticket" }); // expired while away: hang up, retry with a new one
+    vi.advanceTimersByTime(10_000);
+    await micro();
+    expect(FakeWS.all[2]!.sent[0]).toMatchObject({ t: "join", ticket: "new" });
+    expect(asked).toEqual([false, false, true]);
+  });
+
   it("a host whose room expired opens a fresh one and says so", async () => {
     const r = new Relay("ws://x");
     const seen: Control[] = [];
