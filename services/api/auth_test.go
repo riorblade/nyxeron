@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -196,31 +198,155 @@ func TestJWKSRefetchKeepsKeysOnBadResponse(t *testing.T) {
 	}
 }
 
-// While Privy is down and no key was ever loaded, sign-ins still fetch the JWKS at most once a minute.
-func TestJWKSRefetchRateLimitedWithoutKeys(t *testing.T) {
+// jwksBody is a JWKS document with these keys, as Privy serves it.
+func jwksBody(keys map[string]*ecdsa.PrivateKey) []byte {
+	var list []map[string]string
+	for kid, k := range keys {
+		x, y := make([]byte, 32), make([]byte, 32)
+		k.PublicKey.X.FillBytes(x)
+		k.PublicKey.Y.FillBytes(y)
+		list = append(list, map[string]string{"kid": kid, "kty": "EC", "crv": "P-256",
+			"x": base64.RawURLEncoding.EncodeToString(x), "y": base64.RawURLEncoding.EncodeToString(y)})
+	}
+	b, _ := json.Marshal(map[string]any{"keys": list})
+	return b
+}
+
+// While Privy is down at boot (no key ever loaded) sign-ins don't hammer it, yet a blip heals within seconds, not a
+// minute. The 503 body isn't JSON, so the decode fails and the key map stays nil: only the time-based gate holds.
+func TestJWKSBootOutageRateLimitedAndHealsFast(t *testing.T) {
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	fetches := 0
+	var mu sync.Mutex
+	fetches, up := 0, false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
 		fetches++
-		w.WriteHeader(http.StatusServiceUnavailable)
-		_, _ = w.Write([]byte(`{"error":"unavailable"}`))
+		if !up {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("upstream connect error"))
+			return
+		}
+		_, _ = w.Write(jwksBody(map[string]*ecdsa.PrivateKey{"k1": key}))
 	}))
 	t.Cleanup(srv.Close)
 	p := newPrivy(appID, "secret", srv.Client())
 	p.base = srv.URL
 	now := time.Now()
 	head := map[string]any{"alg": "ES256", "kid": "k1", "typ": "JWT"}
+	tok := func(at time.Time) string { return signJWT(t, key, head, good(at.Add(time.Hour))) }
 	for i := 0; i < 20; i++ {
-		if _, err := p.verify(signJWT(t, key, head, good(now.Add(time.Hour))), now); err == nil {
+		if _, err := p.verify(tok(now), now); err == nil {
 			t.Fatal("accepted without keys")
 		}
 	}
 	if fetches != 1 {
-		t.Fatalf("20 sign-ins in one minute fetched the JWKS %d times, want 1", fetches)
+		t.Fatalf("20 sign-ins during an outage fetched the JWKS %d times, want 1", fetches)
 	}
-	later := now.Add(jwksMinGap + time.Second)
-	_, _ = p.verify(signJWT(t, key, head, good(later.Add(time.Hour))), later)
-	if fetches != 2 {
-		t.Fatalf("after a minute: %d fetches, want 2", fetches)
+	mu.Lock()
+	up = true
+	mu.Unlock()
+	if _, err := p.verify(tok(now.Add(jwksBoot/2)), now.Add(jwksBoot/2)); err == nil || fetches != 1 {
+		t.Fatalf("inside the boot gap: err %v, %d fetches; want refused without a fetch", err, fetches)
+	}
+	later := now.Add(jwksBoot + time.Second)
+	if _, err := p.verify(tok(later), later); err != nil || fetches != 2 {
+		t.Fatalf("Privy back, %v after boot: err %v, %d fetches; want signed in after 1 more fetch", jwksBoot+time.Second, err, fetches)
+	}
+}
+
+// The JWKS request runs outside the lock: while a made-up kid waits on a slow Privy, players with known keys still
+// sign in at once; and concurrent unknown kids share that one fetch.
+func TestJWKSFetchDoesNotStallKnownKeys(t *testing.T) {
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	release := make(chan struct{})
+	var fetches atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if fetches.Add(1) > 1 {
+			<-release // Privy hangs on the refetch
+		}
+		_, _ = w.Write(jwksBody(map[string]*ecdsa.PrivateKey{"k1": key}))
+	}))
+	t.Cleanup(srv.Close)
+	t.Cleanup(func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	})
+	p := newPrivy(appID, "secret", srv.Client())
+	p.base = srv.URL
+	now := time.Now()
+	known := signJWT(t, key, map[string]any{"alg": "ES256", "kid": "k1", "typ": "JWT"}, good(now.Add(2*time.Hour)))
+	if _, err := p.verify(known, now); err != nil {
+		t.Fatalf("first fetch: %v", err)
+	}
+	later := now.Add(2 * jwksMinGap)
+	made := signJWT(t, key, map[string]any{"alg": "ES256", "kid": "made-up", "typ": "JWT"}, good(later.Add(time.Hour)))
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); _, _ = p.verify(made, later) }()
+	}
+	for fetches.Load() < 2 {
+		time.Sleep(time.Millisecond)
+	}
+	done := make(chan error, 1)
+	go func() { _, err := p.verify(known, later); done <- err }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("known key during a slow refetch: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("a known key waited on the JWKS refetch (fetch holds the lock)")
+	}
+	close(release)
+	wg.Wait()
+	if n := fetches.Load(); n != 2 {
+		t.Fatalf("10 concurrent unknown kids fetched %d times in all, want 2 (boot + one shared refetch)", n)
+	}
+}
+
+// Keys older than jwksMaxAge are re-fetched: a key Privy removed stops working, the new one works, and a failed
+// refresh keeps the old keys rather than signing everyone out.
+func TestJWKSCacheExpires(t *testing.T) {
+	old, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	rotated, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	var mu sync.Mutex
+	serve := func(w http.ResponseWriter) { _, _ = w.Write(jwksBody(map[string]*ecdsa.PrivateKey{"k1": old})) }
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		serve(w)
+	}))
+	t.Cleanup(srv.Close)
+	set := func(f func(http.ResponseWriter)) { mu.Lock(); serve = f; mu.Unlock() }
+	p := newPrivy(appID, "secret", srv.Client())
+	p.base = srv.URL
+	now := time.Now()
+	tok := func(k *ecdsa.PrivateKey, kid string, at time.Time) string {
+		return signJWT(t, k, map[string]any{"alg": "ES256", "kid": kid, "typ": "JWT"}, good(at.Add(time.Hour)))
+	}
+	if _, err := p.verify(tok(old, "k1", now), now); err != nil {
+		t.Fatalf("first fetch: %v", err)
+	}
+
+	// Past the max age with Privy failing: the old key still signs in.
+	set(func(w http.ResponseWriter) { w.WriteHeader(http.StatusBadGateway) })
+	t1 := now.Add(jwksMaxAge + time.Minute)
+	if _, err := p.verify(tok(old, "k1", t1), t1); err != nil {
+		t.Fatalf("stale key with Privy down: %v", err)
+	}
+
+	// Privy rotated k1 out: once the gap allows a refetch, k1 is refused and k2 accepted.
+	set(func(w http.ResponseWriter) { _, _ = w.Write(jwksBody(map[string]*ecdsa.PrivateKey{"k2": rotated})) })
+	t2 := t1.Add(jwksMinGap + time.Second)
+	if _, err := p.verify(tok(old, "k1", t2), t2); err == nil {
+		t.Fatal("a key Privy removed still signs in after the cache expired")
+	}
+	if _, err := p.verify(tok(rotated, "k2", t2), t2); err != nil {
+		t.Fatalf("the rotated key: %v", err)
 	}
 }

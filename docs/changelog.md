@@ -3,6 +3,13 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-10 · Sign-in: Privy keys that survive outages
+
+- **A Privy hiccup no longer signs players out:** a failed or empty JWKS answer keeps the keys the api has (#41).
+  Now also: a blip at boot heals in 5 s instead of a minute, a slow Privy answer to one made-up key id no longer
+  stalls every signed-in request (the fetch runs outside the lock and concurrent callers share it), and keys older
+  than an hour are re-fetched, so a key Privy removed stops working.
+
 ## 2026-10-10 · Relay: signed-in players only
 
 - **Live clubs know who you are:** the api now hands signed-in players a short pass for the multiplayer relay, and the
