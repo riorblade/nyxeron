@@ -1,4 +1,4 @@
-import { syncHooks, userKey } from "@/state/scope";
+import { layoutKey, syncHooks } from "@/state/scope";
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { Layout, Zone } from "./layouts";
@@ -198,8 +198,6 @@ export function defaultFurniture(layout: Layout): Item[] {
 // ---------- persistence ----------
 
 // v2: the club was redesigned (bigger, VIP wings), so older arrangements no longer fit.
-export const layoutKey = (name: string) =>
-  userKey(`furniture.${name}.v2`, `nyxeron.furniture.${name}.v2`);
 const key = (layout: Layout) => layoutKey(layout.name);
 
 export function loadFurniture(layout: Layout): Item[] {

@@ -2,9 +2,8 @@ import { create } from "zustand";
 import { useSets } from "@/dj/sets";
 import { en } from "@/i18n/en";
 import { saveKey } from "@/state/save";
-import { syncHooks } from "@/state/scope";
+import { layoutKey, syncHooks } from "@/state/scope";
 import { useGame } from "@/state/store";
-import { layoutKey } from "@/venue/furniture";
 import { getShoutouts, setShoutouts } from "@/venue/shoutouts";
 import { useAccount } from "@/auth/account";
 
