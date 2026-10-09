@@ -141,3 +141,86 @@ func TestMeEndpoint(t *testing.T) {
 		t.Fatalf("preflight: %d %q", pre.StatusCode, pre.Header.Get("Access-Control-Allow-Headers"))
 	}
 }
+
+// A JWKS refetch that fails (Privy down, rate limited, an empty set) must not throw away the keys we have: anyone can
+// trigger a refetch with a made-up kid, and losing the keys signs every player out until the next fetch is allowed.
+func TestJWKSRefetchKeepsKeysOnBadResponse(t *testing.T) {
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	x, y := make([]byte, 32), make([]byte, 32)
+	key.PublicKey.X.FillBytes(x)
+	key.PublicKey.Y.FillBytes(y)
+	jwks := `{"keys":[{"kid":"k1","kty":"EC","crv":"P-256","x":"` + base64.RawURLEncoding.EncodeToString(x) +
+		`","y":"` + base64.RawURLEncoding.EncodeToString(y) + `"}]}`
+	head := map[string]any{"alg": "ES256", "kid": "k1", "typ": "JWT"}
+
+	for name, bad := range map[string]func(http.ResponseWriter){
+		"503 with a JSON error": func(w http.ResponseWriter) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":"unavailable"}`))
+		},
+		"429 with an empty set": func(w http.ResponseWriter) {
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"keys":[]}`))
+		},
+		"200 with no usable key": func(w http.ResponseWriter) { _, _ = w.Write([]byte(`{"keys":[]}`)) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			fetches := 0
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				fetches++
+				if fetches == 1 {
+					_, _ = w.Write([]byte(jwks))
+					return
+				}
+				bad(w)
+			}))
+			t.Cleanup(srv.Close)
+			p := newPrivy(appID, "secret", srv.Client())
+			p.base = srv.URL
+			now := time.Now()
+			if _, err := p.verify(signJWT(t, key, head, good(now.Add(time.Hour))), now); err != nil {
+				t.Fatalf("first fetch: %v", err)
+			}
+			later := now.Add(2 * jwksMinGap)
+			unknown := map[string]any{"alg": "ES256", "kid": "made-up", "typ": "JWT"}
+			if _, err := p.verify(signJWT(t, key, unknown, good(later.Add(time.Hour))), later); err == nil {
+				t.Fatal("unknown kid accepted")
+			}
+			if fetches != 2 {
+				t.Fatalf("the unknown kid should refetch once, fetched %d times", fetches)
+			}
+			if _, err := p.verify(signJWT(t, key, head, good(later.Add(time.Hour))), later); err != nil {
+				t.Fatalf("a valid token after a failed refetch: %v", err)
+			}
+		})
+	}
+}
+
+// While Privy is down and no key was ever loaded, sign-ins still fetch the JWKS at most once a minute.
+func TestJWKSRefetchRateLimitedWithoutKeys(t *testing.T) {
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	fetches := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fetches++
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"error":"unavailable"}`))
+	}))
+	t.Cleanup(srv.Close)
+	p := newPrivy(appID, "secret", srv.Client())
+	p.base = srv.URL
+	now := time.Now()
+	head := map[string]any{"alg": "ES256", "kid": "k1", "typ": "JWT"}
+	for i := 0; i < 20; i++ {
+		if _, err := p.verify(signJWT(t, key, head, good(now.Add(time.Hour))), now); err == nil {
+			t.Fatal("accepted without keys")
+		}
+	}
+	if fetches != 1 {
+		t.Fatalf("20 sign-ins in one minute fetched the JWKS %d times, want 1", fetches)
+	}
+	later := now.Add(jwksMinGap + time.Second)
+	_, _ = p.verify(signJWT(t, key, head, good(later.Add(time.Hour))), later)
+	if fetches != 2 {
+		t.Fatalf("after a minute: %d fetches, want 2", fetches)
+	}
+}
