@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -129,7 +130,8 @@ func (p *privy) key(kid string, now time.Time) (*ecdsa.PublicKey, error) {
 	if k := p.keys[kid]; k != nil {
 		return k, nil
 	}
-	if now.Sub(p.fetched) < jwksMinGap && p.keys != nil {
+	// Rate limited even while no key was ever loaded (Privy down at start), so sign-ins can't hammer it.
+	if !p.fetched.IsZero() && now.Sub(p.fetched) < jwksMinGap {
 		return nil, errToken
 	}
 	p.fetched = now
@@ -138,15 +140,20 @@ func (p *privy) key(kid string, now time.Time) (*ecdsa.PublicKey, error) {
 		return nil, err
 	}
 	defer res.Body.Close()
+	// A failed refetch keeps the keys we have: anyone can trigger one with a made-up kid, and an empty set would
+	// sign every player out until the next fetch is allowed.
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("jwks: %s", res.Status)
+	}
 	var set struct {
 		Keys []struct {
 			Kid, Kty, Crv, X, Y string
 		} `json:"keys"`
 	}
-	if err := json.NewDecoder(res.Body).Decode(&set); err != nil {
+	if err := json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&set); err != nil {
 		return nil, err
 	}
-	p.keys = map[string]*ecdsa.PublicKey{}
+	keys := map[string]*ecdsa.PublicKey{}
 	for _, k := range set.Keys {
 		x, ex := b64(k.X)
 		y, ey := b64(k.Y)
@@ -155,9 +162,13 @@ func (p *privy) key(kid string, now time.Time) (*ecdsa.PublicKey, error) {
 		}
 		pub, err := ecdsa.ParseUncompressedPublicKey(elliptic.P256(), append(append([]byte{4}, pad32(x)...), pad32(y)...))
 		if err == nil {
-			p.keys[k.Kid] = pub
+			keys[k.Kid] = pub
 		}
 	}
+	if len(keys) == 0 {
+		return nil, errors.New("jwks: no usable key")
+	}
+	p.keys = keys
 	if k := p.keys[kid]; k != nil {
 		return k, nil
 	}
