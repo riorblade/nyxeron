@@ -39,7 +39,7 @@ type hub struct {
 	// Abuse limits, all per server process (one relay; see README). 0 = off.
 	maxConns      int           // open sockets in total
 	maxConnsPerIP int           // open sockets per IP
-	maxRoomsPerIP int           // rooms with a connected host per IP
+	maxRoomsPerIP int           // rooms per IP (abandoned ones in their grace period too)
 	kickBan       time.Duration // a kicked IP can't rejoin that room for this long
 	queueBudget   int64         // bytes queued for all clients together (conn.push)
 	queued        atomic.Int64
@@ -64,7 +64,10 @@ type expiredRoom struct {
 	at    time.Time
 }
 
-const keepExpired = time.Hour
+const (
+	keepExpired = time.Hour
+	maxExpired  = 10_000 // ~1 MB of codes and tokens, whatever the churn
+)
 
 func newHub(maxRooms, maxPeers int, grace time.Duration) *hub {
 	return &hub{rooms: map[string]*room{}, maxRooms: maxRooms, maxPeers: maxPeers, grace: grace,
@@ -132,6 +135,12 @@ func (h *hub) evictHostless(now time.Time) ([]*conn, bool) {
 // expire closes a room and keeps its code for a resume. Caller holds h.mu; returns the peers to tell.
 func (h *hub) expire(r *room, now time.Time) []*conn {
 	delete(h.rooms, r.code)
+	if len(h.expired) >= maxExpired {
+		for code := range h.expired { // full: forget one (map order is random enough)
+			delete(h.expired, code)
+			break
+		}
+	}
 	h.expired[r.code] = expiredRoom{r.token, now}
 	out := make([]*conn, 0, len(r.peers))
 	for _, p := range r.peers {
@@ -147,12 +156,12 @@ func tellClosed(peers []*conn) {
 	}
 }
 
-// hostedBy counts rooms with a connected host opened from ip. Caller holds h.mu.
+// hostedBy counts the rooms opened from ip, abandoned ones included (create-and-drop churn counts). Caller holds h.mu.
 // ponytail: O(rooms) scan; keep a per-IP counter if MAX_ROOMS grows past ~10k.
 func (h *hub) hostedBy(ip string) int {
 	n := 0
 	for _, r := range h.rooms {
-		if r.host != nil && r.ip == ip {
+		if r.ip == ip {
 			n++
 		}
 	}
@@ -213,6 +222,9 @@ func (h *hub) resume(c *conn, code, token string) (*room, string) {
 	now := time.Now()
 	r := h.rooms[code]
 	if e := h.expired[code]; r == nil && token != "" && e.token == token {
+		if h.maxRoomsPerIP > 0 && h.hostedBy(c.ip) >= h.maxRoomsPerIP {
+			return nil, "too_many_rooms"
+		}
 		if len(h.rooms) >= h.maxRooms {
 			var ok bool
 			if evicted, ok = h.evictHostless(now); !ok {
@@ -228,6 +240,8 @@ func (h *hub) resume(c *conn, code, token string) (*room, string) {
 		return nil, "room_not_found"
 	}
 	if r.host != nil {
+		// Said in a message (flushed before the socket goes): the close frame's reason doesn't reach browsers.
+		r.host.control(control{T: "error", Code: "replaced"})
 		r.host.closeWith("replaced")
 	}
 	r.host, r.hostGone = c, time.Time{}

@@ -110,6 +110,25 @@ describe("relay reconnects", () => {
     expect(FakeWS.all).toHaveLength(2);
   });
 
+  it("in a room, rate_limited means slow down, not reconnect; replaced (in a message) stands down", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    const r = new Relay("ws://x");
+    const seen: Control[] = [];
+    r.onControl = (m) => seen.push(m);
+    const room = r.host("Club");
+    await Promise.resolve();
+    FakeWS.all[0]!.say({ t: "created", room: "AAAAAA", token: "t1" });
+    await room;
+    FakeWS.all[0]!.say({ t: "error", code: "rate_limited" });
+    expect(FakeWS.all[0]!.readyState).toBe(1);
+
+    FakeWS.all[0]!.say({ t: "error", code: "replaced" });
+    expect(seen.at(-1)).toMatchObject({ code: "replaced" });
+    FakeWS.all[0]!.close();
+    vi.advanceTimersByTime(10_000);
+    expect(FakeWS.all).toHaveLength(1);
+  });
+
   it("a host whose room expired opens a fresh one and says so", async () => {
     const r = new Relay("ws://x");
     const seen: Control[] = [];

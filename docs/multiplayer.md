@@ -45,8 +45,10 @@ Limits (one relay process, all in memory; env in `deploy/compose.yml`):
 | Queued bytes per client / all clients | 256 KB / 16 MB (`QUEUE_BUDGET_MB`) | a client that doesn't read is dropped, never pins memory; peer input may fill half the host's queue, so the host is never dropped for its guests' spam |
 | Kick | the IP can't rejoin that room for 10 min (`KICK_BAN_SEC`) | per IP (players behind one NAT share it) until the relay checks signed api tickets |
 
-`TRUST_PROXY=1` takes the client IP from the last `X-Forwarded-For` hop (Caddy writes it); only set it when the relay
-is reachable through the edge proxy alone.
+`TRUST_PROXY` lists the proxies (container names, IPs or CIDRs) whose `X-Forwarded-For` is believed; the client IP is
+its last hop (the one Caddy wrote). A header from anyone else on the Docker network is ignored. IPv6 clients are keyed
+by their /64. Empty or wrong → every player shares the proxy's IP and the per-IP limits hit everyone; the relay logs a
+warning at start.
 
 The client (`relay.ts`) reconnects with exponential backoff and equal jitter (0.25–0.5 s, up to 4–8 s), resets it only
 after a connection held 10 s, stops for good on closed/kicked/room gone, and stands down when another tab takes the

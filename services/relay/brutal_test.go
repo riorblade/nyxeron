@@ -340,13 +340,13 @@ func TestBrutalManyRoomsExpireMemoryBounded(t *testing.T) {
 	runtime.GC()
 	var after runtime.MemStats
 	runtime.ReadMemStats(&after)
-	if rooms, _ := h.stats(); rooms != 0 || len(h.expired) != 10*n {
+	// Capped at maxExpired whatever the churn (the oldest beyond it can't be resumed any more).
+	if rooms, _ := h.stats(); rooms != 0 || len(h.expired) != min(10*n, maxExpired) {
 		t.Fatalf("rooms %d expired %d", rooms, len(h.expired))
 	}
 	per := float64(after.HeapAlloc-before.HeapAlloc) / float64(len(h.expired))
-	// Worst case kept for an hour: maxRooms per (grace + sweep) → 2000 × 3600/70 ≈ 103k entries.
-	t.Logf("expired room memory: %.0f B/entry → ~%.1f MB at the 1 h worst case (relay container: 48 MB)",
-		per, per*103_000/1e6)
+	t.Logf("expired room memory: %.0f B/entry → ~%.1f MB at the cap of %d (relay container: 48 MB)",
+		per, per*maxExpired/1e6, maxExpired)
 	h.sweep(now.Add(keepExpired + time.Second))
 	if len(h.expired) != 0 {
 		t.Fatalf("expired not pruned: %d", len(h.expired))

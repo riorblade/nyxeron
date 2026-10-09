@@ -281,15 +281,73 @@ func TestClientIP(t *testing.T) {
 	r := httptest.NewRequest("GET", "/ws", nil)
 	r.RemoteAddr = "10.0.0.2:5555"
 	r.Header.Set("X-Forwarded-For", "6.6.6.6, 203.0.113.9")
-	if ip := clientIP(r, false); ip != "10.0.0.2" {
-		t.Fatalf("untrusted: %s", ip)
+	if ip := clientIP(r, nil); ip != "10.0.0.2" {
+		t.Fatalf("no trusted proxy: %s", ip)
 	}
-	// Behind the edge proxy: its own hop (the last), never a client-written one.
-	if ip := clientIP(r, true); ip != "203.0.113.9" {
+	// Only the trusted proxy's word counts, and only its own hop (the last), never a client-written one.
+	if ip := clientIP(r, newProxies("10.0.0.0/24")); ip != "203.0.113.9" {
 		t.Fatalf("trusted: %s", ip)
 	}
+	if ip := clientIP(r, newProxies("10.0.1.7, 192.168.0.0/16")); ip != "10.0.0.2" {
+		t.Fatalf("another container on the network set XFF: %s", ip)
+	}
+	if ip := clientIP(r, newProxies("localhost")); ip != "10.0.0.2" {
+		t.Fatalf("hostname not resolving to the socket: %s", ip)
+	}
 	r.Header.Del("X-Forwarded-For")
-	if ip := clientIP(r, true); ip != "10.0.0.2" {
+	if ip := clientIP(r, newProxies("10.0.0.0/24")); ip != "10.0.0.2" {
 		t.Fatalf("no header: %s", ip)
+	}
+	// IPv6: one /64 is one subscriber.
+	r.RemoteAddr = "[2001:db8:1:2:aaaa::1]:443"
+	a := clientIP(r, nil)
+	r.RemoteAddr = "[2001:db8:1:2:bbbb::9]:443"
+	if b := clientIP(r, nil); a != b || a != "2001:db8:1:2::/64" {
+		t.Fatalf("v6 keyed by address, not /64: %s %s", a, b)
+	}
+}
+
+func TestReplacedHostIsToldInBand(t *testing.T) {
+	_, url := setup(t, time.Minute)
+	a := dial(t, url)
+	a.send(control{T: "create"})
+	c := a.expect("created")
+	b := dial(t, url)
+	b.send(control{T: "resume", Room: c.Room, Token: c.Token})
+	b.expect("created")
+	// Browsers don't see the close frame's reason, so the old tab must hear it as a message.
+	if m := a.expect("error"); m.Code != "replaced" {
+		t.Fatalf("old host got %+v", m)
+	}
+}
+
+func TestRoomChurnPerIPIsCapped(t *testing.T) {
+	h, url := setup(t, time.Minute)
+	h.maxRooms, h.maxRoomsPerIP = 1000, 3
+	for i := 0; i < 3; i++ {
+		a := dial(t, url)
+		a.send(control{T: "create"})
+		a.expect("created")
+		_ = a.ws.CloseNow() // abandoned, but still counts during its grace period
+	}
+	time.Sleep(50 * time.Millisecond)
+	x := dial(t, url)
+	x.send(control{T: "create"})
+	if m := x.expect("error"); m.Code != "too_many_rooms" {
+		t.Fatalf("4th room from one IP: %+v", m)
+	}
+}
+
+func TestControlsIgnoreTheSharedBudget(t *testing.T) {
+	h := newHub(10, 64, time.Minute)
+	h.queueBudget = 1 // someone else filled it
+	h.queued.Store(1)
+	host := fake(h)
+	r, _ := h.create(host)
+	for i := 0; i < 30; i++ {
+		h.join(fake(h), r.code) // 30 "peer" controls to the host
+	}
+	if isDone(host) {
+		t.Fatalf("host dropped by a full shared budget: %q", reasonOf(host))
 	}
 }

@@ -82,6 +82,8 @@ export class Relay {
   private open = true;
   private retry = 0;
   private openedAt = 0;
+  /** A (re)connect's hello is out and unanswered: only then is "not right now" a reason to hang up and retry. */
+  private helloOut = false;
   private hello: Control | null = null;
   private waiting: {
     ok: (m: Control) => void;
@@ -163,7 +165,10 @@ export class Relay {
     ws.onopen = () => {
       this.openedAt = Date.now();
       this.onStatus?.(true);
-      if (this.hello) this.sendControl(this.hello);
+      if (this.hello) {
+        this.helloOut = true;
+        this.sendControl(this.hello);
+      }
     };
     ws.onmessage = (e) => {
       if (typeof e.data !== "string") {
@@ -180,6 +185,7 @@ export class Relay {
       ) {
         sessionStorage.removeItem(TOKEN_KEY);
         this.hello = { t: "create", name: this.hello.name ?? "" };
+        this.helloOut = true;
         return this.sendControl(this.hello);
       }
       // Every (re)connect is answered: a reconnecting player gets a new id, a host maybe a new room.
@@ -193,19 +199,27 @@ export class Relay {
         );
       }
       this.room = m.room ?? this.room;
+      const answer =
+        this.helloOut &&
+        (m.t === "error" || m.t === "joined" || m.t === "created");
+      if (answer) this.helloOut = false;
       const w = this.waiting;
       if (w && (m.t === w.want || m.t === "error")) {
         this.waiting = null;
         return m.t === "error" ? w.fail(new Error(m.code)) : w.ok(m);
       }
       // Turned away for now (full, busy, throttled) while reconnecting: hang up and try again after the backoff.
-      if (m.t === "error" && m.code && retryable.has(m.code)) return ws.close();
+      // In a room, "rate_limited" only means slow down (the relay throttles messages too): stay.
+      if (answer && m.t === "error" && m.code && retryable.has(m.code))
+        return ws.close();
       // Closed or kicked: don't walk straight back in.
       if (
         m.t === "closed" ||
         m.t === "kicked" ||
         (m.t === "error" &&
-          (m.code === "room_not_found" || m.code === "kicked"))
+          (m.code === "room_not_found" ||
+            m.code === "kicked" ||
+            m.code === "replaced"))
       )
         this.open = false;
       this.onControl?.(m);

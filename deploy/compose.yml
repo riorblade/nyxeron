@@ -45,8 +45,9 @@ services:
       MAX_ROOMS_PER_IP: "8"
       QUEUE_BUDGET_MB: "8"
       KICK_BAN_SEC: "600"
-      # Only Caddy reaches the relay (expose, not ports), so its X-Forwarded-For is the real client IP.
-      TRUST_PROXY: "1"
+      # Whose X-Forwarded-For is the real client IP: the edge proxy's container (names, IPs or CIDRs). Anyone else
+      # on the network writing that header is ignored.
+      TRUST_PROXY: edge
       # Keep the Go heap well under the container cap: collect at +50% heap growth (default 100%), and hard at
       # the soft limit before an OOM kill.
       GOGC: "50"
