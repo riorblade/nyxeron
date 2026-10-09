@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -32,8 +33,23 @@ func envInt(key string, fallback int) int {
 	return n
 }
 
+// clientIP: with trustProxy (the relay only reachable through the edge proxy, deploy/Caddyfile) the last
+// X-Forwarded-For hop, which the proxy wrote itself; otherwise the socket's address.
+func clientIP(r *http.Request, trustProxy bool) string {
+	if xff := r.Header.Get("X-Forwarded-For"); trustProxy && xff != "" {
+		return strings.TrimSpace(xff[strings.LastIndex(xff, ",")+1:])
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
 // server wires HTTP: /ws (the relay), /healthz and /stats (internal; the edge proxy only exposes /ws).
-func server(h *hub, origins []string) http.Handler {
+func server(h *hub, origins []string) http.Handler { return serverWith(h, origins, false) }
+
+func serverWith(h *hub, origins []string, trustProxy bool) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /ws", func(w http.ResponseWriter, r *http.Request) {
 		ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{
@@ -44,7 +60,18 @@ func server(h *hub, origins []string) http.Handler {
 		if err != nil {
 			return
 		}
+		ip := clientIP(r, trustProxy)
+		if !h.admit(ip) {
+			// Told why (the client shows it and backs off), then closed: no goroutines, no queue.
+			ctx, cancel := context.WithTimeout(r.Context(), time.Second)
+			_ = ws.Write(ctx, websocket.MessageText, []byte(`{"t":"error","code":"too_many_connections"}`))
+			cancel()
+			_ = ws.Close(websocket.StatusTryAgainLater, "too_many_connections")
+			return
+		}
+		defer h.gone(ip)
 		c := newConn(ws, h)
+		c.ip = ip
 		ctx, cancel := context.WithCancel(r.Context())
 		c.cancel = cancel
 		go c.writeLoop(ctx)
@@ -78,6 +105,12 @@ func main() {
 
 	origins := strings.Split(env("ORIGINS", "localhost,localhost:*,127.0.0.1,127.0.0.1:*"), ",")
 	h := newHub(envInt("MAX_ROOMS", 2000), envInt("MAX_PEERS", 64), time.Duration(envInt("GRACE_SEC", 60))*time.Second)
+	h.maxConns = envInt("MAX_CONNS", h.maxConns)
+	h.maxConnsPerIP = envInt("MAX_CONNS_PER_IP", h.maxConnsPerIP)
+	h.maxRoomsPerIP = envInt("MAX_ROOMS_PER_IP", 8)
+	h.kickBan = time.Duration(envInt("KICK_BAN_SEC", int(h.kickBan.Seconds()))) * time.Second
+	h.queueBudget = int64(envInt("QUEUE_BUDGET_MB", int(h.queueBudget>>20))) << 20
+	trustProxy := env("TRUST_PROXY", "") == "1"
 	go func() {
 		for now := range time.Tick(10 * time.Second) {
 			h.sweep(now)
@@ -86,7 +119,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           server(h, origins),
+		Handler:           serverWith(h, origins, trustProxy),
 		ReadHeaderTimeout: 5 * time.Second,
 		MaxHeaderBytes:    8 << 10,
 	}
@@ -98,7 +131,8 @@ func main() {
 		defer cancel()
 		_ = srv.Shutdown(sctx)
 	}()
-	slog.Info("relay listening", "addr", addr, "origins", origins)
+	slog.Info("relay listening", "addr", addr, "origins", origins, "max_conns", h.maxConns,
+		"max_conns_per_ip", h.maxConnsPerIP, "max_rooms_per_ip", h.maxRoomsPerIP, "trust_proxy", trustProxy)
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("relay stopped", "err", err)
 		os.Exit(1)

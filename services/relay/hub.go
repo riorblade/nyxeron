@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -18,6 +19,9 @@ type room struct {
 	hostGone time.Time
 	peers    map[uint16]*conn
 	nextID   uint16
+	// Who opened it (per-IP room cap) and who the host kicked: an IP → until when it may not rejoin.
+	ip     string
+	kicked map[string]time.Time
 }
 
 // hub holds every room. One mutex: rooms are tiny and operations are O(peers); fine for thousands of players.
@@ -31,7 +35,29 @@ type hub struct {
 	// Rooms closed for a host gone past the grace period: the host can still resume them (same code, so links
 	// and events keep working) for keepExpired; their codes aren't handed out meanwhile.
 	expired map[string]expiredRoom
+
+	// Abuse limits, all per server process (one relay; see README). 0 = off.
+	maxConns      int           // open sockets in total
+	maxConnsPerIP int           // open sockets per IP
+	maxRoomsPerIP int           // rooms with a connected host per IP
+	kickBan       time.Duration // a kicked IP can't rejoin that room for this long
+	queueBudget   int64         // bytes queued for all clients together (conn.push)
+	queued        atomic.Int64
+	conns         int
+	perIP         map[string]int
+	// Failed joins per IP: a token bucket, so room codes can't be guessed by reconnecting.
+	misses map[string]*bucket
 }
+
+type bucket struct {
+	tokens float64
+	last   time.Time
+}
+
+const (
+	missBurst = 20
+	missRate  = 0.2 // per second: 12 wrong codes a minute after the burst
+)
 
 type expiredRoom struct {
 	token string
@@ -42,7 +68,95 @@ const keepExpired = time.Hour
 
 func newHub(maxRooms, maxPeers int, grace time.Duration) *hub {
 	return &hub{rooms: map[string]*room{}, maxRooms: maxRooms, maxPeers: maxPeers, grace: grace,
-		expired: map[string]expiredRoom{}}
+		expired: map[string]expiredRoom{}, perIP: map[string]int{}, misses: map[string]*bucket{},
+		maxConns: 1000, maxConnsPerIP: 100, kickBan: 10 * time.Minute, queueBudget: 16 << 20}
+}
+
+// admit counts a new socket from ip; false = over the total or per-IP cap (the caller closes it).
+func (h *hub) admit(ip string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if (h.maxConns > 0 && h.conns >= h.maxConns) || (h.maxConnsPerIP > 0 && h.perIP[ip] >= h.maxConnsPerIP) {
+		return false
+	}
+	h.conns++
+	h.perIP[ip]++
+	return true
+}
+
+func (h *hub) gone(ip string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.conns--
+	if h.perIP[ip]--; h.perIP[ip] <= 0 {
+		delete(h.perIP, ip)
+	}
+}
+
+// guessing: ip has used up its failed joins. Caller holds h.mu.
+func (h *hub) guessing(ip string, now time.Time) bool {
+	b := h.misses[ip]
+	if b == nil {
+		return false
+	}
+	b.tokens = min(missBurst, b.tokens+now.Sub(b.last).Seconds()*missRate)
+	b.last = now
+	return b.tokens < 1
+}
+
+// miss records a failed join from ip. Caller holds h.mu.
+func (h *hub) miss(ip string, now time.Time) {
+	b := h.misses[ip]
+	if b == nil {
+		b = &bucket{tokens: missBurst, last: now}
+		h.misses[ip] = b
+	}
+	b.tokens--
+}
+
+// evictHostless frees a room slot when the server is full: the room whose host has been gone longest closes early
+// (its host can still resume it, like any expired room). Caller holds h.mu; returns the peers to tell.
+func (h *hub) evictHostless(now time.Time) ([]*conn, bool) {
+	var oldest *room
+	for _, r := range h.rooms {
+		if r.host == nil && (oldest == nil || r.hostGone.Before(oldest.hostGone)) {
+			oldest = r
+		}
+	}
+	if oldest == nil {
+		return nil, false
+	}
+	return h.expire(oldest, now), true
+}
+
+// expire closes a room and keeps its code for a resume. Caller holds h.mu; returns the peers to tell.
+func (h *hub) expire(r *room, now time.Time) []*conn {
+	delete(h.rooms, r.code)
+	h.expired[r.code] = expiredRoom{r.token, now}
+	out := make([]*conn, 0, len(r.peers))
+	for _, p := range r.peers {
+		out = append(out, p)
+	}
+	return out
+}
+
+func tellClosed(peers []*conn) {
+	for _, p := range peers {
+		p.control(control{T: "closed"})
+		p.closeWith("room closed")
+	}
+}
+
+// hostedBy counts rooms with a connected host opened from ip. Caller holds h.mu.
+// ponytail: O(rooms) scan; keep a per-IP counter if MAX_ROOMS grows past ~10k.
+func (h *hub) hostedBy(ip string) int {
+	n := 0
+	for _, r := range h.rooms {
+		if r.host != nil && r.ip == ip {
+			n++
+		}
+	}
+	return n
 }
 
 func randomCode(n int) string {
@@ -60,12 +174,20 @@ func randomToken() string {
 	return hex.EncodeToString(b)
 }
 
-// create opens a room with c as its host.
+// create opens a room with c as its host. A full server first closes the longest-abandoned room.
 func (h *hub) create(c *conn) (*room, string) {
 	h.mu.Lock()
+	var evicted []*conn
+	defer func() { tellClosed(evicted) }()
 	defer h.mu.Unlock()
+	if h.maxRoomsPerIP > 0 && h.hostedBy(c.ip) >= h.maxRoomsPerIP {
+		return nil, "too_many_rooms"
+	}
 	if len(h.rooms) >= h.maxRooms {
-		return nil, "server_full"
+		var ok bool
+		if evicted, ok = h.evictHostless(time.Now()); !ok {
+			return nil, "server_full"
+		}
 	}
 	code := randomCode(6)
 	for h.rooms[code] != nil || h.expired[code].token != "" {
@@ -75,7 +197,8 @@ func (h *hub) create(c *conn) (*room, string) {
 }
 
 func (h *hub) open(c *conn, code, token string) *room {
-	r := &room{code: code, token: token, host: c, peers: map[uint16]*conn{}, nextID: 1}
+	r := &room{code: code, token: token, host: c, peers: map[uint16]*conn{}, nextID: 1, ip: c.ip,
+		kicked: map[string]time.Time{}}
 	h.rooms[code] = r
 	c.room, c.host = r, true
 	return r
@@ -84,15 +207,24 @@ func (h *hub) open(c *conn, code, token string) *room {
 // resume puts a reconnecting host back in charge of its room (reopened if it expired while they were away).
 func (h *hub) resume(c *conn, code, token string) (*room, string) {
 	h.mu.Lock()
+	var evicted []*conn
+	defer func() { tellClosed(evicted) }()
 	defer h.mu.Unlock()
+	now := time.Now()
 	r := h.rooms[code]
-	if e := h.expired[code]; r == nil && token != "" && e.token == token && len(h.rooms) < h.maxRooms {
+	if e := h.expired[code]; r == nil && token != "" && e.token == token {
+		if len(h.rooms) >= h.maxRooms {
+			var ok bool
+			if evicted, ok = h.evictHostless(now); !ok {
+				return nil, "server_full"
+			}
+		}
 		delete(h.expired, code)
 		r = h.open(c, code, token)
 		c.control(control{T: "created", Room: r.code, Token: r.token})
 		return r, ""
 	}
-	if r == nil || r.token != token {
+	if r == nil || r.token != token { // a 128-bit token can't be guessed: no miss counted
 		return nil, "room_not_found"
 	}
 	if r.host != nil {
@@ -114,9 +246,17 @@ func (h *hub) resume(c *conn, code, token string) (*room, string) {
 func (h *hub) join(c *conn, code string) (*room, string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	now := time.Now()
+	if h.guessing(c.ip, now) {
+		return nil, "rate_limited"
+	}
 	r := h.rooms[code]
 	if r == nil {
+		h.miss(c.ip, now)
 		return nil, "room_not_found"
+	}
+	if now.Before(r.kicked[c.ip]) {
+		return nil, "kicked"
 	}
 	if len(r.peers) >= h.maxPeers {
 		return nil, "room_full"
@@ -167,6 +307,11 @@ func (h *hub) kick(host *conn, id uint16) {
 	var p *conn
 	if r != nil && r.host == host {
 		p = r.peers[id]
+	}
+	// The kick sticks for a while: not a ban (no accounts here), but the same IP can't walk straight back in.
+	// ponytail: per IP, so players behind one NAT share it; ban by account once the relay checks api tickets.
+	if p != nil && h.kickBan > 0 {
+		r.kicked[p.ip] = time.Now().Add(h.kickBan)
 	}
 	h.mu.Unlock()
 	if p != nil {
@@ -223,13 +368,14 @@ func (h *hub) hostOf(r *room) *conn {
 func (h *hub) sweep(now time.Time) {
 	h.mu.Lock()
 	var closing []*conn
-	for code, r := range h.rooms {
+	for _, r := range h.rooms {
 		if r.host == nil && now.Sub(r.hostGone) > h.grace {
-			for _, p := range r.peers {
-				closing = append(closing, p)
+			closing = append(closing, h.expire(r, now)...)
+		}
+		for ip, until := range r.kicked {
+			if now.After(until) {
+				delete(r.kicked, ip)
 			}
-			delete(h.rooms, code)
-			h.expired[code] = expiredRoom{r.token, now}
 		}
 	}
 	for code, e := range h.expired {
@@ -237,11 +383,13 @@ func (h *hub) sweep(now time.Time) {
 			delete(h.expired, code)
 		}
 	}
-	h.mu.Unlock()
-	for _, p := range closing {
-		p.control(control{T: "closed"})
-		p.closeWith("room closed")
+	for ip, b := range h.misses {
+		if now.Sub(b.last) > time.Duration(missBurst/missRate)*time.Second {
+			delete(h.misses, ip) // refilled by now
+		}
 	}
+	h.mu.Unlock()
+	tellClosed(closing)
 }
 
 func (h *hub) stats() (rooms, peers int) {

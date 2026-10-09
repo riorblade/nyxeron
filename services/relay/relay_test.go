@@ -200,6 +200,7 @@ func TestHostResumeAndGrace(t *testing.T) {
 
 func TestCloseAndKick(t *testing.T) {
 	h, url := setup(t, time.Minute)
+	h.kickBan = 0 // every test socket is 127.0.0.1: the kicked guest's IP ban would also keep `other` out
 	host := dial(t, url)
 	host.send(control{T: "create"})
 	c := host.expect("created")
@@ -242,5 +243,53 @@ func TestRateLimit(t *testing.T) {
 	}
 	if !limited {
 		t.Fatal("no rate limiting")
+	}
+}
+
+func TestRoomsPerIPAndQueueBudgetReleased(t *testing.T) {
+	h, url := setup(t, time.Minute)
+	h.maxRoomsPerIP = 1
+	host := dial(t, url)
+	host.send(control{T: "create"})
+	c := host.expect("created")
+	second := dial(t, url)
+	second.send(control{T: "create"})
+	if m := second.expect("error"); m.Code != "too_many_rooms" {
+		t.Fatalf("second room from one IP: %+v", m)
+	}
+
+	// A peer that stops reading: what it pinned is given back to the hub's budget once it's gone.
+	g := dial(t, url)
+	g.send(control{T: "join", Room: c.Room, Role: "guest"})
+	id := g.expect("joined").ID
+	host.expect("peer")
+	payload := strings.Repeat("x", 100<<10)
+	for i := 0; i < 20; i++ {
+		host.frame(kindTo, id, payload)
+	}
+	_ = g.ws.CloseNow()
+	deadline := time.Now().Add(10 * time.Second)
+	for h.queued.Load() != 0 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if q := h.queued.Load(); q != 0 {
+		t.Fatalf("budget leaked: %d bytes still counted", q)
+	}
+}
+
+func TestClientIP(t *testing.T) {
+	r := httptest.NewRequest("GET", "/ws", nil)
+	r.RemoteAddr = "10.0.0.2:5555"
+	r.Header.Set("X-Forwarded-For", "6.6.6.6, 203.0.113.9")
+	if ip := clientIP(r, false); ip != "10.0.0.2" {
+		t.Fatalf("untrusted: %s", ip)
+	}
+	// Behind the edge proxy: its own hop (the last), never a client-written one.
+	if ip := clientIP(r, true); ip != "203.0.113.9" {
+		t.Fatalf("trusted: %s", ip)
+	}
+	r.Header.Del("X-Forwarded-For")
+	if ip := clientIP(r, true); ip != "10.0.0.2" {
+		t.Fatalf("no header: %s", ip)
 	}
 }

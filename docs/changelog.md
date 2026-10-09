@@ -3,6 +3,17 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-10 · Relay: hardened for production
+
+- **One player can no longer take the relay down:** what the relay holds for a client is capped in bytes (256 KB each,
+  16 MB for everyone), so a few clients that stop reading can't push it out of memory. Sockets are capped (in total
+  and per IP), and one that doesn't join a room within 10 s is closed. A full server closes the longest-abandoned
+  room instead of telling a real CEO "server full", and one network can host at most 8 clubs at once. Guessing room
+  codes is throttled per IP. A guest flooding input can no longer get the host dropped, a tab that lost the room to
+  another tab stops fighting for it ("This club is open in another tab."), and a kicked player can't rejoin that club
+  from the same network for 10 minutes. Players reconnect with growing, jittered waits instead of every 0.5 s in
+  lockstep. Load test: 10 clubs × 30 players, 100% of snapshots delivered, ~31 MB.
+
 ## 2026-10-09 · Multiplayer: reconnects that hold
 
 - **Live clubs survive a bad connection:** a guest whose connection drops says hello again and gets their own seat

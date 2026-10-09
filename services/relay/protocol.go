@@ -20,7 +20,8 @@
 //
 // Relay → clients: {"t":"peer","id":N,"name":"…","role":"…","on":true|false} (to the host; after a resume, again for
 // everyone still in the room), {"t":"host","on":true|false} (to peers), {"t":"closed"}, {"t":"kicked"},
-// {"t":"error","code":"…"}. Error codes: room_not_found, room_full, server_full, bad_request, already_in_room, rate_limited, host_busy.
+// {"t":"error","code":"…"}. Error codes: room_not_found, room_full, server_full, bad_request, already_in_room, rate_limited, host_busy,
+// kicked, too_many_rooms, too_many_connections. Abuse limits: docs/multiplayer.md.
 package main
 
 const (

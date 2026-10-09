@@ -338,6 +338,9 @@ export async function hostOpen(clubName: string) {
   relay.onStatus = (on) => set({ status: on ? "live" : "connecting" });
   relay.onFrame = onHostFrame;
   relay.onControl = (c) => {
+    // This club is open in another tab now: this one lets go.
+    if (c.t === "error" && c.code === "replaced")
+      return set({ status: "error", error: "replaced" });
     if (c.t === "created") {
       // Back after a drop: the relay re-announces who is still here (they say hello again); the rest left.
       for (const id of Object.keys(useNet.getState().players)) letGo(+id);
@@ -488,7 +491,7 @@ export async function guestJoin(
       settleLast();
       set({ status: "closed" });
     }
-    if (c.t === "kicked") {
+    if (c.t === "kicked" || (c.t === "error" && c.code === "kicked")) {
       settleLast();
       set({ status: "error", error: "kicked" });
     }
