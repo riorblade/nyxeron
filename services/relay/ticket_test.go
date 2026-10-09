@@ -78,3 +78,22 @@ func TestTicketsKeyKicksAndRoomsByAccount(t *testing.T) {
 	friend.send(control{T: "join", Room: c.Room, Role: "guest", Ticket: tk("friend")})
 	friend.expect("joined")
 }
+
+func TestTicketResumeOnlyByTheOwner(t *testing.T) {
+	h, url := setup(t, time.Minute)
+	h.ticketKey = []byte("s3cret")
+	tk := func(who string) string { return sign(h.ticketKey, who, time.Now().Add(time.Minute)) }
+	host := dial(t, url)
+	host.send(control{T: "create", Ticket: tk("ceo")})
+	c := host.expect("created")
+	_ = host.ws.CloseNow()
+	time.Sleep(50 * time.Millisecond)
+	thief := dial(t, url) // has the room token (leaked), but not the account
+	thief.send(control{T: "resume", Room: c.Room, Token: c.Token, Ticket: tk("thief")})
+	if m := thief.expect("error"); m.Code != "room_not_found" {
+		t.Fatalf("another account resumed the room: %+v", m)
+	}
+	back := dial(t, url)
+	back.send(control{T: "resume", Room: c.Room, Token: c.Token, Ticket: tk("ceo")})
+	back.expect("created")
+}

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -34,6 +35,11 @@ func signTicket(secret []byte, sub string, exp time.Time) string {
 
 func (pl *players) routeTicket(mux *http.ServeMux) {
 	secret := []byte(os.Getenv("RELAY_TICKET_SECRET"))
+	if n := len(secret); n > 0 && n < 32 {
+		// The relay refuses to start with it; here: no tickets until it's fixed.
+		slog.Error("RELAY_TICKET_SECRET too short: use at least 32 bytes (openssl rand -hex 32)", "len", n)
+		secret = nil
+	}
 	mux.HandleFunc("POST /api/relay/ticket", func(w http.ResponseWriter, r *http.Request) {
 		if len(secret) == 0 {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "not_configured"})

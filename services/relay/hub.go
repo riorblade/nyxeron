@@ -63,6 +63,7 @@ const (
 type expiredRoom struct {
 	token string
 	at    time.Time
+	owner string
 }
 
 const (
@@ -146,7 +147,7 @@ func (h *hub) expire(r *room, now time.Time) []*conn {
 		}
 		delete(h.expired, oldest)
 	}
-	h.expired[r.code] = expiredRoom{r.token, now}
+	h.expired[r.code] = expiredRoom{r.token, now, r.owner}
 	out := make([]*conn, 0, len(r.peers))
 	for _, p := range r.peers {
 		out = append(out, p)
@@ -226,7 +227,9 @@ func (h *hub) resume(c *conn, code, token string) (*room, string) {
 	defer h.mu.Unlock()
 	now := time.Now()
 	r := h.rooms[code]
-	if e := h.expired[code]; r == nil && token != "" && e.token == token {
+	// With tickets, a room only comes back to the account that opened it: a leaked room token alone isn't enough.
+	mine := func(owner string) bool { return len(h.ticketKey) == 0 || owner == c.who }
+	if e := h.expired[code]; r == nil && token != "" && e.token == token && mine(e.owner) {
 		if h.maxRoomsPer > 0 && h.hostedBy(c.who) >= h.maxRoomsPer {
 			return nil, "too_many_rooms"
 		}
@@ -241,7 +244,7 @@ func (h *hub) resume(c *conn, code, token string) (*room, string) {
 		c.control(control{T: "created", Room: r.code, Token: r.token})
 		return r, ""
 	}
-	if r == nil || r.token != token { // a 128-bit token can't be guessed: no miss counted
+	if r == nil || r.token != token || !mine(r.owner) { // a 128-bit token can't be guessed: no miss counted
 		return nil, "room_not_found"
 	}
 	if r.host != nil {

@@ -155,6 +155,32 @@ describe("relay reconnects", () => {
     expect(asked).toEqual([false, false, true]);
   });
 
+  it("a fresh ticket refused too (signed out, banned) stops reconnecting and says so", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    const micro = async () => {
+      for (let n = 0; n < 6; n++) await Promise.resolve();
+    };
+    const r = new Relay("ws://x", async () => "t");
+    const seen: Control[] = [];
+    r.onControl = (m) => seen.push(m);
+    const joined = r.join("ROOM01", "Ana", "guest");
+    await micro();
+    FakeWS.all[0]!.say({ t: "joined", room: "ROOM01", id: 3 });
+    await joined;
+    FakeWS.all[0]!.close();
+    vi.advanceTimersByTime(500);
+    await micro();
+    FakeWS.all[1]!.say({ t: "error", code: "bad_ticket" }); // cached one: retry with a fresh one
+    vi.advanceTimersByTime(10_000);
+    await micro();
+    FakeWS.all[2]!.say({ t: "error", code: "bad_ticket" }); // the fresh one too: give up
+    expect(seen.at(-1)).toMatchObject({ code: "bad_ticket" });
+    FakeWS.all[2]!.close();
+    vi.advanceTimersByTime(60_000);
+    await micro();
+    expect(FakeWS.all).toHaveLength(3);
+  });
+
   it("a host whose room expired opens a fresh one and says so", async () => {
     const r = new Relay("ws://x");
     const seen: Control[] = [];

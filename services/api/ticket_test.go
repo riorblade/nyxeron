@@ -47,7 +47,7 @@ func TestRelayTicketEndpoint(t *testing.T) {
 		t.Fatalf("no secret: %d", c)
 	}
 
-	t.Setenv("RELAY_TICKET_SECRET", "s3cret")
+	t.Setenv("RELAY_TICKET_SECRET", "0123456789abcdef0123456789abcdef")
 	srv := httptest.NewServer(routes(&quoter{}, nil, p, db, nil))
 	defer srv.Close()
 	if c, _ := post(srv, ""); c != http.StatusUnauthorized {
@@ -58,7 +58,7 @@ func TestRelayTicketEndpoint(t *testing.T) {
 		t.Fatalf("signed in: %d %v", c, out)
 	}
 	exp := time.Unix(int64(out["exp"].(float64)), 0)
-	if want := signTicket([]byte("s3cret"), "did:privy:abc", exp); out["ticket"] != want {
+	if want := signTicket([]byte("0123456789abcdef0123456789abcdef"), "did:privy:abc", exp); out["ticket"] != want {
 		t.Fatalf("ticket %v, want %s", out["ticket"], want)
 	}
 	if d := time.Until(exp); d < 9*time.Minute || d > ticketTTL {

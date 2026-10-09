@@ -226,7 +226,8 @@ export const en = {
           venue_limit: "You already rent as many venues as you can.",
           kicked: "The CEO asked you to leave.",
           replaced: "This club is open in another tab.",
-          bad_ticket: "Sign in to join live clubs.",
+          bad_ticket:
+            "Couldn't confirm your sign-in for live clubs. Sign in again, or try in a minute.",
           too_many_connections:
             "Too many connections from your network. Try again in a minute.",
           too_many_rooms: "Your network already has too many clubs open.",

@@ -8,7 +8,8 @@ teammate would notice.
 - **Live clubs know who you are:** the api now hands signed-in players a short pass for the multiplayer relay, and the
   relay lets only those in (a suspended account gets none). Limits and kicks follow the account instead of the network,
   so kicking a troll no longer locks out their friend on the same Wi-Fi, and one account can have at most 8 clubs
-  open. Signed-out players see "Sign in to join live clubs."
+  open. Joining a live club, even from an invite link, now needs a signed-in account; otherwise the game says it
+  couldn't confirm your sign-in.
 
 ## 2026-10-10 · Relay: hardened for production
 

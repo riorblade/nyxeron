@@ -208,6 +208,10 @@ func main() {
 	h.maxConnsPerIP = envInt("MAX_CONNS_PER_IP", h.maxConnsPerIP)
 	h.maxRoomsPer = envInt("MAX_ROOMS_PER_PLAYER", 8)
 	h.ticketKey = []byte(env("RELAY_TICKET_SECRET", ""))
+	if n := len(h.ticketKey); n > 0 && n < 32 {
+		slog.Error("RELAY_TICKET_SECRET too short: use at least 32 bytes (openssl rand -hex 32)", "len", n)
+		os.Exit(1)
+	}
 	h.kickBan = time.Duration(envInt("KICK_BAN_SEC", int(h.kickBan.Seconds()))) * time.Second
 	h.queueBudget = int64(envInt("QUEUE_BUDGET_MB", int(h.queueBudget>>20))) << 20
 	trusted := newProxies(env("TRUST_PROXY", ""))

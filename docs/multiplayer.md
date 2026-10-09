@@ -50,8 +50,12 @@ ticket from `POST /api/relay/ticket`: `v1.<base64url {"sub":account,"exp":unix}>
 minutes, issued only to signed-in, unbanned players. A missing, forged or expired ticket gets `bad_ticket`. A "player"
 above is then the account, so a kick or the room cap never hits a friend behind the same router; without the secret
 (dev) it is the IP. Sockets per IP and wrong room codes per IP stay per IP (they come before anyone says who they are).
-The client (`net/ticket.ts`) keeps a ticket until a minute before it expires and asks for a new one after
-`bad_ticket`.
+A room only resumes for the account that opened it (a leaked room token isn't enough). The secret must be at least
+32 bytes (`openssl rand -hex 32`); the relay won't start with a shorter one. Tickets are checked on create/join/resume,
+so a ban keeps a player out of new rooms at once but doesn't drop one already inside (until they disconnect).
+
+The client (`net/ticket.ts`) fetches the ticket before opening the socket, keeps it 9 minutes for the account it was
+issued to, fetches a new one after `bad_ticket`, and stops with a message if a fresh one is refused too.
 
 `TRUST_PROXY` lists the proxies (container names, IPs or CIDRs) whose `X-Forwarded-For` is believed; the client IP is
 its last hop (the one Caddy wrote). A header from anyone else on the Docker network is ignored. IPv6 clients are keyed

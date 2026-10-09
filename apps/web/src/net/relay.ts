@@ -94,8 +94,12 @@ export class Relay {
     want: string;
   } | null = null;
 
-  /** Set after the relay refused a ticket: the next hello asks the api for a new one. */
+  /** Set after the relay refused a ticket: the next connect asks the api for a new one. */
   private freshTicket = false;
+  /** The ticket this socket's hellos carry, and whether it was fetched fresh (refused again → give up). */
+  private helloTicket = "";
+  private sentFresh = false;
+  private dialing = false;
 
   /**
    * `ticket`: the api's pass for the relay (signed in, not banned); asked for on every (re)connect, `fresh` after
@@ -153,20 +157,12 @@ export class Relay {
     this.ws?.close();
   }
 
-  /** The hello (create/resume/join), with a ticket when the app has a ticket source. */
+  /** The hello (create/resume/join), with this socket's ticket if there is one. */
   private sayHello() {
     if (!this.hello) return;
     this.helloOut = true;
-    if (!this.ticket) return this.sendControl(this.hello);
-    const ws = this.ws;
-    void this.ticket(this.freshTicket)
-      .catch(() => "")
-      .then((ticket) => {
-        this.freshTicket = false;
-        // Still the same socket (not closed or replaced while the api answered); the hello may have moved on.
-        if (this.ws === ws && this.hello)
-          this.sendControl(ticket ? { ...this.hello, ticket } : this.hello);
-      });
+    const t = this.helloTicket;
+    this.sendControl(t ? { ...this.hello, ticket: t } : this.hello);
   }
 
   private send(b: Uint8Array<ArrayBuffer>) {
@@ -187,7 +183,23 @@ export class Relay {
   }
 
   private connect() {
-    if (this.ws && this.ws.readyState <= WebSocket.OPEN) return;
+    if (this.dialing || (this.ws && this.ws.readyState <= WebSocket.OPEN))
+      return;
+    if (!this.ticket) return this.dial();
+    // The ticket first, then the socket: the relay's 10 s hello deadline only starts once we can talk.
+    this.dialing = true;
+    this.sentFresh = this.freshTicket;
+    this.freshTicket = false;
+    void this.ticket(this.sentFresh)
+      .catch(() => "")
+      .then((t) => {
+        this.dialing = false;
+        this.helloTicket = t;
+        if (this.open) this.dial();
+      });
+  }
+
+  private dial() {
     const ws = new WebSocket(this.url);
     ws.binaryType = "arraybuffer";
     this.ws = ws;
@@ -228,6 +240,12 @@ export class Relay {
         this.helloOut &&
         (m.t === "error" || m.t === "joined" || m.t === "created");
       if (answer) this.helloOut = false;
+      if (answer && m.t === "error" && m.code === "bad_ticket") {
+        // A brand-new ticket refused too (signed out, banned, api down): stop and say so. Otherwise it had
+        // expired or the secret rotated: fetch a fresh one on the next try.
+        if (this.sentFresh || !this.ticket) this.open = false;
+        else this.freshTicket = true;
+      }
       const w = this.waiting;
       if (w && (m.t === w.want || m.t === "error")) {
         this.waiting = null;
@@ -235,9 +253,13 @@ export class Relay {
       }
       // Turned away for now (full, busy, throttled) while reconnecting: hang up and try again after the backoff.
       // In a room, "rate_limited" only means slow down (the relay throttles messages too): stay.
-      if (answer && m.t === "error" && m.code === "bad_ticket")
-        this.freshTicket = true; // expired or rotated: get a new one, then try again
-      if (answer && m.t === "error" && m.code && retryable.has(m.code))
+      if (
+        answer &&
+        this.open &&
+        m.t === "error" &&
+        m.code &&
+        retryable.has(m.code)
+      )
         return ws.close();
       // Closed or kicked: don't walk straight back in.
       if (
@@ -246,7 +268,8 @@ export class Relay {
         (m.t === "error" &&
           (m.code === "room_not_found" ||
             m.code === "kicked" ||
-            m.code === "replaced"))
+            m.code === "replaced" ||
+            m.code === "bad_ticket"))
       )
         this.open = false;
       this.onControl?.(m);

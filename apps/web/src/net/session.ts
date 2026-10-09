@@ -19,7 +19,7 @@ import type { DjAct } from "@/dj/engine";
 import { applyMix, mixSnapshot, type MixSync } from "@/dj/mixsync";
 import { KIND, pack, Relay, unpack, type Frame } from "./relay";
 import { Seats } from "./seats";
-import { relayTicket } from "./ticket";
+import { dropTicket, relayTicket } from "./ticket";
 import { audio } from "@/audio";
 import type { PadId } from "@/dj/sampler";
 import { firePyro, type PyroCue } from "@/venue/pyro";
@@ -340,8 +340,8 @@ export async function hostOpen(clubName: string) {
   relay.onFrame = onHostFrame;
   relay.onControl = (c) => {
     // This club is open in another tab now: this one lets go.
-    if (c.t === "error" && c.code === "replaced")
-      return set({ status: "error", error: "replaced" });
+    if (c.t === "error" && (c.code === "replaced" || c.code === "bad_ticket"))
+      return set({ status: "error", error: c.code });
     if (c.t === "created") {
       // Back after a drop: the relay re-announces who is still here (they say hello again); the rest left.
       for (const id of Object.keys(useNet.getState().players)) letGo(+id);
@@ -398,6 +398,7 @@ export async function hostOpen(clubName: string) {
     broadcastSoon();
     return room;
   } catch (e) {
+    if ((e as Error).message === "bad_ticket") dropTicket(); // the next try asks the api for a new one
     set({ status: "error", error: (e as Error).message });
     hostClose();
     throw e;
@@ -492,6 +493,11 @@ export async function guestJoin(
       settleLast();
       set({ status: "closed" });
     }
+    // A reconnect's fresh ticket refused (signed out, banned): what I had still goes home.
+    if (c.t === "error" && c.code === "bad_ticket") {
+      settleLast();
+      set({ status: "error", error: "bad_ticket" });
+    }
     if (c.t === "kicked" || (c.t === "error" && c.code === "kicked")) {
       settleLast();
       set({ status: "error", error: "kicked" });
@@ -559,6 +565,7 @@ export async function guestJoin(
     set({ me: "", status: "live" });
     sayHello();
   } catch (e) {
+    if ((e as Error).message === "bad_ticket") dropTicket(); // the next try asks the api for a new one
     set({ status: "error", error: (e as Error).message });
     relay?.close();
     relay = null;
