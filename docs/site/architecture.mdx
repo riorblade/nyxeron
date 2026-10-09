@@ -12,52 +12,42 @@ anything of value; BNB Chain is the source of truth for real deposits and real s
 ```mermaid
 flowchart LR
   subgraph Browser["Player's browser (Vercel)"]
-    WEB["apps/web<br/>React 19 · three.js · Web Audio"]
-    CORE["packages/core<br/>pure, seeded simulation"]
+    WEB["Game client<br/>React 19 · three.js · Web Audio"]
+    CORE["Simulation core<br/>pure, seeded simulation"]
     WEB --- CORE
   end
-  ADMIN["apps/admin<br/>back office (Vercel)"]
 
-  subgraph Edge["Caddy (TLS, one public host)"]
-    WS["/ws"]
-    HTTP["/api/*"]
-  end
-
-  RELAY["services/relay<br/>Go · no database"]
-  API["services/api<br/>Go · SQLite"]
-  DB[("SQLite (WAL)")]
+  RELAY["Relay<br/>Go · no database"]
+  API["api<br/>Go · SQLite"]
+  DB[("SQLite")]
 
   PRIVY["Privy<br/>sign-in + embedded wallet"]
   BIN["Binance Web3<br/>RWA stock quotes"]
-  BSC["BNB Smart Chain<br/>2 independent RPCs"]
-  AGENT["Stock agent<br/>(restocks the warehouse)"]
+  BSC["BNB Smart Chain"]
 
-  WEB -- "WSS binary frames" --> WS --> RELAY
-  WEB -- "HTTPS + Privy JWT" --> HTTP --> API
-  ADMIN -- "HTTPS + Privy JWT" --> HTTP
+  WEB -- "WebSocket, binary frames" --> RELAY
+  WEB -- "HTTPS + Privy JWT" --> API
   API --- DB
-  API -- "verify JWT (JWKS)" --> PRIVY
-  API -- "signed quote requests" --> BIN
+  API -- "verify JWT" --> PRIVY
+  API -- "stock quotes" --> BIN
   API -- "read receipts & balances" --> BSC
   WEB -- "sign-in, USDC transfer" --> PRIVY
-  AGENT -- "Bearer key" --> HTTP
 ```
 
 ## What runs where
 
 | Part | Runs on | Stack | Job |
 | --- | --- | --- | --- |
-| `packages/core` | Every browser (and Node for tests and bots) | Pure TypeScript, seeded PRNG | Every game rule: day actions, the 360-minute night, guests, prices, staff, levels |
-| `apps/web` | Vercel, `nyxeron.xyz` | React 19, Vite, Tailwind v4, zustand, three.js, Web Audio, Privy | Screens, HUD, the 3D club, the DJ studio, and the live-session host/guest/DJ logic |
-| `apps/admin` | Vercel, `admin.nyxeron.xyz` | React 19, Vite | Back office UI. It holds no logic; every check happens in the api |
-| `services/relay` | Container behind Caddy, `/ws` | Go, `coder/websocket` | Rooms and frame routing for live multiplayer. Never reads game data |
-| `services/api` | Container behind Caddy, `/api/*` | Go standard library, SQLite (pure Go driver, no CGO) | Accounts, play wallets, save sync, City venues, the stock warehouse, top-ups, sales, back office |
-| Privy | Third party | JWT (ES256) + embedded EVM wallet | Email/Google sign-in; every player gets a BNB Chain wallet without installing anything |
-| Binance Web3 | Third party | Signed HTTPS (HMAC-SHA256) | Live prices of tokenized stocks (TSLA, NVDA, index baskets…) |
-| BNB Smart Chain | Public chain (chain id 56) | Read through two independent RPC endpoints | Ground truth for deposits and for the stock the platform actually holds |
+| Simulation core | Every browser | Pure TypeScript, seeded PRNG | Every game rule: day actions, the 360-minute night, guests, prices, staff, levels |
+| Game client | Vercel, `nyxeron.xyz` | React 19, Vite, Tailwind v4, zustand, three.js, Web Audio, Privy | Screens, HUD, the 3D club, the DJ studio, and the live-session host/guest/DJ logic |
+| Relay | Go service on `api.nyxeron.xyz` | Go, WebSockets | Rooms and frame routing for live multiplayer. Never reads game data |
+| api | Go service on `api.nyxeron.xyz` | Go standard library, SQLite | Accounts, play wallets, save sync, City venues, stock, top-ups, sales |
+| Privy | Third party | JWT + embedded EVM wallet | Email/Google sign-in; every player gets a BNB Chain wallet without installing anything |
+| Binance Web3 | Third party | HTTPS | Live prices of tokenized stocks (TSLA, NVDA, index baskets…) |
+| BNB Smart Chain | Public chain (chain id 56) | Read by the api | Ground truth for deposits and for the stock the platform actually holds |
 
-Both Go services ship as static binaries in empty (`scratch`) images, run as an unprivileged user with a read-only
-filesystem and dropped capabilities, and are capped at 48 MB of memory each.
+A few api endpoints are public: `GET /api/quotes` (stock prices), `GET /api/rooms` (clubs open now) and
+`GET /api/city` (the City's venues).
 
 ## Trust model
 
@@ -65,34 +55,30 @@ The whole design follows one sentence: **the browser asks, the server settles.**
 
 <CardGroup cols={2}>
 <Card title="The simulation is pure" icon="flask">
-All game logic lives in `packages/core`: no DOM, no network, no clock, no `Math.random()`. Randomness comes from a
-seeded deterministic PRNG (mulberry32) stored in the game state, so a night replays bit-for-bit.
+All game logic lives in the simulation core: no DOM, no network, no clock, no `Math.random()`. Randomness comes from a
+seeded deterministic PRNG stored in the game state, so a night replays bit-for-bit.
 </Card>
 <Card title="Value moves only on the server" icon="vault">
-Anything that changes NYX Points, Credits, stock units or access is decided in `services/api`, inside a single SQL
+Anything that changes NYX Points, Credits, stock units or access is decided in the api, inside a single SQL
 transaction, with a ledger row written next to the balance change.
 </Card>
 <Card title="The chain is read, not reported" icon="link">
 For a deposit the browser sends only a transaction hash. The api reads amount, sender and recipient from the chain
-itself, requires two independent RPCs to agree, and waits for 15 confirmations.
+itself and waits for BNB Chain to confirm the transfer.
 </Card>
 <Card title="Identity comes from the token" icon="id-card">
-The api verifies the Privy JWT itself (ES256, issuer, audience, expiry). The player id is the token's subject, never
-a field in the request body.
+The api verifies the Privy JWT itself (signature, issuer, audience, expiry). The player id is the token's subject,
+never a field in the request body.
 </Card>
 <Card title="The relay is a dumb pipe" icon="route">
 The relay routes binary frames by a 3-byte header and never parses the payload. It stamps the sender id on every
 frame a guest sends, so a guest cannot pretend to be someone else.
 </Card>
-<Card title="Every admin action leaves a trace" icon="scroll">
-Back-office changes need a reason and write an audit row in the same transaction. Admins cannot mint Credits or
-stock without an on-chain transaction behind them.
+<Card title="The books match the chain" icon="scale-balanced">
+The platform's wallet and stock are reconciled with the chain: Credits owed to players must be covered by the
+stablecoins the platform holds, and stock units in the books by the tokenized stock it holds on-chain.
 </Card>
 </CardGroup>
-
-On top of that, an hourly reconciliation compares the books with the chain: Credits owed to players must be covered
-by the stablecoins in the platform wallet, and stock units counted in the database must be covered by the tokenized
-stock it holds on-chain. If either check fails, payments pause automatically until the books match again.
 
 | Who | Decides | Cannot decide |
 | --- | --- | --- |
@@ -124,8 +110,7 @@ follows the player to any device.
 <Step title="Settle on the server">
 A guest's night is settled by the api inside one transaction: the wallet can only shrink by what was spent, and the
 tokens taken home cannot cost more than that. At City parties, purchases of real tokenized stock are paid in Credits:
-the api holds the Credits, reserves the units from the warehouse, and settles 30 minutes after the party ends, paying
-the club owner their margin over the wholesale price.
+the api holds the Credits and the stock until the party is settled, then pays the club owner their margin.
 </Step>
 </Steps>
 

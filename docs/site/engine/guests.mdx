@@ -5,7 +5,7 @@ description: "How many guests come, who they are, what they pay at the door, and
 
 Guests are the club's only source of revenue, and every one of them is simulated individually. **Why:** the levers the player pulls (hype, promotions, prices, door policy, staff) should show up as real people who do or do not walk in, pay, and buy.
 
-All random draws below come from the seeded mulberry32 PRNG described in [The night loop](/engine/night-loop), so the same seed produces the same crowd.
+All random draws below come from the seeded deterministic generator described in [The night loop](/engine/night-loop), so the same seed produces the same crowd.
 
 ## How many guests come
 
@@ -14,8 +14,6 @@ When the club opens, the engine computes tonight's expected head count $N$ and g
 $$
 N = \operatorname{round}\!\Big( D_L \cdot \big(0.4 + 1.0\,\tfrac{H}{100} + 0.4\,\tfrac{R}{100}\big) \cdot B_d \cdot \Pi \cdot \Sigma \Big)
 $$
-
-<sub>Source: `packages/core/src/engine.ts:87-101`</sub>
 
 where
 
@@ -29,21 +27,17 @@ $$
 \Sigma = 0.75 + 0.25 \cdot \frac{\text{Safety}}{100}
 $$
 
-<sub>Source: `packages/core/src/engine.ts:83-84`</sub>
-
 House policies (Level 3 and up; below that $\Pi = 1$):
 
 $$
 \Pi = \big(1 + 0.12\,\mathbb{1}_{\text{ladies}}\big) \cdot \delta_{\text{dress}} \cdot \operatorname{clamp}\!\Big(1 - 0.2\,\frac{c - c_L}{12\, k_L},\; 0.3,\; 1.5\Big)
 $$
 
-<sub>Source: `packages/core/src/rules/strategy.ts:64-85`</sub>
-
 where $\mathbb{1}_{\text{ladies}}$ is 1 on ladies' night, $\delta_{\text{dress}}$ the dress code's demand factor (1, 0.95, 0.85 for none, smart, strict), $c$ the cover the player set, $c_L$ the venue's standard cover and $k_L$ the venue's price scale. A cover above standard thins the crowd; a cheaper one pulls more in.
 
 A sealed venue (after a failed inspection) generates $N = 0$.
 
-| Level | Venue | $D_L$ `levels.json → demand` | Capacity `capacity` | Standard cover $c_L$ `coverCharge` | Price scale $k_L$ `priceScale` | Stay (min) `stayMinutes` |
+| Level | Venue | Base demand $D_L$ | Capacity | Standard cover $c_L$ | Price scale $k_L$ | Stay (min) |
 |---|---|---|---|---|---|---|
 | 1 | Token Booth | 260 | 20 | 0 | 1.5 | 20–60 |
 | 2 | Token Shop | 260 | 40 | 0 | 4 | 20–60 |
@@ -51,16 +45,16 @@ A sealed venue (after a failed inspection) generates $N = 0$.
 | 4 | Nightclub | 160 | 190 | 600 | 48 | 60–240 |
 | 5 | Premium Venue | 600 | 500 | 2500 | 60 | 60–240 |
 
-| Parameter | Value | JSON key |
-|---|---|---|
-| Base demand factor | 0.4 | `night.json → demand.base` |
-| Hype weight | 1.0 | `night.json → demand.hypeWeight` |
-| Reputation weight | 0.4 | `night.json → demand.repWeight` |
-| Busy weekdays | 3, 5, 6 | `night.json → busyWeekdays` |
-| Busy bonus | 1.25 | `night.json → busyDayBonus` |
-| Safety demand floor | 0.75 | `night.json → safety.demandFloor` |
-| Ladies' night demand bonus | 0.12 | `strategy.json → ladiesNight.demandBonus` |
-| Cover elasticity / reference | 0.2 / 12 | `strategy.json → cover.elasticity`, `cover.reference` |
+| Parameter | Value |
+|---|---|
+| Base demand factor | 0.4 |
+| Hype weight | 1.0 |
+| Reputation weight | 0.4 |
+| Busy weekdays | 3, 5, 6 |
+| Busy bonus | 1.25 |
+| Safety demand floor | 0.75 |
+| Ladies' night demand bonus | 0.12 |
+| Cover elasticity / reference | 0.2 / 12 |
 
 ## Who each guest is
 
@@ -73,11 +67,9 @@ $$
 w_s = w^0_s + 2 \cdot \#\lbrace \text{active promos targeting } s \rbrace + \mathbb{1}_{s = \text{premium}} \cdot \pi_{\text{dress}}
 $$
 
-<sub>Source: `packages/core/src/engine.ts:104-113`, `packages/core/src/engine.ts:123`</sub>
+where $w^0_s$ is the base weight and $\pi_{\text{dress}}$ is 0, 1 or 2.
 
-where $w^0_s$ is the base weight and $\pi_{\text{dress}}$ is 0, 1 or 2 (`strategy.json → dressCode.*.premiumWeight`).
-
-| Segment | $w^0_s$ `segments.json → weight` | Budget range `budget` | Genres `genres` | Promoted by `channels.json` |
+| Segment | Base weight $w^0_s$ | Budget range | Genres | Promoted by |
 |---|---|---|---|---|
 | locals | 3 | 40–120 | hiphop, rnb | Posters (500 coin, +4 hype) |
 | community | 2 | 60–150 | house, techno | X (800, +6) |
@@ -93,9 +85,7 @@ $$
 \varphi = 0.42 + 0.14\,\mathbb{1}_{\text{ladies}}
 $$
 
-<sub>Source: `packages/core/src/rules/strategy.ts:57-61`</sub>
-
-**Music taste.** With probability 0.4 the guest likes the club's own genre; otherwise a genre is picked uniformly from the segment's list (`night.json → clubGenreShare`).
+**Music taste.** With probability 0.4 the guest likes the club's own genre; otherwise a genre is picked uniformly from the segment's list.
 
 **Budget.** The cash a guest brings, in coin:
 
@@ -110,29 +100,21 @@ $$
 \end{cases}
 $$
 
-<sub>Source: `packages/core/src/engine.ts:132-138`, `packages/core/src/rules/strategy.ts:88-96`, `packages/core/src/rules/strategy.ts:110-113`</sub>
-
 where $U\lbrace\cdot\rbrace$ is a uniform integer draw from the segment's budget range, $m_{\text{dress}}$ the dress-code budget multiplier (1, 1.2, 1.4), and $n_{\text{host}}$ the hosts on shift. An expensive door brings bigger spenders; men spend more in a room with more women and with hosts working it.
 
 **Arrival and stay.** Arrival minute $\alpha \sim U\lbrace 0, \dots, 239 \rbrace$. Leave minute $\lambda = \alpha + U\lbrace \text{stay}^{\text{lo}}_L, \dots, \text{stay}^{\text{hi}}_L \rbrace$. Every guest starts with satisfaction 60, tilt 0, and is underage with probability 0.05.
-
-<sub>Source: `packages/core/src/engine.ts:139-148`, `packages/core/src/engine.ts:163`</sub>
 
 ### Promoters and happy hour
 
 A booked promoter brings a guest list of $U\lbrace \operatorname{round}(0.8h), \dots, \operatorname{round}(1.2h) \rbrace$ heads, all from one segment, arriving in the first 75 minutes. They get in free and the promoter is paid a commission per head admitted.
 
-| Promoter | Segment | Heads $h$ | Commission per head | JSON |
-|---|---|---|---|---|
-| Campus Crew | genZ | 30 | 60 | `promoters.json → campus` |
-| Social Circle | urban25 | 20 | 100 | `promoters.json → social` |
-| Elite List | premium | 12 | 250 | `promoters.json → elite` |
-
-<sub>Source: `packages/core/src/engine.ts:167-185`</sub>
+| Promoter | Segment | Heads $h$ | Commission per head |
+|---|---|---|---|
+| Campus Crew | genZ | 30 | 60 |
+| Social Circle | urban25 | 20 | 100 |
+| Elite List | premium | 12 | 250 |
 
 A scheduled **early** happy hour moves each guest who would arrive at minute 60 or later to a uniform minute in the first hour with probability 0.25. A **late** happy hour extends by 30 minutes (capped at closing) the stay of every guest due to leave between minute 240 and 359.
-
-<sub>Source: `packages/core/src/engine.ts:187-203`</sub>
 
 ### Extra guests from a night-time promo
 
@@ -142,20 +124,16 @@ $$
 N_{\text{extra}} = \operatorname{round}\!\Big( D_L \cdot 1.0 \cdot \frac{\Delta H}{100} \cdot B_d \cdot \operatorname{clamp}\!\Big(\frac{300 - t}{300},\, 0,\, 1\Big) \Big)
 $$
 
-<sub>Source: `packages/core/src/engine.ts:753-787`</sub>
-
-where $\Delta H$ is the hype the promo actually added (after the 0–100 clamp), $t$ the current minute, and 300 the last arrival minute (360 minus `night.json → lateArrivalCutoff` = 60). Each extra guest arrives at a uniform minute between $t + 1$ and 300.
+where $\Delta H$ is the hype the promo actually added (after the 0–100 clamp), $t$ the current minute, and 300 the last arrival minute (360 minus a 60-minute late-arrival cutoff). Each extra guest arrives at a uniform minute between $t + 1$ and 300. These guests are appended to the end of tonight's guest list rather than merged into arrival order, so they are processed after everyone drawn when the club opened.
 
 ## The door
 
-Each minute, guests whose arrival minute has come join the queue. The door then processes at most **3** queued guests (`night.json → doorRatePerMinute`), in arrival order:
+Each minute, guests whose arrival minute has come join the queue. The door then processes at most **3** queued guests, in arrival order:
 
-1. **Capacity.** If the number inside has reached $C = \operatorname{round}\big(\text{capacity}_L \cdot (1 + 0.15\, u_{\text{cap}})\big)$, the door closes for this minute, unless the player forced it open (a permit violation). Here $u_{\text{cap}} \in \lbrace 0, 1, 2, 3 \rbrace$ is the capacity upgrade tier (`strategy.json → upgrades.capacity.perTier`).
+1. **Capacity.** If the number inside has reached $C = \operatorname{round}\big(\text{capacity}_L \cdot (1 + 0.15\, u_{\text{cap}})\big)$, the door closes for this minute, unless the player forced it open (a permit violation). Here $u_{\text{cap}} \in \lbrace 0, 1, 2, 3 \rbrace$ is the capacity upgrade tier.
 2. **ID check.** An underage guest is turned away if the club has security, or if it is below Level 3 (the owner checks IDs at the counter). Otherwise the guest gets in, and an inspector who visits that night will find them.
 3. **Dress code.** Turned away with probability 0.1 / 0.25 (men) or 0.03 / 0.08 (women) under a smart / strict code.
 4. **Cover.** The guest pays $\min(c_g,\, b)$ and their budget drops by the same amount, where $c_g = 0$ for guest-list guests and for women on ladies' night, and $c_g = c$ otherwise.
-
-<sub>Source: `packages/core/src/engine.ts:280-325`, `packages/core/src/rules/strategy.ts:193-197`, `packages/core/src/rules/security.ts:28-29`</sub>
 
 Turned-away guests still use up one of the 3 door slots that minute.
 
@@ -169,17 +147,13 @@ $$
 \pi_{k,t} = \max\!\big(1,\; \operatorname{round}(\ell_k \cdot \mu_{k,t})\big)
 $$
 
-<sub>Source: `packages/core/src/engine.ts:516-522`, `packages/core/src/rules/market.ts:16-17`</sub>
-
 **The reference price.** Each token has a standard price for the venue, which follows the real-world spot price of its underlying stocks:
 
 $$
 \bar p_k = \max\!\big(1,\; \operatorname{round}(\operatorname{round}(p^0_k\, k_L) \cdot \chi_k)\big)
 $$
 
-<sub>Source: `packages/core/src/rules/quotes.ts:65-66`, `packages/core/src/data.ts:61-62`</sub>
-
-where $p^0_k$ is `tokens.json → defaultPrice` and $\chi_k \in [0.2, 5]$ the spot factor (current spot over the spot when the club first saw it, weighted over the token's legs; 1 when offline).
+where $p^0_k$ is the token's default price and $\chi_k \in [0.2, 5]$ the spot factor (current spot over the spot when the club first saw it, weighted over the token's legs; 1 when offline).
 
 **The bar probability.** A guest with tilt $\tau$ goes for token $k$ with probability
 
@@ -187,19 +161,15 @@ $$
 q_{g,k,t} = \beta_t \cdot 0.06 \cdot \min\!\Big(1.5,\; \frac{\bar p_k}{\ell_k}\Big) \cdot F_{k,t} \cdot \max\!\Big(0.2,\; 1 - \frac{\tau}{150}\Big)
 $$
 
-<sub>Source: `packages/core/src/engine.ts:524-530`</sub>
-
 | Factor | Meaning |
 |---|---|
-| $0.06$ | Base bar chance per minute (`night.json → barChancePerMinute`) |
+| $0.06$ | Base bar chance per minute |
 | $\min(1.5, \bar p_k / \ell_k)$ | **Price sensitivity.** 1 at the reference price, halves when the list is doubled, capped at 1.5 for prices at or below two-thirds of reference |
 | $F_{k,t}$ | **FOMO.** A token rising above its recent average draws buyers (below) |
-| $\max(0.2, 1 - \tau / 150)$ | Tilted guests slow down, never below 20% (`night.json → tiltSlowdown`) |
+| $\max(0.2, 1 - \tau / 150)$ | Tilted guests slow down, never below 20% |
 | $\beta_t$ | Room boost: $\beta_t = \operatorname{lerp}(0.8, 1.25;\, E_t / 100) \cdot (1 + 0.15\,\kappa_t)$ at Level 3 and up, $1 \cdot (1 + 0.15\,\kappa_t)$ below; $\beta_t = 0$ for a guest who already hit an out-of-stock token when nothing is left in stock |
 
 Here $E_t$ is crowd energy and $\kappa_t = \min(1, 60\, n_{\text{rel}} / \text{inside})$ the share of guests covered by Guest Relations staff (see [Crowd, DJ & security](/engine/crowd)).
-
-<sub>Source: `packages/core/src/engine.ts:435-450`, `packages/core/src/rules/strategy.ts:217-223`, `packages/core/src/rules/strategy.ts:353-354`</sub>
 
 **One draw decides.** The engine draws a single $u \sim U[0, 1)$ per guest and minute, and with $\delta_t = 0.5 \cdot \operatorname{lerp}(0.6, 1.4;\, E_t/100)$ the dance chance:
 
@@ -212,17 +182,13 @@ $$
 \end{cases}
 $$
 
-<sub>Source: `packages/core/src/engine.ts:531-581`</sub>
-
 So a guest who can afford the token buys with probability $q$ and dances with probability $\delta_t$; a guest who cannot afford it dances with probability $q + \delta_t$. Below Level 3 the energy factors are 1 and $\delta_t = 0.5$.
 
-**Bar throughput.** The bar serves at most $2\,(1 + n_{\text{bartender}})$ orders per minute (`night.json → ordersPerMinute`). Guests are served in arrival order; once the slots run out, the rest wait and lose satisfaction.
-
-<sub>Source: `packages/core/src/engine.ts:464`</sub>
+**Bar throughput.** The bar serves at most $2\,(1 + n_{\text{bartender}})$ orders per minute. Guests are served in arrival order; once the slots run out, the rest wait and lose satisfaction.
 
 ### What a sale does
 
-If the token is out of stock, the guest is disappointed (satisfaction $-10$, `economy.json → outOfStockSatisfactionPenalty`) and from then on only orders tokens that are in stock. Otherwise:
+If the token is out of stock, the guest is disappointed (satisfaction $-10$) and from then on only orders tokens that are in stock. Otherwise:
 
 $$
 \begin{aligned}
@@ -233,17 +199,13 @@ b &\leftarrow b - \pi_{k,t} \\
 \end{aligned}
 $$
 
-<sub>Source: `packages/core/src/engine.ts:538-552`, `packages/core/src/rules/inventory.ts:90-116`, `packages/core/src/rules/quotes.ts:69-70`</sub>
-
-where $c^{\text{buy}}_k$ is `tokens.json → buyCost` and 0.05 the platform's share of the spread over spot (`strategy.json → platform.feeShare`). The stock of $k$ drops by one.
+where $c^{\text{buy}}_k$ is the token's buy cost and 0.05 the platform's share of the spread over spot. The stock of $k$ drops by one.
 
 **Buying a round.** Right after a purchase, a man who can still afford it buys a second unit (if a bar slot is free) with probability
 
 $$
 \rho_t = \min\!\big(0.55,\; 0.08 + 0.4\, f_t + 0.02\, n_{\text{host}}\big)
 $$
-
-<sub>Source: `packages/core/src/rules/strategy.ts:307-313`, `packages/core/src/engine.ts:554-568`</sub>
 
 where $f_t$ is the share of women among guests inside. The round adds +2 satisfaction.
 
@@ -255,9 +217,11 @@ $$
 \text{spend}_g = \min(c_g, b_0) + \sum_{\text{purchases}} \pi_{k,t} \;\le\; b_0
 $$
 
+The one exception is the sparkler parade (see [Crowd, DJ & security](/engine/crowd)). A guest whose remaining budget covers a bottle at $\operatorname{round}(0.35\, m_{\text{table}})$ may copy the parade and buy one; the club books the full bottle price as table revenue, but only 40% of it comes out of the guest's budget (the other 60% is an impulse splurge). Sparkler bottles therefore let a guest's total spend exceed $b_0$.
+
 Over a stretch of minutes where the guest can afford the tokens and the bar has slots, the expected number of purchases per minute is $\frac{1}{\lvert M \rvert} \sum_{k \in M} q_{g,k,t}$ plus rounds, with $M$ the tokens unlocked at this level.
 
-| Token | `defaultPrice` $p^0_k$ | `buyCost` | `fomo` (tilt per buy) | `volatility` | Unlocks at level |
+| Token | Default price $p^0_k$ | Buy cost $c^{\text{buy}}_k$ | Tilt per buy | Volatility $v_k$ | Unlocks at level |
 |---|---|---|---|---|---|
 | Tesla (tsla) | 25 | 6 | 10 | 0.012 | 1 |
 | US Broad Market (us500) | 15 | 3 | 0 | 0.004 | 1 |
@@ -276,15 +240,11 @@ $$
 \mu_{k,t+1} = \operatorname{clamp}\!\Big( \mu_{k,t} \cdot \exp\!\big( \underbrace{0.002\,\tfrac{E_t - 50}{50} - 0.015\,(\mu_{k,t} - 1) + P_t}_{\text{drift}} + \underbrace{1.7\,v_k\,(2u - 1)}_{\text{shock}} \big),\; 0.4,\; 3 \Big)
 $$
 
-<sub>Source: `packages/core/src/rules/market.ts:34-57`</sub>
-
 where $v_k$ is the token's volatility, $u \sim U[0, 1)$, and the pump $P_t$ is 0.06 in the minute the DJ takes the decks plus 0.004 per minute while the DJ's anthem plays. A slow average follows the price, $\bar\mu_{k,t+1} = \bar\mu_{k,t} + 0.05\,(\mu_{k,t+1} - \bar\mu_{k,t})$, and drives FOMO:
 
 $$
 F_{k,t} = \operatorname{clamp}\!\Big(1 + 3\Big(\frac{\mu_{k,t}}{\bar\mu_{k,t}} - 1\Big),\; 0.75,\; 1.4\Big)
 $$
-
-<sub>Source: `packages/core/src/rules/market.ts:26-31`</sub>
 
 Guests also feel their own paper profit. Each buyer keeps a cost basis $\theta_g$, the running mean of the menu-wide index $I_t = \frac{1}{\lvert M \rvert}\sum_{k} \mu_{k,t}$ at their purchases. Each minute, with $\text{pnl} = I_t / \theta_g - 1$:
 
@@ -292,21 +252,19 @@ $$
 \text{sat} \leftarrow \text{sat} + 0.6\,\text{pnl}, \qquad \tau \leftarrow \tau + 8\,\max(0,\, -\text{pnl})
 $$
 
-<sub>Source: `packages/core/src/rules/market.ts:60-72`</sub>
-
 Losing guests get tilted, and tilted guests buy less and start fights (see [Crowd, DJ & security](/engine/crowd)).
 
-| Parameter | Value | JSON key |
-|---|---|---|
-| Energy drift | 0.002 | `strategy.json → market.energyDrift` |
-| Mean reversion | 0.015 | `strategy.json → market.revert` |
-| DJ start pump | 0.06 | `strategy.json → market.djStartPump` |
-| Anthem pump | 0.004 / min | `strategy.json → market.anthemPumpPerMinute` |
-| Average follow rate | 0.05 | `strategy.json → market.emaFollow` |
-| Momentum | 3 | `strategy.json → market.momentumBuy` |
-| FOMO range | 0.75–1.4 | `strategy.json → market.fomoRange` |
-| Multiplier range | 0.4–3 | `strategy.json → market.range` |
-| P&L to satisfaction / tilt | 0.6 / 8 | `strategy.json → market.pnlSatisfaction`, `lossTilt` |
+| Parameter | Value |
+|---|---|
+| Energy drift | 0.002 |
+| Mean reversion | 0.015 |
+| DJ start pump | 0.06 |
+| Anthem pump | 0.004 / min |
+| Average follow rate | 0.05 |
+| Momentum | 3 |
+| FOMO range | 0.75–1.4 |
+| Multiplier range | 0.4–3 |
+| P&L to satisfaction / tilt | 0.6 / 8 |
 
 ## Reserved tables
 
@@ -323,15 +281,11 @@ n_{\text{rel}} \cdot 1.5 \cdot (0.5 + R/100) & \text{VIP, sofa, table}
 \end{cases}
 $$
 
-<sub>Source: `packages/core/src/rules/strategy.ts:250-272`, `packages/core/src/engine.ts:377-392`</sub>
-
-where $m_s$ is the player's minimum spend, $\bar m_s = \operatorname{round}(m^0_s\, k_L)$ the standard one ($m^0_s$ = 750, 300, 200, 60 for VIP, sofa, table, bar; `strategy.json → seats.*.defaultSpend`) and $e_s$ the elasticity (0.5, or 0.7 for bar seats). Table revenue is $\sum_s n_s\, m_s$.
+where $m_s$ is the player's minimum spend, $\bar m_s = \operatorname{round}(m^0_s\, k_L)$ the standard one ($m^0_s$ = 750, 300, 200, 60 for VIP, sofa, table, bar) and $e_s$ the elasticity (0.5, or 0.7 for bar seats). Table revenue is $\sum_s n_s\, m_s$.
 
 ## Players as guests
 
-In multiplayer, a human visitor walks in by paying the club's cover from their own wallet and buys at the same live price $\pi_{k,t}$, decreasing the club's stock exactly like a simulated guest. What they buy goes home with them; the club never buys back.
-
-<sub>Source: `packages/core/src/rules/visitor.ts:39-100`</sub>
+In multiplayer, a human visitor walks in by paying the club's cover from their own wallet and buys at the list price times the live market multiplier, $\max(1, \operatorname{round}(p_k\, \mu_{k,t}))$, decreasing the club's stock exactly like a simulated guest. Player visitors always pay full price: the happy-hour discount and free entry (guest lists, women on ladies' night) apply only to simulated guests. What they buy goes home with them; the club never buys back.
 
 <Accordion title="Worked example: a Saturday at the Nightclub (Level 4)">
 

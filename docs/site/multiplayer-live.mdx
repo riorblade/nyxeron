@@ -5,7 +5,7 @@ description: "How a CEO's browser hosts a live club for guests and a DJ through 
 
 A live NYXERON night is one CEO's club, open to anyone with the room code. Guests walk in, buy tokens at the bar and
 watch the crowd; a DJ can take the decks and play a set that everyone in the room hears. All of it runs through a
-relay of about 700 lines of Go and never looks inside a message.
+relay of about 1,150 lines of Go (tests not counted) that never looks inside a message.
 
 ## Host-authoritative by design
 
@@ -17,7 +17,7 @@ simply keeps doing that and becomes the **host**:
 - **Relay** routes frames between them. It has no game logic, no database, and does not parse payloads.
 
 Why: there is exactly one simulation per club, so there is nothing to reconcile and no way for two browsers to
-disagree about the night. The relay stays cheap enough to host thousands of rooms in a 48 MB container.
+disagree about the night. The relay stays cheap enough to host thousands of rooms on a small container.
 
 ```mermaid
 flowchart LR
@@ -45,8 +45,6 @@ Every game message is a binary WebSocket frame with a fixed 3-byte header follow
 | 1–2 | `peer` (u16, big-endian) | For `to`: the target peer. For `from`: the sender, **overwritten by the relay**, so it cannot be spoofed |
 | 3… | payload | Opaque to the relay. JSON, or gzipped JSON for snapshots |
 
-<sub>Source: `services/relay/protocol.go:27-31`, `apps/web/src/net/relay.ts:28-35`</sub>
-
 | Kind | Value | Direction | Delivery |
 | --- | --- | --- | --- |
 | `state` | 1 | host → all peers | **Latest wins.** Each peer has a single snapshot slot; a slow peer skips stale snapshots instead of queueing them |
@@ -57,11 +55,13 @@ Every game message is a binary WebSocket frame with a fixed 3-byte header follow
 Entering and leaving a room uses a handful of small JSON text messages: `create`, `join`, `resume`, `kick`, `close`
 from clients, and `created`, `joined`, `peer`, `host`, `kicked`, `closed`, `error` from the relay.
 
+**Signed-in players only.** Live clubs need a signed-in account: before opening a socket, a client gets a pass from
+the api that vouches for the player, and the relay refuses `create`, `join` or `resume` without one (the player sees a
+sign-in error). That pass also lets the relay apply its limits and kicks to a player's account.
+
 A snapshot is the public club state serialized to JSON and gzipped with the browser's built-in `CompressionStream`
 (no library). A busy night is about 100 KB of JSON and 10–15 KB on the wire. The host sends one at most every
 250 ms, coalescing every action in between.
-
-<sub>Source: `apps/web/src/net/codec.ts:4`, `apps/web/src/net/session.ts:182`</sub>
 
 ## Room lifecycle
 
@@ -71,9 +71,12 @@ sequenceDiagram
   participant H as Host (CEO)
   participant R as Relay
   participant G as Guest
-  H->>R: create
+  participant A as api
+  H->>A: sign-in pass
+  H->>R: create + pass
   R-->>H: created (room code + secret host token)
-  G->>R: join (room code, role guest or dj)
+  G->>A: sign-in pass
+  G->>R: join + pass (room code, role guest or dj)
   R-->>G: joined (peer id N)
   R-->>H: peer N on
   G->>R: from: hello (name, avatar, per-night key)
@@ -88,7 +91,7 @@ sequenceDiagram
   H->>R: to N: result
   Note over G,R: guest's network drops
   R-->>H: peer N off (seat held 60 s)
-  G->>R: join again (new id M) + hello with same key
+  G->>R: join again + pass (new id M), hello with same key
   H->>R: to M: welcome (same seat restored)
   H->>R: close
   R-->>G: closed
@@ -96,7 +99,7 @@ sequenceDiagram
 
 - **Room codes** are 6 characters from a 31-symbol alphabet that leaves out look-alikes (0, O, 1, I, L), drawn with
   a cryptographic RNG: $31^6 \approx 8.9 \times 10^8$ possible codes.
-- **The host token** (16 random bytes) is what makes a browser the host; it is kept in the tab's session storage.
+- **The host token** is a secret that makes a browser the host.
 - **Guests are admitted at night.** A `hello` during the day waits until the club opens.
 - **One DJ at a time.** A second DJ is turned away until the decks are free.
 
@@ -124,12 +127,10 @@ where
 | $h$ | Frame header | 3 B |
 | $s$ | `MixSync` payload | about 300 B (design target) |
 
-<sub>Source: `apps/web/src/net/session.ts:611-613`, `apps/web/src/dj/mixsync.ts:5`</sub>
-
 So $B_{\text{listener}} \approx 4 \times 303 \approx 1.2\ \text{kB/s} \approx 9.7\ \text{kbit/s}$. A modest
 128 kbit/s audio stream would be about 13 times more, per listener, and would add encoding delay on top. For a room
-with $N$ listeners the relay sends roughly $N \cdot B_{\text{listener}}$, so even a full room of 64 stays under
-80 kB/s of mix traffic.
+with $N$ listeners the relay sends roughly $N \cdot B_{\text{listener}}$, so even a room of 50 listeners stays near
+60 kB/s of mix traffic.
 
 ### Staying on the beat
 
@@ -161,11 +162,9 @@ where
 | $\tau$ | Target playhead on the follower (s) | computed |
 | $p$ | DJ's playhead when the message was sent, rounded to 1 ms (s) | from `MixSync` |
 | $r$ | Deck tempo (playback rate, 1 = original speed) | from `MixSync` |
-| $L$ | Assumed one-way delay from the DJ to a listener (s) | 0.12 s, `LATENCY` |
+| $L$ | Assumed one-way delay from the DJ to a listener (s) | 0.12 s |
 | $x$ | Follower's current playhead (s) | local |
-| $\Delta$ | Drift tolerance before a seek (s) | 0.25 s, `DRIFT` |
-
-<sub>Source: `apps/web/src/dj/mixsync.ts:27-64`</sub>
+| $\Delta$ | Drift tolerance before a seek (s) | 0.25 s |
 
 Play, pause, track loads, tempo, loops and EQ are applied immediately; only the playhead uses the tolerance. A track
 that is still loading is never loaded twice, and a track a listener does not have simply stays silent on that deck.
@@ -199,47 +198,22 @@ connection has held for more than 10 s, so a server that accepts and immediately
 client stops for good when it is kicked, its room is closed or gone, or another tab takes the room over
 (`replaced`).
 
-<sub>Source: `apps/web/src/net/relay.ts:227-241`</sub>
-
 **Guests and DJs** get a new peer id on every reconnect, so the seat is tied to something else: a secret key chosen
 for that night. The host holds a disconnected guest's seat for 60 seconds; when the guest's `hello` comes back with
 the same key, the host binds the old seat, with everything in it, to the new id.
 
-**The host** reconnects with `resume` and its secret token. Peers are told `host off` and then `host on`; the relay
+**The host** reconnects with `resume` and its secret token. A room only comes back to the account that opened it. Peers are told `host off` and then `host on`; the relay
 re-announces every peer still in the room and they send `hello` again. If the host stays away longer than the
 60-second grace period the room closes, but the same code can be resumed for up to an hour, so invite links and
 scheduled events keep working.
 
-<sub>Source: `apps/web/src/net/session.ts:177`, `services/relay/hub.go:68`, `services/relay/main.go:206`</sub>
-
 ## Built-in limits
 
-The relay protects itself and every room with fixed budgets.
-
-| Limit | Host | Guest / DJ | Before joining |
-| --- | --- | --- | --- |
-| Max frame size | 256 KiB | 8 KiB | 1 KiB |
-| Messages per second (burst) | 60 (120) | 20 (40) | 5 (10) |
-
-| Relay setting | Default | Why |
-| --- | --- | --- |
-| Rooms per relay | 2000 (`MAX_ROOMS`) | when full, the room abandoned longest closes early (still resumable) instead of refusing a real CEO |
-| Peers per room | 64 (`MAX_PEERS`) | |
-| Host grace period | 60 s (`GRACE_SEC`) | |
-| Sockets in total / per IP | 1000 / 100 | memory stays bounded |
-| Hello deadline | 10 s | a socket that never creates, joins or resumes is closed |
-| Rooms with a live host per IP | 8 | one client can't take every room |
-| Wrong room codes per IP | 20, then 12 a minute | codes can't be guessed |
-| Queued bytes per client / all clients | 256 KiB / 16 MiB | a client that stops reading is dropped, never pins memory; guest input may fill only half the host's queue, so a host is never dropped for its guests' spam |
-| Kick | that IP can't rejoin the room for 10 min | |
-| Ping interval / write timeout | 25 s / 5 s | |
-
-<sub>Source: `services/relay/conn.go:16-39`, `services/relay/hub.go:59-75`, `services/relay/main.go:206-211`</sub>
+The relay limits abuse: it bounds connections, rooms and message sizes and rates, keeps a kicked player out of the
+room for a while, and drops clients that stop reading so guest traffic can never crowd out the host. When the relay is
+full, the room abandoned longest closes early (it stays resumable) instead of a real CEO being refused.
 
 Each connection has exactly one reader and one writer goroutine; the writer is the only code that touches the socket.
-The relay is covered by Go tests run with the race detector: routing and sender stamping, join errors, host resume and
-grace, kick and close, and rate limits, plus adversarial tests that attack it on purpose: clients that stop
-reading, connection and room floods, guessed room codes, a guest flooding the host. A bundled load-test tool drives
+The relay is covered by Go tests run with the race detector, including adversarial tests that attack it on purpose. A bundled load-test tool drives
 many rooms of simulated peers against it: 10 clubs × 30 players get 100% of snapshots delivered in about 31 MB.
 
-<sub>Source: `services/relay/brutal_test.go`, `services/relay/cmd/loadtest/main.go`, `docs/changelog.md`</sub>
