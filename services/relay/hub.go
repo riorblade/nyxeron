@@ -135,11 +135,15 @@ func (h *hub) evictHostless(now time.Time) ([]*conn, bool) {
 // expire closes a room and keeps its code for a resume. Caller holds h.mu; returns the peers to tell.
 func (h *hub) expire(r *room, now time.Time) []*conn {
 	delete(h.rooms, r.code)
-	if len(h.expired) >= maxExpired {
-		for code := range h.expired { // full: forget one (map order is random enough)
-			delete(h.expired, code)
-			break
+	if len(h.expired) >= maxExpired { // full: forget the oldest
+		// ponytail: O(maxExpired) scan, only while churn keeps the map full; a ring buffer if it ever shows up.
+		var oldest string
+		for code, e := range h.expired {
+			if oldest == "" || e.at.Before(h.expired[oldest].at) {
+				oldest = code
+			}
 		}
+		delete(h.expired, oldest)
 	}
 	h.expired[r.code] = expiredRoom{r.token, now}
 	out := make([]*conn, 0, len(r.peers))

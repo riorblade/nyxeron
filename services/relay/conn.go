@@ -87,16 +87,16 @@ func (c *conn) closeWith(reason string) {
 	})
 }
 
-// push queues a frame within the count and byte bounds; false = the receiver is backed up. `slots` caps how much
-// of the queue this frame may use (peer input gets half, so controls to the host always have room).
-func (c *conn) push(b []byte, slots int, budget bool) bool {
+// push queues a frame within the count and byte bounds; false = the receiver is backed up. `slots` and `maxBytes`
+// cap how much of the queue this frame may use (peer input gets half, so controls to the host always have room).
+func (c *conn) push(b []byte, slots int, maxBytes int64, budget bool) bool {
 	n := int64(len(b))
 	c.qmu.Lock()
 	defer c.qmu.Unlock()
 	// One frame always fits an empty queue (a host may send up to 256 KB); after that the byte bounds apply.
 	// Controls skip the shared budget: a few hundred bytes each, and other clients filling it must not cost a
 	// player (or a resuming host) their connection.
-	full := c.qbytes > 0 && (c.qbytes+n > maxQueueBytes || (budget && c.hub.queued.Load()+n > c.hub.queueBudget))
+	full := c.qbytes > 0 && (c.qbytes+n > maxBytes || (budget && c.hub.queued.Load()+n > c.hub.queueBudget))
 	if c.qdead || full || len(c.queue) >= slots {
 		return false
 	}
@@ -128,13 +128,14 @@ func (c *conn) release() {
 }
 
 // offer queues peer input for the host if there is room; false = the host is backed up ("host_busy").
-func (c *conn) offer(b []byte) bool { return c.push(b, queueLen/2, true) }
+// Half the slots and half the bytes: the other half is always there for controls to the host.
+func (c *conn) offer(b []byte) bool { return c.push(b, queueLen/2, maxQueueBytes/2, true) }
 
 // enqueue a reliable frame; a client too slow to drain its queue is disconnected.
 func (c *conn) enqueue(b []byte) { c.reliable(b, true) }
 
 func (c *conn) reliable(b []byte, budget bool) {
-	if !c.push(b, queueLen, budget) {
+	if !c.push(b, queueLen, maxQueueBytes, budget) {
 		c.closeWith("too slow")
 	}
 }

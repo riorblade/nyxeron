@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"net"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -349,5 +350,38 @@ func TestControlsIgnoreTheSharedBudget(t *testing.T) {
 	}
 	if isDone(host) {
 		t.Fatalf("host dropped by a full shared budget: %q", reasonOf(host))
+	}
+}
+
+func TestProxyLookupFailureKeepsLastGood(t *testing.T) {
+	p := newProxies("edge.invalid")
+	_, n, _ := net.ParseCIDR("10.0.0.7/32")
+	p.nets = []*net.IPNet{n} // resolved earlier; the proxy's DNS name is gone for now
+	p.at = time.Now().Add(-time.Minute)
+	p.refresh()
+	if !p.trusts(net.ParseIP("10.0.0.7")) {
+		t.Fatal("a failed lookup dropped the proxy: every player would share its IP")
+	}
+}
+
+func TestGuestInputBytesCannotStarveHostControls(t *testing.T) {
+	h := newHub(10, 64, time.Minute)
+	host := fake(h)
+	r, _ := h.create(host)
+	g := fake(h)
+	h.join(g, r.code)
+	big := make([]byte, 8<<10)
+	big[0] = kindFrom
+	for i := 0; i < queueLen; i++ {
+		g.route(big) // capped at half the host's bytes, then host_busy
+	}
+	filler := make([]byte, maxQueueBytes) // nothing else may squeeze in past the half either
+	filler[0] = kindFrom
+	g.route(filler)
+	for i := 0; i < 20; i++ {
+		h.join(fake(h), r.code)
+	}
+	if isDone(host) {
+		t.Fatalf("guest input starved the host's controls: %q", reasonOf(host))
 	}
 }

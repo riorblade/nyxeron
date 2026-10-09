@@ -35,12 +35,14 @@ func envInt(key string, fallback int) int {
 }
 
 // proxies are the hosts whose X-Forwarded-For is believed (TRUST_PROXY: hostnames, IPs or CIDRs, comma-separated).
-// Hostnames (a proxy container's name) are re-resolved at most every 30 s, so a restarted proxy keeps working.
+// Hostnames (a proxy container's name) are resolved outside the lock with a 1 s timeout: every 30 s in the
+// background, and at once (at most every 2 s) when a socket isn't recognised, so a proxy back on a new IP is picked
+// up. A failed lookup keeps the last good list.
 type proxies struct {
 	entries []string
 	mu      sync.Mutex
 	nets    []*net.IPNet
-	at      time.Time
+	at      time.Time // last resolve attempt
 }
 
 func newProxies(list string) *proxies {
@@ -53,36 +55,64 @@ func newProxies(list string) *proxies {
 	return p
 }
 
+func (p *proxies) match(ip net.IP) (ok, stale bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, n := range p.nets {
+		if n.Contains(ip) {
+			ok = true
+			break
+		}
+	}
+	return ok, time.Since(p.at) > 30*time.Second
+}
+
+func (p *proxies) refresh() {
+	p.mu.Lock()
+	if time.Since(p.at) < 2*time.Second {
+		p.mu.Unlock()
+		return
+	}
+	p.at = time.Now()
+	p.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	var nets []*net.IPNet
+	for _, e := range p.entries {
+		if _, n, err := net.ParseCIDR(e); err == nil {
+			nets = append(nets, n)
+			continue
+		}
+		addrs := []string{e}
+		if net.ParseIP(e) == nil {
+			addrs, _ = net.DefaultResolver.LookupHost(ctx, e)
+		}
+		for _, a := range addrs {
+			if x := net.ParseIP(a); x != nil {
+				nets = append(nets, &net.IPNet{IP: x, Mask: net.CIDRMask(len(x)*8, len(x)*8)})
+			}
+		}
+	}
+	if len(nets) > 0 {
+		p.mu.Lock()
+		p.nets = nets
+		p.mu.Unlock()
+	}
+}
+
 func (p *proxies) trusts(ip net.IP) bool {
 	if p == nil || len(p.entries) == 0 || ip == nil {
 		return false
 	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if time.Since(p.at) > 30*time.Second {
-		p.nets, p.at = nil, time.Now()
-		for _, e := range p.entries {
-			if _, n, err := net.ParseCIDR(e); err == nil {
-				p.nets = append(p.nets, n)
-				continue
-			}
-			addrs := []string{e}
-			if net.ParseIP(e) == nil {
-				addrs, _ = net.LookupHost(e)
-			}
-			for _, a := range addrs {
-				if x := net.ParseIP(a); x != nil {
-					p.nets = append(p.nets, &net.IPNet{IP: x, Mask: net.CIDRMask(len(x)*8, len(x)*8)})
-				}
-			}
+	if ok, stale := p.match(ip); ok {
+		if stale {
+			go p.refresh()
 		}
+		return true
 	}
-	for _, n := range p.nets {
-		if n.Contains(ip) {
-			return true
-		}
-	}
-	return false
+	p.refresh()
+	ok, _ := p.match(ip)
+	return ok
 }
 
 // clientIP: the socket's address, or the last X-Forwarded-For hop when the socket is a trusted proxy (that hop is
