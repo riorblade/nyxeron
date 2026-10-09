@@ -9,6 +9,7 @@ const definite = new Set([
   "invalid_token",
   "banned",
   "not_configured",
+  "404", // an api from before tickets: none to be had (a relay that needs one can't be running yet either)
 ]);
 
 /** Forget the ticket (the relay refused it): the next one is fetched from the api. */
