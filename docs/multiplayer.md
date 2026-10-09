@@ -31,8 +31,13 @@ JSON control (text frames):
 ← {"t":"host","on":bool} · {"t":"closed"} · {"t":"kicked"} · {"t":"error","code":"…"}
 ```
 
+With `RELAY_TICKET_SECRET` set on the relay, `create`, `join` and `resume` also carry `"ticket":"…"`: a short-lived
+HMAC ticket from `POST /api/relay/ticket` naming the signed-in account (`services/relay/ticket.go`); a missing or
+invalid one is refused with `bad_ticket`.
+
 Error codes: `room_not_found`, `room_full`, `server_full`, `bad_request`, `already_in_room`, `rate_limited`,
-`host_busy`, `kicked`, `too_many_rooms`, `too_many_connections` (the client backs off and retries the full/busy ones).
+`host_busy`, `kicked`, `replaced` (sent to a host whose room another connection resumed, e.g. a second tab, before it
+is closed), `too_many_rooms`, `too_many_connections`, `bad_ticket` (the client backs off and retries the full/busy ones).
 
 Limits (one relay process, all in memory; env in `deploy/compose.yml`):
 
