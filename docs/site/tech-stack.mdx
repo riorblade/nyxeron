@@ -1,0 +1,127 @@
+---
+title: "Tech stack & quality"
+description: "The tools NYXERON is built with, how the simulation, economy and relay are tested, and how to run it locally."
+---
+
+NYXERON is a pnpm monorepo: one pure TypeScript simulation shared by every client, two React apps, two small Go
+services, and a stock agent. Everything is checked on every push and pull request.
+
+## Stack
+
+| Layer | Package | Technology |
+| --- | --- | --- |
+| Simulation | `packages/core` | TypeScript (strict), pure functions, seeded mulberry32 PRNG, tunables in JSON |
+| Game client | `apps/web` | React 19, Vite 8, Tailwind CSS v4, zustand 5, three.js (3D club), Web Audio (DJ engine), Privy, viem |
+| Back office | `apps/admin` | React 19, Vite 8, Tailwind CSS v4, Privy |
+| Multiplayer relay | `services/relay` | Go 1.26, `coder/websocket`, no database |
+| api | `services/api` | Go 1.26 standard library (`net/http` routing), SQLite in WAL mode via a pure-Go driver (no CGO) |
+| Stock agent | `apps/agent` | TypeScript on Node, buys tokenized stock for the warehouse through a Binance Agentic Wallet; the api verifies each swap on-chain |
+| Chain | BNB Smart Chain | USDC/USDT deposits, tokenized stocks (bStock), read through two independent RPCs |
+| Hosting | Vercel + containers | Static web and admin on Vercel; Go services in `scratch` images behind Caddy |
+| Tooling | repo root | pnpm 10, Node 22, Vitest, ESLint (flat config), Prettier, GitHub Actions |
+
+## How it is tested
+
+### A simulation you can test without a browser
+
+Because the core has no DOM, no network, no clock and no `Math.random()`, every rule can be exercised headless in
+Node. The PRNG state lives inside `GameState`, so the same seed gives the same career, every time.
+
+The core test suite plays real games, not just units:
+
+- **Determinism:** a full week played from seed 42 twice gives identical reports, and seed 43 gives different ones.
+- **Rules:** capacity is never exceeded unless the door is forced, underage guests are stopped by security, permits
+  and inspections have the documented consequences, a night runs 22:00 to 04:00 and ends with everyone gone.
+- **Long careers:** a 60-day career is played day by day and every visible number is checked to be a valid number.
+- **Saves:** save then load gives back exactly the same game, by day and mid-night, and older save formats still load
+  and play on.
+
+<sub>Source: `packages/core/test/engine.test.ts:126`, `packages/core/test/persistence.test.ts:72-122`</sub>
+
+### A bot that plays thousands of careers
+
+Tuning a management game by hand is guesswork, so a bot plays it. The bot is a sensible, not optimal, player: each
+day it runs the AI CEO's preparation, plays the night, and moves to the next day. `pnpm balance` plays one career per
+seed and reports how careers end.
+
+$$
+\hat{P}(o) = \frac{1}{n} \sum_{s=1}^{n} \mathbf{1}\left[\, o_s = o \,\right]
+$$
+
+where
+
+| Symbol | Meaning |
+| --- | --- |
+| $n$ | Number of careers, one per seed $s = 1, \dots, n$ (default 1000) |
+| $o_s$ | Outcome of the career with seed $s$, played until it ends or day 60 passes |
+| $o$ | An outcome: `victory`, `defeat`, `survived`, or none if day 60 passes first |
+| $\mathbf{1}[\cdot]$ | 1 if the condition holds, else 0 |
+
+Defeats are further split by cause (bankruptcy after 3 days of negative cash, 3 violations, or reputation), and the
+report shows the average day each venue level is reached. A second script, `pnpm balance:levels`, breaks careers down
+per venue level: fights per night, tax as a share of revenue, and profit per night.
+
+<sub>Source: `packages/core/scripts/balance.ts:1-28`, `packages/core/scripts/bot.ts`</sub>
+
+| Parameter | Value | Key |
+| --- | --- | --- |
+| Career length cap | 60 days | `economy.json → maxDays` |
+| Night length | 360 minutes from 22:00 | `night.json → minutes`, `night.json → startHour` |
+
+A fast version of the bot also runs as a regular test: across 10 seeds it must survive the first 30 days and reach
+venue level 2, so a bad change to the JSON tuning fails CI before it reaches players.
+
+<sub>Source: `packages/core/test/balance.test.ts`</sub>
+
+### Go services under the race detector
+
+Both Go services are tested with `go test -race`, after `go vet` and a `gofmt` check. The api suite has 86 test
+functions covering the parts that touch value: JWT verification, the dual-RPC chain reader (RPCs disagreeing, one RPC
+down, wrong chain, too few confirmations), deposits credited exactly once, concurrent caps, sales held and settled
+once, reconciliation that pauses and resumes payments, migrations on a live database. A test also guarantees the
+api's copy of the game data is identical to the simulation's JSON. The relay suite covers routing and sender
+stamping, join errors, host resume and grace, kick and close, and rate limits. Adversarial "brutal" tests attack it on purpose (non-reading clients, floods, guessed codes) and must stay green.
+
+### Checks on every change
+
+| Workflow | Runs |
+| --- | --- |
+| CI: TypeScript | `pnpm lint` (typecheck core, web, admin, agent + ESLint + Prettier) → `pnpm test` (Vitest) → build web and admin |
+| CI: Go (relay, api) | `go vet` → `gofmt` → `go test -race` |
+| PR checks | Title must match `type(scope): summary` within 72 characters; the description template must be filled in (summary, why, what changed, how to test, risk and rollback, deploy notes, a complete checklist); labels are applied automatically by area |
+
+The PR checker is itself tested, so the rules the team writes are the rules CI enforces.
+
+## Run it locally
+
+<Steps>
+<Step title="Install">
+Node 22+ and pnpm 10 (via corepack). Go 1.26 is only needed for the services; an older Go downloads it automatically.
+
+```sh
+corepack enable && pnpm install
+```
+</Step>
+<Step title="Play">
+```sh
+pnpm dev            # game at http://localhost:5173
+```
+Without a Privy app id the game runs signed-out, which is enough for a practice career.
+</Step>
+<Step title="Full stack (optional)">
+```sh
+DB_PATH=services/api/dev.db pnpm dev:api   # api on :8788
+pnpm dev:relay                             # relay on :8787
+pnpm dev:admin                             # back office on :5174
+```
+The dev server proxies `/api` and `/ws` to these, mirroring production, so no CORS setup is needed.
+</Step>
+<Step title="Test">
+```sh
+pnpm lint && pnpm test && pnpm test:go
+pnpm balance 1000   # 1000 bot careers
+```
+</Step>
+</Steps>
+
+Related: [Architecture](/architecture) · [Live multiplayer](/multiplayer-live)

@@ -1,0 +1,204 @@
+---
+title: "The night loop"
+description: "How NYXERON's deterministic engine turns one game state into the next: seeded RNG, day and night phases, and the minute-by-minute step order."
+---
+
+NYXERON's simulation lives in one pure TypeScript package, `packages/core`. It has no clock, no network and no DOM. Every rule is a function that takes a game state and returns a new one. **Why:** the same code runs the browser game, the balance bot and the tests, and any night can be replayed exactly from its seed.
+
+## State in, state out
+
+The whole game is a single value $S$ (type `GameState`): coin, reputation, hype, safety, stock, staff, permits, prices, the current night (guests, crowd energy, market) and the RNG seed. Time inside a night is counted in minutes $t \in \lbrace 0, 1, \dots, 359 \rbrace$.
+
+One minute of play is
+
+$$
+S_{t+1} = f(S_t, a_t, \xi_t)
+$$
+
+| Symbol | Meaning | In code |
+|---|---|---|
+| $S_t$ | Full game state at the start of minute $t$ | `GameState` |
+| $a_t$ | The player's actions issued during minute $t$ (promote, CEO call, crowd move, restock, force the door…), applied in order as pure functions $S \mapsto S'$ | `ActionResult`-returning rules |
+| $\xi_t$ | The random numbers drawn during the minute, $\xi_t = (u_1, u_2, \dots, u_K)$ with $u_i \in [0, 1)$ | `createRng(s.seed)` |
+| $f$ | One tick: `tickNight` applied to the state after the actions | `engine.ts` |
+
+<sub>Source: `packages/core/src/engine.ts:269`</sub>
+
+The noise $\xi_t$ is not external. It is generated from the seed $\sigma_t$ stored **inside** $S_t$, and the advanced seed is written back into $S_{t+1}$. So in practice
+
+$$
+S_{t+1} = \operatorname{tickNight}\big(a_t(S_t)\big)
+$$
+
+is a deterministic function of the state and the actions. The same seed and the same actions give the same night, bit for bit.
+
+<sub>Source: `packages/core/src/engine.ts:271`, `packages/core/src/engine.ts:621`</sub>
+
+## The random number generator
+
+The engine uses **mulberry32**, a small seeded PRNG whose whole state is one unsigned 32-bit integer. That integer is the `seed` field of the game state, so it saves and loads with everything else.
+
+Each draw advances the seed by a fixed odd constant and then scrambles it. With all arithmetic on 32-bit words, $\oplus$ for XOR, $\gg$ for logical right shift, $\lor$ for OR and $\otimes$ for 32-bit multiplication (`Math.imul`):
+
+$$
+\begin{aligned}
+\sigma_{k+1} &= (\sigma_k + \texttt{0x6D2B79F5}) \bmod 2^{32} \\
+x_1 &= \big(\sigma_{k+1} \oplus (\sigma_{k+1} \gg 15)\big) \otimes (\sigma_{k+1} \lor 1) \\
+x_2 &= x_1 \oplus \Big(x_1 + \big(x_1 \oplus (x_1 \gg 7)\big) \otimes (x_1 \lor 61)\Big) \\
+u_k &= \frac{\big(x_2 \oplus (x_2 \gg 14)\big) \bmod 2^{32}}{2^{32}} \in [0, 1)
+\end{aligned}
+$$
+
+where $\sigma_k$ is the seed before draw $k$, $\sigma_{k+1}$ the seed stored after it, and $u_k$ the uniform value returned.
+
+<sub>Source: `packages/core/src/rng.ts:2-8`</sub>
+
+Every random decision in the game is built from $u$:
+
+| Helper | Definition | Distribution |
+|---|---|---|
+| `chance(p)` | $u \lt p$ | Bernoulli($p$) |
+| `int(a, b)` | $a + \lfloor u\,(b - a + 1) \rfloor$ | uniform on $\lbrace a, \dots, b \rbrace$ |
+| `pick(A)` | $A_{\lfloor u \lvert A \rvert \rfloor}$ | uniform over the list |
+| `weighted(w)` | first key $k$ where $u \sum_j w_j - \sum_{i \le k} w_i \lt 0$ | $\Pr(k) = w_k / \sum_j w_j$ |
+
+<sub>Source: `packages/core/src/rng.ts:19-30`</sub>
+
+<Accordion title="Worked example: three draws from seed 42">
+
+| $k$ | $\sigma_k$ | $u_k$ | $\sigma_{k+1}$ |
+|---|---|---|---|
+| 0 | 42 | 0.6011 | 1831565855 |
+| 1 | 1831565855 | 0.4483 | 3663131668 |
+| 2 | 3663131668 | 0.8525 | 1199730185 |
+
+So `chance(0.5)` on a fresh seed of 42 returns false ($0.6011 \ge 0.5$), and the next `int(0, 239)` returns $\lfloor 0.4483 \times 240 \rfloor = 107$.
+
+</Accordion>
+
+## Day, night, report
+
+A game day has three phases. The player plans by day, watches the club run by night, and reads the result in the report.
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    day --> night: startNight (Open Club)
+    night --> night: tickNight x 360
+    night --> report: endNight (04:00)
+    report --> day: nextDay
+```
+
+<sub>Source: `packages/core/src/state.ts:29`, `packages/core/src/engine.ts:152-702`</sub>
+
+The night opens at 22:00 and runs 360 one-minute ticks, so minute $t$ is clock time 22:00 + $t$ and the club closes at 04:00. A headless night is literally
+
+$$
+S_{\text{report}} = \operatorname{endNight}\Big(\operatorname{tickNight}^{\,360}\big(\operatorname{startNight}(S_{\text{day}})\big)\Big)
+$$
+
+<sub>Source: `packages/core/src/engine.ts:719-723`</sub>
+
+| Parameter | Value | JSON key |
+|---|---|---|
+| Ticks per night | 360 | `night.json → minutes` |
+| Opening hour | 22 | `night.json → startHour` |
+| Arrival window | 240 min | `night.json → arrivalWindow` |
+| DJ set starts | minute 60 (23:00) | `night.json → djSetStartMinute` |
+| Reserved tables arrive | minute 90 (23:30) | `strategy.json → relations.tablesArriveMinute` |
+
+### startNight: building tonight
+
+`startNight` runs once when the player opens the club. It draws everything that is decided in advance:
+
+1. **Tonight's guests.** The expected head count, each guest's segment, genre, budget, arrival and leave minute (see [Guests & spending](/engine/guests)).
+2. **Promoter guest lists**, which arrive early and skip the cover.
+3. **Happy-hour reshuffles** of arrival or leave times, if a scheduled happy hour is set.
+4. **The inspection roll.** With probability $p_{\text{insp}}$ an inspector is scheduled at a uniform minute in $\lbrace 0, \dots, 359 \rbrace$ (see [Crowd, DJ & security](/engine/crowd)).
+5. **Fresh night state:** crowd energy starts at 30, market multipliers at 1, DJ multiplier at the no-DJ value 0.5, and tonight's table bookings are fixed.
+
+If the venue is sealed (a penalty from a failed inspection), no guests are generated and no inspector comes.
+
+<sub>Source: `packages/core/src/engine.ts:152-263`</sub>
+
+### tickNight: one minute
+
+Each tick runs the same steps in the same order. The order matters: a guest admitted at the door this minute already counts toward the crowd check, the escorts and the energy update of that same minute.
+
+```mermaid
+flowchart TD
+    A[Arrivals: pending guests whose minute has come join the queue] --> B[Door: up to 3 per minute. Capacity, ID check, dress code, cover charge, promoter commission]
+    B --> C{More than 150 inside and no crowd permit?}
+    C -- "shut down (p = 0.5, rolled once)" --> Z[Night ends now]
+    C -- no --> D[Live band set starts or ends]
+    D --> E[DJ takes the decks at minute 60: genre match sets the DJ multiplier]
+    E --> F[Reserved tables arrive at minute 90 and pay their minimum spend]
+    F --> G[Security: free guards escort the most tilted guests out]
+    G --> H[Crowd energy moves toward its target]
+    H --> I[Token market trades one minute]
+    I --> J[Each guest inside: leave or encore, tilt decay, mood, fight roll, then bar / dance / idle]
+    J --> K[Auto-refill low stock]
+    K --> L[Inspection, if scheduled this minute]
+    L --> M[minute + 1. At 360 everyone leaves]
+```
+
+<sub>Source: `packages/core/src/engine.ts:279-621`</sub>
+
+| Step | Lines | Explained in |
+|---|---|---|
+| Arrivals and door | `engine.ts:280-325` | [Guests & spending](/engine/guests) |
+| Crowd-permit shutdown | `engine.ts:328-337` | [Crowd, DJ & security](/engine/crowd) |
+| Band and DJ | `engine.ts:340-374` | [Crowd, DJ & security](/engine/crowd) |
+| Tables | `engine.ts:377-392` | [Guests & spending](/engine/guests) |
+| Escorts | `engine.ts:396-411` | [Crowd, DJ & security](/engine/crowd) |
+| Energy | `engine.ts:414-451` | [Crowd, DJ & security](/engine/crowd) |
+| Market | `engine.ts:454-460` | [Guests & spending](/engine/guests) |
+| Guest loop | `engine.ts:464-583` | both pages |
+| Auto-refill | `engine.ts:586-593` | stock management |
+| Inspection | `engine.ts:596-616` | [Crowd, DJ & security](/engine/crowd) |
+
+Guests are processed in arrival order (they are sorted by arrival minute and numbered at `startNight`), so when the bar is busy, the earliest arrivals are served first.
+
+<sub>Source: `packages/core/src/engine.ts:205-207`</sub>
+
+### endNight: the books close
+
+At 04:00 (or at a shutdown) `endNight` settles the night in a fixed order:
+
+1. **Entertainment tax** on the night's revenue: $\text{tax} = \operatorname{round}\big(r_L \cdot (\text{bar} + \text{cover} + \text{table})\big)$, with rate $r_L$ = 0, 0, 0.2, 0.3, 0.4 for levels 1–5 (`levels.json → entertainmentTaxRate`).
+2. **Shutdown penalty**, if the crowd-permit check closed the club.
+3. **Reputation** from the average guest satisfaction.
+4. **Night report**, then the defeat check and the victory check.
+
+<sub>Source: `packages/core/src/engine.ts:625-696`, `packages/core/src/rules/economy.ts:44-59`</sub>
+
+### nextDay: overnight
+
+`nextDay` turns the report into a fresh day $d + 1$:
+
+$$
+\begin{aligned}
+\text{coin}_{d+1} &= \text{coin}_d - \sum_{r} n_r\, w_r - \text{rent}_L \\
+H_{d+1} &= \max(0,\; H_d - 10) \\
+\text{Safety}_{d+1} &= \min(100,\; \text{Safety}_d + 10)
+\end{aligned}
+$$
+
+where $n_r$ is the head count of staff role $r$, $w_r$ its daily wage (`staff.json → wagePerDay`: 300, 400, 600, 700, 1500), $\text{rent}_L$ the venue's rent (`levels.json → rentPerDay`: 100 to 30000), $H$ hype and Safety the safety stat. CEO energy resets to 5, stock orders that are due are delivered, and tonight's DJ, band, promos and promoters are cleared.
+
+<sub>Source: `packages/core/src/rules/economy.ts:16-38`</sub>
+
+| Parameter | Value | JSON key |
+|---|---|---|
+| Hype decay | 10 per day | `economy.json → hypeDecayPerDay` |
+| Safety recovery | 10 per day | `economy.json → safetyRecoveryPerDay` |
+| CEO energy | 5 per day | `economy.json → ceoEnergyPerDay` |
+
+<CardGroup cols={2}>
+  <Card title="Guests & spending" icon="users" href="/engine/guests">
+    Who comes, what they pay at the door, and when they buy.
+  </Card>
+  <Card title="Crowd, DJ & security" icon="music" href="/engine/crowd">
+    Energy, the DJ multiplier, fights, inspections and the 0–100 stats.
+  </Card>
+</CardGroup>
