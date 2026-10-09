@@ -35,18 +35,21 @@ func envInt(key string, fallback int) int {
 }
 
 // proxies are the hosts whose X-Forwarded-For is believed (TRUST_PROXY: hostnames, IPs or CIDRs, comma-separated).
-// Hostnames (a proxy container's name) are resolved outside the lock with a 1 s timeout: every 30 s in the
-// background, and at once (at most every 2 s) when a socket isn't recognised, so a proxy back on a new IP is picked
-// up. A failed lookup keeps the last good list.
+// Hostnames (a proxy container's name) are resolved outside the lookup lock, each with a 1 s timeout: at start, every
+// 30 s in the background, and at once (at most every 2 s) when a socket isn't recognised, so a proxy back on a new IP
+// is picked up. A name whose lookup fails keeps its last good addresses. One lookup runs at a time; callers that
+// need it wait for the one in flight instead of being turned away untrusted.
 type proxies struct {
 	entries []string
-	mu      sync.Mutex
+	rmu     sync.Mutex // one refresh at a time; guards byEntry
+	byEntry map[string][]*net.IPNet
+	mu      sync.Mutex // guards nets and at
 	nets    []*net.IPNet
 	at      time.Time // last resolve attempt
 }
 
 func newProxies(list string) *proxies {
-	p := &proxies{}
+	p := &proxies{byEntry: map[string][]*net.IPNet{}}
 	for _, e := range strings.Split(list, ",") {
 		if e = strings.TrimSpace(e); e != "" {
 			p.entries = append(p.entries, e)
@@ -67,37 +70,47 @@ func (p *proxies) match(ip net.IP) (ok, stale bool) {
 	return ok, time.Since(p.at) > 30*time.Second
 }
 
+func resolve(e string) []*net.IPNet {
+	if _, n, err := net.ParseCIDR(e); err == nil {
+		return []*net.IPNet{n}
+	}
+	addrs := []string{e}
+	if net.ParseIP(e) == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		addrs, _ = net.DefaultResolver.LookupHost(ctx, e)
+	}
+	var out []*net.IPNet
+	for _, a := range addrs {
+		if x := net.ParseIP(a); x != nil {
+			out = append(out, &net.IPNet{IP: x, Mask: net.CIDRMask(len(x)*8, len(x)*8)})
+		}
+	}
+	return out
+}
+
 func (p *proxies) refresh() {
+	p.rmu.Lock() // a caller arriving mid-lookup waits for it, then finds it fresh
+	defer p.rmu.Unlock()
 	p.mu.Lock()
-	if time.Since(p.at) < 2*time.Second {
-		p.mu.Unlock()
+	recent := time.Since(p.at) < 2*time.Second
+	if !recent {
+		p.at = time.Now()
+	}
+	p.mu.Unlock()
+	if recent {
 		return
 	}
-	p.at = time.Now()
-	p.mu.Unlock()
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
 	var nets []*net.IPNet
 	for _, e := range p.entries {
-		if _, n, err := net.ParseCIDR(e); err == nil {
-			nets = append(nets, n)
-			continue
+		if got := resolve(e); len(got) > 0 {
+			p.byEntry[e] = got // a failed lookup keeps this entry's last good addresses
 		}
-		addrs := []string{e}
-		if net.ParseIP(e) == nil {
-			addrs, _ = net.DefaultResolver.LookupHost(ctx, e)
-		}
-		for _, a := range addrs {
-			if x := net.ParseIP(a); x != nil {
-				nets = append(nets, &net.IPNet{IP: x, Mask: net.CIDRMask(len(x)*8, len(x)*8)})
-			}
-		}
+		nets = append(nets, p.byEntry[e]...)
 	}
-	if len(nets) > 0 {
-		p.mu.Lock()
-		p.nets = nets
-		p.mu.Unlock()
-	}
+	p.mu.Lock()
+	p.nets = nets
+	p.mu.Unlock()
 }
 
 func (p *proxies) trusts(ip net.IP) bool {
@@ -197,6 +210,7 @@ func main() {
 	h.kickBan = time.Duration(envInt("KICK_BAN_SEC", int(h.kickBan.Seconds()))) * time.Second
 	h.queueBudget = int64(envInt("QUEUE_BUDGET_MB", int(h.queueBudget>>20))) << 20
 	trusted := newProxies(env("TRUST_PROXY", ""))
+	trusted.refresh() // know the proxy before the first reconnect storm
 	go func() {
 		for now := range time.Tick(10 * time.Second) {
 			h.sweep(now)

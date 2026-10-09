@@ -7,6 +7,8 @@ import (
 	"net"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -356,7 +358,7 @@ func TestControlsIgnoreTheSharedBudget(t *testing.T) {
 func TestProxyLookupFailureKeepsLastGood(t *testing.T) {
 	p := newProxies("edge.invalid")
 	_, n, _ := net.ParseCIDR("10.0.0.7/32")
-	p.nets = []*net.IPNet{n} // resolved earlier; the proxy's DNS name is gone for now
+	p.byEntry["edge.invalid"] = []*net.IPNet{n} // resolved earlier; the proxy's DNS name is gone for now
 	p.at = time.Now().Add(-time.Minute)
 	p.refresh()
 	if !p.trusts(net.ParseIP("10.0.0.7")) {
@@ -383,5 +385,34 @@ func TestGuestInputBytesCannotStarveHostControls(t *testing.T) {
 	}
 	if isDone(host) {
 		t.Fatalf("guest input starved the host's controls: %q", reasonOf(host))
+	}
+}
+
+func TestProxyPartialFailureKeepsThatEntry(t *testing.T) {
+	p := newProxies("edge.invalid, 10.9.0.0/16")
+	_, n, _ := net.ParseCIDR("10.0.0.7/32")
+	p.byEntry["edge.invalid"] = []*net.IPNet{n} // resolved earlier
+	p.refresh()                                 // edge's lookup fails now, the CIDR still parses
+	if !p.trusts(net.ParseIP("10.0.0.7")) || !p.trusts(net.ParseIP("10.9.1.1")) {
+		t.Fatal("one failed name dropped its last good addresses")
+	}
+}
+
+func TestProxyCallersWaitForTheLookupInFlight(t *testing.T) {
+	p := newProxies("127.0.0.1")
+	var wg sync.WaitGroup
+	var untrusted atomic.Int32
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if !p.trusts(net.ParseIP("127.0.0.1")) {
+				untrusted.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	if n := untrusted.Load(); n != 0 {
+		t.Fatalf("%d of 50 concurrent first callers turned away untrusted", n)
 	}
 }
