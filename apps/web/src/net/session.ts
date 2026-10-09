@@ -19,6 +19,7 @@ import type { DjAct } from "@/dj/engine";
 import { applyMix, mixSnapshot, type MixSync } from "@/dj/mixsync";
 import { KIND, pack, Relay, unpack, type Frame } from "./relay";
 import { Seats } from "./seats";
+import { dropTicket, relayTicket } from "./ticket";
 import { audio } from "@/audio";
 import type { PadId } from "@/dj/sampler";
 import { firePyro, type PyroCue } from "@/venue/pyro";
@@ -333,14 +334,18 @@ function onHostFrame(f: Frame) {
 /** The CEO opens tonight's club to other players. Resolves to the room code. */
 export async function hostOpen(clubName: string) {
   if (relay) return useNet.getState().room;
-  relay = new Relay();
+  relay = new Relay(undefined, relayTicket);
   set({ role: "host", status: "connecting", error: "", players: {} });
   relay.onStatus = (on) => set({ status: on ? "live" : "connecting" });
   relay.onFrame = onHostFrame;
   relay.onControl = (c) => {
-    // This club is open in another tab now: this one lets go.
-    if (c.t === "error" && c.code === "replaced")
-      return set({ status: "error", error: "replaced" });
+    // Open in another tab now, or this account can't host any more: this one lets go (and stops announcing).
+    if (c.t === "error" && (c.code === "replaced" || c.code === "bad_ticket")) {
+      set({ error: c.code }); // kept through hostClose: "replaced" tells the room list not to delist the club
+      hostClose();
+      useGame.getState().notify(en.live.error(c.code), true);
+      return;
+    }
     if (c.t === "created") {
       // Back after a drop: the relay re-announces who is still here (they say hello again); the rest left.
       for (const id of Object.keys(useNet.getState().players)) letGo(+id);
@@ -397,8 +402,9 @@ export async function hostOpen(clubName: string) {
     broadcastSoon();
     return room;
   } catch (e) {
-    set({ status: "error", error: (e as Error).message });
+    if ((e as Error).message === "bad_ticket") dropTicket(); // the next try asks the api for a new one
     hostClose();
+    set({ status: "error", error: (e as Error).message });
     throw e;
   }
 }
@@ -458,7 +464,7 @@ export async function guestJoin(
   as: "guest" | "dj" = "guest",
 ) {
   guestLeave();
-  relay = new Relay();
+  relay = new Relay(undefined, relayTicket);
   set({
     role: as,
     room: code,
@@ -490,6 +496,11 @@ export async function guestJoin(
     if (c.t === "closed" || (c.t === "error" && c.code === "room_not_found")) {
       settleLast();
       set({ status: "closed" });
+    }
+    // A reconnect's fresh ticket refused (signed out, banned): what I had still goes home.
+    if (c.t === "error" && c.code === "bad_ticket") {
+      settleLast();
+      set({ status: "error", error: "bad_ticket" });
     }
     if (c.t === "kicked" || (c.t === "error" && c.code === "kicked")) {
       settleLast();
@@ -558,6 +569,7 @@ export async function guestJoin(
     set({ me: "", status: "live" });
     sayHello();
   } catch (e) {
+    if ((e as Error).message === "bad_ticket") dropTicket(); // the next try asks the api for a new one
     set({ status: "error", error: (e as Error).message });
     relay?.close();
     relay = null;

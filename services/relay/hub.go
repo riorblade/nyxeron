@@ -19,8 +19,8 @@ type room struct {
 	hostGone time.Time
 	peers    map[uint16]*conn
 	nextID   uint16
-	// Who opened it (per-IP room cap) and who the host kicked: an IP → until when it may not rejoin.
-	ip     string
+	// Who opened it (room cap) and who the host kicked: a player (conn.who) → until when they may not rejoin.
+	owner  string
 	kicked map[string]time.Time
 }
 
@@ -39,7 +39,8 @@ type hub struct {
 	// Abuse limits, all per server process (one relay; see README). 0 = off.
 	maxConns      int           // open sockets in total
 	maxConnsPerIP int           // open sockets per IP
-	maxRoomsPerIP int           // rooms per IP (abandoned ones in their grace period too)
+	maxRoomsPer   int           // rooms per player (account with tickets, else IP), abandoned ones in their grace period too
+	ticketKey     []byte        // RELAY_TICKET_SECRET: set → create/join/resume need an api ticket (ticket.go)
 	kickBan       time.Duration // a kicked IP can't rejoin that room for this long
 	queueBudget   int64         // bytes queued for all clients together (conn.push)
 	queued        atomic.Int64
@@ -62,6 +63,7 @@ const (
 type expiredRoom struct {
 	token string
 	at    time.Time
+	owner string
 }
 
 const (
@@ -145,7 +147,7 @@ func (h *hub) expire(r *room, now time.Time) []*conn {
 		}
 		delete(h.expired, oldest)
 	}
-	h.expired[r.code] = expiredRoom{r.token, now}
+	h.expired[r.code] = expiredRoom{r.token, now, r.owner}
 	out := make([]*conn, 0, len(r.peers))
 	for _, p := range r.peers {
 		out = append(out, p)
@@ -160,12 +162,12 @@ func tellClosed(peers []*conn) {
 	}
 }
 
-// hostedBy counts the rooms opened from ip, abandoned ones included (create-and-drop churn counts). Caller holds h.mu.
+// hostedBy counts the rooms a player opened, abandoned ones included (create-and-drop churn counts). Caller holds h.mu.
 // ponytail: O(rooms) scan; keep a per-IP counter if MAX_ROOMS grows past ~10k.
-func (h *hub) hostedBy(ip string) int {
+func (h *hub) hostedBy(who string) int {
 	n := 0
 	for _, r := range h.rooms {
-		if r.ip == ip {
+		if r.owner == who {
 			n++
 		}
 	}
@@ -193,7 +195,7 @@ func (h *hub) create(c *conn) (*room, string) {
 	var evicted []*conn
 	defer func() { tellClosed(evicted) }()
 	defer h.mu.Unlock()
-	if h.maxRoomsPerIP > 0 && h.hostedBy(c.ip) >= h.maxRoomsPerIP {
+	if h.maxRoomsPer > 0 && h.hostedBy(c.who) >= h.maxRoomsPer {
 		return nil, "too_many_rooms"
 	}
 	if len(h.rooms) >= h.maxRooms {
@@ -210,7 +212,7 @@ func (h *hub) create(c *conn) (*room, string) {
 }
 
 func (h *hub) open(c *conn, code, token string) *room {
-	r := &room{code: code, token: token, host: c, peers: map[uint16]*conn{}, nextID: 1, ip: c.ip,
+	r := &room{code: code, token: token, host: c, peers: map[uint16]*conn{}, nextID: 1, owner: c.who,
 		kicked: map[string]time.Time{}}
 	h.rooms[code] = r
 	c.room, c.host = r, true
@@ -225,8 +227,10 @@ func (h *hub) resume(c *conn, code, token string) (*room, string) {
 	defer h.mu.Unlock()
 	now := time.Now()
 	r := h.rooms[code]
-	if e := h.expired[code]; r == nil && token != "" && e.token == token {
-		if h.maxRoomsPerIP > 0 && h.hostedBy(c.ip) >= h.maxRoomsPerIP {
+	// With tickets, a room only comes back to the account that opened it: a leaked room token alone isn't enough.
+	mine := func(owner string) bool { return len(h.ticketKey) == 0 || owner == c.who }
+	if e := h.expired[code]; r == nil && token != "" && e.token == token && mine(e.owner) {
+		if h.maxRoomsPer > 0 && h.hostedBy(c.who) >= h.maxRoomsPer {
 			return nil, "too_many_rooms"
 		}
 		if len(h.rooms) >= h.maxRooms {
@@ -240,7 +244,7 @@ func (h *hub) resume(c *conn, code, token string) (*room, string) {
 		c.control(control{T: "created", Room: r.code, Token: r.token})
 		return r, ""
 	}
-	if r == nil || r.token != token { // a 128-bit token can't be guessed: no miss counted
+	if r == nil || r.token != token || !mine(r.owner) { // a 128-bit token can't be guessed: no miss counted
 		return nil, "room_not_found"
 	}
 	if r.host != nil {
@@ -273,7 +277,7 @@ func (h *hub) join(c *conn, code string) (*room, string) {
 		h.miss(c.ip, now)
 		return nil, "room_not_found"
 	}
-	if now.Before(r.kicked[c.ip]) {
+	if now.Before(r.kicked[c.who]) {
 		return nil, "kicked"
 	}
 	if len(r.peers) >= h.maxPeers {
@@ -326,10 +330,9 @@ func (h *hub) kick(host *conn, id uint16) {
 	if r != nil && r.host == host {
 		p = r.peers[id]
 	}
-	// The kick sticks for a while: not a ban (no accounts here), but the same IP can't walk straight back in.
-	// ponytail: per IP, so players behind one NAT share it; ban by account once the relay checks api tickets.
+	// The kick sticks for a while: that account (or, without tickets, that IP) can't walk straight back in.
 	if p != nil && h.kickBan > 0 {
-		r.kicked[p.ip] = time.Now().Add(h.kickBan)
+		r.kicked[p.who] = time.Now().Add(h.kickBan)
 	}
 	h.mu.Unlock()
 	if p != nil {

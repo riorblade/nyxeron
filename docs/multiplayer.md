@@ -39,11 +39,25 @@ Limits (one relay process, all in memory; env in `deploy/compose.yml`):
 | Peers a room | 64 (`MAX_PEERS`) | |
 | Sockets in total / per IP | 1000 / 100 (`MAX_CONNS`, `MAX_CONNS_PER_IP`) | memory: ~40 KB a socket; over the cap the socket is told `too_many_connections` and closed |
 | Hello deadline | 10 s | a socket that never creates/joins/resumes is closed |
-| Rooms with a live host per IP | 8 (`MAX_ROOMS_PER_IP`) | one client can't take every room |
+| Rooms per player | 8 (`MAX_ROOMS_PER_PLAYER`), abandoned ones in their grace period too | one client can't take every room |
 | Server full | `MAX_ROOMS` | the room whose host has been gone longest closes early (still resumable) instead of refusing |
 | Wrong room codes per IP | 20, then 12 a minute | codes can't be guessed by reconnecting |
 | Queued bytes per client / all clients | 256 KB / 16 MB (`QUEUE_BUDGET_MB`) | a client that doesn't read is dropped, never pins memory; peer input may fill half the host's queue, so the host is never dropped for its guests' spam |
-| Kick | the IP can't rejoin that room for 10 min (`KICK_BAN_SEC`) | per IP (players behind one NAT share it) until the relay checks signed api tickets |
+| Kick | that player can't rejoin that room for 10 min (`KICK_BAN_SEC`) | |
+
+**Tickets.** With `RELAY_TICKET_SECRET` set (the api has the same value), every create, join and resume carries a
+ticket from `POST /api/relay/ticket`: `v1.<base64url {"sub":account,"exp":unix}>.<base64url HMAC-SHA256>`, valid 10
+minutes, issued only to signed-in, unbanned players. A missing, forged or expired ticket gets `bad_ticket`. A "player"
+above is then the account, so a kick or the room cap never hits a friend behind the same router; without the secret
+(dev) it is the IP. Sockets per IP and wrong room codes per IP stay per IP (they come before anyone says who they are).
+A room only resumes for the account that opened it (a leaked room token isn't enough). The secret must be at least
+32 bytes (`openssl rand -hex 32`); the relay won't start with a shorter one. Tickets are checked on create/join/resume,
+so a ban keeps a player out of new rooms at once but doesn't drop one already inside (until they disconnect).
+
+The client (`net/ticket.ts`) fetches the ticket before opening the socket (5 s timeout), keeps it 9 minutes for the
+account it was issued to, and fetches a new one after `bad_ticket` (also on a first join). If the api is away it waits
+and retries with the backoff; if a fresh ticket is refused too (signed out, banned) it stops with a message, and a host
+closes its club.
 
 `TRUST_PROXY` lists the proxies (container names, IPs or CIDRs) whose `X-Forwarded-For` is believed; the client IP is
 its last hop (the one Caddy wrote). A header from anyone else on the Docker network is ignored. IPv6 clients are keyed

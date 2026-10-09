@@ -5,7 +5,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const settle = vi.fn();
-vi.mock("@/api/player", () => ({ player: { settle } }));
+vi.mock("@/api/player", () => ({
+  player: { settle },
+  online: () => false, // signed out: no relay ticket
+  call: vi.fn(),
+}));
 vi.mock("@/state/store", () => {
   const st = { game: null, notify: vi.fn(), set: vi.fn() };
   return { useGame: { getState: () => st, subscribe: () => () => {} } };
@@ -40,6 +44,8 @@ import { encodeFrame, KIND, pack, Relay, type Control } from "./relay";
 class FakeWS {
   static all: FakeWS[] = [];
   static OPEN = 1;
+  /** The relay is down: new sockets fail before they open. */
+  static refuse = false;
   readyState = 0;
   sent: (Control | Uint8Array)[] = [];
   at = Date.now();
@@ -50,6 +56,7 @@ class FakeWS {
   constructor() {
     FakeWS.all.push(this);
     queueMicrotask(() => {
+      if (FakeWS.refuse) return this.drop();
       if (this.readyState !== 0) return;
       this.readyState = 1;
       this.onopen?.();
@@ -88,7 +95,7 @@ vi.stubGlobal("location", { protocol: "http:", host: "x" });
 
 /** Let queued microtasks (socket opens) run under fake timers. */
 const flush = async () => {
-  for (let i = 0; i < 5; i++) await Promise.resolve();
+  for (let i = 0; i < 20; i++) await Promise.resolve();
 };
 
 beforeEach(() => {
@@ -96,6 +103,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   FakeWS.all = [];
+  FakeWS.refuse = false;
   store.clear();
   settle.mockClear();
   vi.useRealTimers();
@@ -123,6 +131,33 @@ describe("relay client under a hostile network", () => {
       .map((w, i) => w.at - FakeWS.all[i]!.droppedAt);
     // Healthy: the wait grows towards the 8 s cap. Main: every gap is 500 ms.
     expect(Math.max(...gaps.slice(-4))).toBeGreaterThanOrEqual(4_000);
+  });
+
+  it("a relay that is down after a long session: failed redials keep backing off", async () => {
+    const r = new Relay("ws://x");
+    await hosted(r);
+    await vi.advanceTimersByTimeAsync(11_000); // a connection that held: the next drop starts from 0.5 s
+    FakeWS.refuse = true; // every redial fails before it opens
+    FakeWS.all.at(-1)!.drop();
+    await vi.advanceTimersByTimeAsync(60_000);
+    FakeWS.refuse = false;
+    const gaps = FakeWS.all
+      .slice(1)
+      .map((w, i) => w.at - FakeWS.all[i]!.droppedAt);
+    expect(Math.min(...gaps.slice(-3))).toBeGreaterThanOrEqual(4_000);
+  });
+
+  it("a join waiting on a relay that never opens gives up with offline", async () => {
+    FakeWS.refuse = true;
+    const r = new Relay("ws://x");
+    const failed = r
+      .join("ROOM01", "Ana", "guest")
+      .catch((e: Error) => e.message);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(await failed).toBe("offline");
+    const n = FakeWS.all.length;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(FakeWS.all).toHaveLength(n); // nothing keeps dialing
   });
 
   it("BUG: no jitter, so every player of a dropped relay reconnects in lockstep", async () => {

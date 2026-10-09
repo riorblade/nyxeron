@@ -251,7 +251,7 @@ func TestRateLimit(t *testing.T) {
 
 func TestRoomsPerIPAndQueueBudgetReleased(t *testing.T) {
 	h, url := setup(t, time.Minute)
-	h.maxRoomsPerIP = 1
+	h.maxRoomsPer = 1
 	host := dial(t, url)
 	host.send(control{T: "create"})
 	c := host.expect("created")
@@ -326,7 +326,7 @@ func TestReplacedHostIsToldInBand(t *testing.T) {
 
 func TestRoomChurnPerIPIsCapped(t *testing.T) {
 	h, url := setup(t, time.Minute)
-	h.maxRooms, h.maxRoomsPerIP = 1000, 3
+	h.maxRooms, h.maxRoomsPer = 1000, 3
 	for i := 0; i < 3; i++ {
 		a := dial(t, url)
 		a.send(control{T: "create"})

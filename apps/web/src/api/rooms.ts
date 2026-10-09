@@ -85,7 +85,9 @@ export function useHostedClub(screen: Screen) {
     const id = setInterval(announce, HEARTBEAT_MS);
     return () => {
       clearInterval(id);
-      call("DELETE", `/rooms/${room}`).catch(() => {});
+      // Lost to another tab of this account: that tab hosts the same room now, so it stays listed.
+      if (useNet.getState().error !== "replaced")
+        call("DELETE", `/rooms/${room}`).catch(() => {});
     };
   }, [role, room, signedIn, priv]);
 }

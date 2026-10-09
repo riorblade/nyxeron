@@ -16,6 +16,8 @@ export interface Control {
   id?: number;
   on?: boolean;
   code?: string;
+  /** The api's pass (POST /api/relay/ticket) on create/join/resume. */
+  ticket?: string;
 }
 
 export interface Frame {
@@ -60,6 +62,15 @@ export const relayUrl = () =>
 
 const TOKEN_KEY = "nyxeron:relay-host";
 
+const withTimeout = <T>(p: Promise<T>, ms: number) =>
+  new Promise<T>((ok, no) => {
+    const id = setTimeout(() => no(new Error("timeout")), ms);
+    p.then(
+      (v) => (clearTimeout(id), ok(v)),
+      (e: unknown) => (clearTimeout(id), no(e)),
+    );
+  });
+
 /** Errors that mean "not right now": on a reconnect the client backs off and tries again. */
 const retryable = new Set([
   "room_full",
@@ -91,7 +102,23 @@ export class Relay {
     want: string;
   } | null = null;
 
-  constructor(private url = relayUrl()) {}
+  /** Set after the relay refused a ticket: the next connect asks the api for a new one. */
+  private freshTicket = false;
+  /** The ticket this socket's hellos carry, and whether it was fetched fresh (refused again → give up). */
+  private helloTicket = "";
+  private sentFresh = false;
+  private dialing = false;
+  /** Tries in a row that failed (no ticket from the api, or the socket never opened) while a join/open waits: 3 → give up. */
+  private waitFails = 0;
+
+  /**
+   * `ticket`: the api's pass for the relay (signed in, not banned); asked for on every (re)connect, `fresh` after
+   * the relay refused the last one. Without it (dev, tests) hellos go out bare.
+   */
+  constructor(
+    private url = relayUrl(),
+    private ticket?: (fresh: boolean) => Promise<string>,
+  ) {}
 
   /** Open a room as its host. */
   host(name: string) {
@@ -140,6 +167,14 @@ export class Relay {
     this.ws?.close();
   }
 
+  /** The hello (create/resume/join), with this socket's ticket if there is one. */
+  private sayHello() {
+    if (!this.hello) return;
+    this.helloOut = true;
+    const t = this.helloTicket;
+    this.sendControl(t ? { ...this.hello, ticket: t } : this.hello);
+  }
+
   private send(b: Uint8Array<ArrayBuffer>) {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(b);
   }
@@ -152,23 +187,67 @@ export class Relay {
     this.hello = m;
     return new Promise<Control>((ok, fail) => {
       this.waiting = { ok, fail, want };
-      if (this.ws?.readyState === WebSocket.OPEN) this.sendControl(m);
+      if (this.ws?.readyState === WebSocket.OPEN) this.sayHello();
       else this.connect();
     });
   }
 
   private connect() {
-    if (this.ws && this.ws.readyState <= WebSocket.OPEN) return;
+    if (this.dialing || (this.ws && this.ws.readyState <= WebSocket.OPEN))
+      return;
+    if (!this.ticket) return this.dial();
+    // The ticket first, then the socket: the relay's 10 s hello deadline only starts once we can talk.
+    // "" = definitely none (signed out); a throw or no answer in 5 s = the api is away: try again later.
+    this.dialing = true;
+    this.sentFresh = this.freshTicket;
+    this.freshTicket = false;
+    const get = this.ticket;
+    void withTimeout(
+      Promise.resolve().then(() => get(this.sentFresh)),
+      5000,
+    ).then(
+      (t) => {
+        this.dialing = false;
+        this.waitFails = 0;
+        this.helloTicket = t;
+        if (this.open) this.dial();
+      },
+      () => {
+        this.dialing = false;
+        this.freshTicket = this.sentFresh;
+        if (this.giveUp()) return;
+        if (this.open) this.later();
+      },
+    );
+  }
+
+  /** Nobody in a room yet (the Join form, "Opening…"): don't keep them waiting on a server that isn't there. */
+  private giveUp() {
+    const w = this.waiting;
+    if (!w || ++this.waitFails < 3) return false;
+    this.waiting = null;
+    this.open = false;
+    w.fail(new Error("offline"));
+    return true;
+  }
+
+  /** Try again after the backoff: 0.5 s → 8 s with equal jitter, so a restart isn't hit by every player at once. */
+  private later() {
+    const base = Math.min(8000, 500 * 2 ** this.retry++);
+    const wait = base / 2 + (Math.random() * base) / 2;
+    setTimeout(() => this.open && this.connect(), wait);
+  }
+
+  private dial() {
+    this.openedAt = 0; // until this socket opens: a failed redial must not reset the backoff
     const ws = new WebSocket(this.url);
     ws.binaryType = "arraybuffer";
     this.ws = ws;
     ws.onopen = () => {
       this.openedAt = Date.now();
+      this.waitFails = 0;
       this.onStatus?.(true);
-      if (this.hello) {
-        this.helloOut = true;
-        this.sendControl(this.hello);
-      }
+      this.sayHello();
     };
     ws.onmessage = (e) => {
       if (typeof e.data !== "string") {
@@ -185,8 +264,7 @@ export class Relay {
       ) {
         sessionStorage.removeItem(TOKEN_KEY);
         this.hello = { t: "create", name: this.hello.name ?? "" };
-        this.helloOut = true;
-        return this.sendControl(this.hello);
+        return this.sayHello();
       }
       // Every (re)connect is answered: a reconnecting player gets a new id, a host maybe a new room.
       if (m.t === "joined") this.id = m.id ?? this.id;
@@ -203,6 +281,16 @@ export class Relay {
         this.helloOut &&
         (m.t === "error" || m.t === "joined" || m.t === "created");
       if (answer) this.helloOut = false;
+      if (answer && m.t === "error" && m.code === "bad_ticket") {
+        // A cached ticket (expired, secret rotated): hang up and come back with a fresh one, even on a first join.
+        // No ticket at all (signed out) won't get better with a retry.
+        if (this.ticket && !this.sentFresh && this.helloTicket) {
+          this.freshTicket = true;
+          return ws.close();
+        }
+        this.open = false; // a fresh one refused too (signed out, banned): stop and say so
+        ws.close();
+      }
       const w = this.waiting;
       if (w && (m.t === w.want || m.t === "error")) {
         this.waiting = null;
@@ -210,7 +298,13 @@ export class Relay {
       }
       // Turned away for now (full, busy, throttled) while reconnecting: hang up and try again after the backoff.
       // In a room, "rate_limited" only means slow down (the relay throttles messages too): stay.
-      if (answer && m.t === "error" && m.code && retryable.has(m.code))
+      if (
+        answer &&
+        this.open &&
+        m.t === "error" &&
+        m.code &&
+        retryable.has(m.code)
+      )
         return ws.close();
       // Closed or kicked: don't walk straight back in.
       if (
@@ -219,7 +313,8 @@ export class Relay {
         (m.t === "error" &&
           (m.code === "room_not_found" ||
             m.code === "kicked" ||
-            m.code === "replaced"))
+            m.code === "replaced" ||
+            m.code === "bad_ticket"))
       )
         this.open = false;
       this.onControl?.(m);
@@ -232,13 +327,11 @@ export class Relay {
         this.onControl?.({ t: "error", code: "replaced" });
       }
       if (!this.open) return;
+      if (!this.openedAt && this.giveUp()) return; // never opened (relay down) while a join/open waits
       // Only a connection that held for a while resets the backoff (accept-then-drop must not spin at 2 Hz).
-      if (Date.now() - this.openedAt > 10_000) this.retry = 0;
-      // Backoff 0.5 s → 8 s with equal jitter, so a relay restart isn't hit by every player at the same instant.
+      if (this.openedAt && Date.now() - this.openedAt > 10_000) this.retry = 0;
       // The host's hello is a resume, a player's a fresh join.
-      const base = Math.min(8000, 500 * 2 ** this.retry++);
-      const wait = base / 2 + (Math.random() * base) / 2;
-      setTimeout(() => this.open && this.connect(), wait);
+      this.later();
     };
   }
 }

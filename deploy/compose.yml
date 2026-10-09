@@ -42,7 +42,9 @@ services:
       # with mem_limit (~85 KB a busy socket: 96 MB ≈ 900).
       MAX_CONNS: "400"
       MAX_CONNS_PER_IP: "100"
-      MAX_ROOMS_PER_IP: "8"
+      MAX_ROOMS_PER_PLAYER: "8"
+      # Shared with the api: with it, only signed-in players get in and limits/kicks follow the account (ticket.go).
+      RELAY_TICKET_SECRET: ${RELAY_TICKET_SECRET:-}
       QUEUE_BUDGET_MB: "8"
       KICK_BAN_SEC: "600"
       # Whose X-Forwarded-For is the real client IP: the edge proxy's container (names, IPs or CIDRs). Anyone else
@@ -69,6 +71,8 @@ services:
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       # The platform's stock agent (GET /api/agent/demand, POST /api/agent/restock). Empty: agent API off.
       AGENT_KEY: ${AGENT_KEY:-}
+      # Signs relay tickets (POST /api/relay/ticket); the same value as the relay's.
+      RELAY_TICKET_SECRET: ${RELAY_TICKET_SECRET:-}
       # BNB Smart Chain, read through two providers that must agree (services/api/bsc.go).
       BSC_RPC_1: ${BSC_RPC_1:-}
       BSC_RPC_2: ${BSC_RPC_2:-}

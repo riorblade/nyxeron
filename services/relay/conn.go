@@ -43,6 +43,7 @@ type conn struct {
 	ws   *websocket.Conn
 	hub  *hub
 	ip   string
+	who  string // the player limits and kicks follow: "u:"+account from a ticket, else "ip:"+ip
 	room *room
 	host bool
 	id   uint16
@@ -293,6 +294,15 @@ func (c *conn) handleControl(b []byte) bool {
 	if c.room != nil && m.T != "kick" && m.T != "close" {
 		c.control(control{T: "error", Code: "already_in_room"})
 		return true
+	}
+	// Signed-in players only (when the relay has a ticket secret): the api's ticket names the account.
+	if h := c.hub; len(h.ticketKey) > 0 && (m.T == "create" || m.T == "resume" || m.T == "join") {
+		sub, ok := verifyTicket(h.ticketKey, m.Ticket, time.Now())
+		if !ok {
+			c.control(control{T: "error", Code: "bad_ticket"})
+			return true
+		}
+		c.who = "u:" + sub
 	}
 	switch m.T {
 	case "create":
