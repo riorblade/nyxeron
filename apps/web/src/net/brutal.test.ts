@@ -147,6 +147,19 @@ describe("relay client under a hostile network", () => {
     expect(Math.min(...gaps.slice(-3))).toBeGreaterThanOrEqual(4_000);
   });
 
+  it("a join waiting on a relay that never opens gives up with offline", async () => {
+    FakeWS.refuse = true;
+    const r = new Relay("ws://x");
+    const failed = r
+      .join("ROOM01", "Ana", "guest")
+      .catch((e: Error) => e.message);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(await failed).toBe("offline");
+    const n = FakeWS.all.length;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(FakeWS.all).toHaveLength(n); // nothing keeps dialing
+  });
+
   it("BUG: no jitter, so every player of a dropped relay reconnects in lockstep", async () => {
     const a = new Relay("ws://x");
     const b = new Relay("ws://x");

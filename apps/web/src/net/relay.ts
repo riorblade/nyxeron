@@ -108,8 +108,8 @@ export class Relay {
   private helloTicket = "";
   private sentFresh = false;
   private dialing = false;
-  /** Ticket fetches in a row that failed (api away); a join/open still waiting gives up after 3. */
-  private ticketFails = 0;
+  /** Tries in a row that failed (no ticket from the api, or the socket never opened) while a join/open waits: 3 → give up. */
+  private waitFails = 0;
 
   /**
    * `ticket`: the api's pass for the relay (signed in, not banned); asked for on every (re)connect, `fresh` after
@@ -208,23 +208,27 @@ export class Relay {
     ).then(
       (t) => {
         this.dialing = false;
-        this.ticketFails = 0;
+        this.waitFails = 0;
         this.helloTicket = t;
         if (this.open) this.dial();
       },
       () => {
         this.dialing = false;
         this.freshTicket = this.sentFresh;
-        const w = this.waiting;
-        // Nobody in a room yet (the Join form, "Opening…"): don't keep them waiting on an api that isn't there.
-        if (w && ++this.ticketFails >= 3) {
-          this.waiting = null;
-          this.open = false;
-          return w.fail(new Error("offline"));
-        }
+        if (this.giveUp()) return;
         if (this.open) this.later();
       },
     );
+  }
+
+  /** Nobody in a room yet (the Join form, "Opening…"): don't keep them waiting on a server that isn't there. */
+  private giveUp() {
+    const w = this.waiting;
+    if (!w || ++this.waitFails < 3) return false;
+    this.waiting = null;
+    this.open = false;
+    w.fail(new Error("offline"));
+    return true;
   }
 
   /** Try again after the backoff: 0.5 s → 8 s with equal jitter, so a restart isn't hit by every player at once. */
@@ -241,6 +245,7 @@ export class Relay {
     this.ws = ws;
     ws.onopen = () => {
       this.openedAt = Date.now();
+      this.waitFails = 0;
       this.onStatus?.(true);
       this.sayHello();
     };
@@ -322,6 +327,7 @@ export class Relay {
         this.onControl?.({ t: "error", code: "replaced" });
       }
       if (!this.open) return;
+      if (!this.openedAt && this.giveUp()) return; // never opened (relay down) while a join/open waits
       // Only a connection that held for a while resets the backoff (accept-then-drop must not spin at 2 Hz).
       if (this.openedAt && Date.now() - this.openedAt > 10_000) this.retry = 0;
       // The host's hello is a resume, a player's a fresh join.
