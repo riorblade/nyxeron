@@ -341,6 +341,7 @@ export async function hostOpen(clubName: string) {
   relay.onControl = (c) => {
     // Open in another tab now, or this account can't host any more: this one lets go (and stops announcing).
     if (c.t === "error" && (c.code === "replaced" || c.code === "bad_ticket")) {
+      set({ error: c.code }); // kept through hostClose: "replaced" tells the room list not to delist the club
       hostClose();
       useGame.getState().notify(en.live.error(c.code), true);
       return;
@@ -402,8 +403,8 @@ export async function hostOpen(clubName: string) {
     return room;
   } catch (e) {
     if ((e as Error).message === "bad_ticket") dropTicket(); // the next try asks the api for a new one
-    set({ status: "error", error: (e as Error).message });
     hostClose();
+    set({ status: "error", error: (e as Error).message });
     throw e;
   }
 }

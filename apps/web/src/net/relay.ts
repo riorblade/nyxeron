@@ -108,6 +108,8 @@ export class Relay {
   private helloTicket = "";
   private sentFresh = false;
   private dialing = false;
+  /** Ticket fetches in a row that failed (api away); a join/open still waiting gives up after 3. */
+  private ticketFails = 0;
 
   /**
    * `ticket`: the api's pass for the relay (signed in, not banned); asked for on every (re)connect, `fresh` after
@@ -199,15 +201,27 @@ export class Relay {
     this.dialing = true;
     this.sentFresh = this.freshTicket;
     this.freshTicket = false;
-    void withTimeout(this.ticket(this.sentFresh), 5000).then(
+    const get = this.ticket;
+    void withTimeout(
+      Promise.resolve().then(() => get(this.sentFresh)),
+      5000,
+    ).then(
       (t) => {
         this.dialing = false;
+        this.ticketFails = 0;
         this.helloTicket = t;
         if (this.open) this.dial();
       },
       () => {
         this.dialing = false;
         this.freshTicket = this.sentFresh;
+        const w = this.waiting;
+        // Nobody in a room yet (the Join form, "Opening…"): don't keep them waiting on an api that isn't there.
+        if (w && ++this.ticketFails >= 3) {
+          this.waiting = null;
+          this.open = false;
+          return w.fail(new Error("offline"));
+        }
         if (this.open) this.later();
       },
     );
@@ -221,6 +235,7 @@ export class Relay {
   }
 
   private dial() {
+    this.openedAt = 0; // until this socket opens: a failed redial must not reset the backoff
     const ws = new WebSocket(this.url);
     ws.binaryType = "arraybuffer";
     this.ws = ws;
@@ -263,7 +278,8 @@ export class Relay {
       if (answer) this.helloOut = false;
       if (answer && m.t === "error" && m.code === "bad_ticket") {
         // A cached ticket (expired, secret rotated): hang up and come back with a fresh one, even on a first join.
-        if (this.ticket && !this.sentFresh) {
+        // No ticket at all (signed out) won't get better with a retry.
+        if (this.ticket && !this.sentFresh && this.helloTicket) {
           this.freshTicket = true;
           return ws.close();
         }
@@ -307,7 +323,7 @@ export class Relay {
       }
       if (!this.open) return;
       // Only a connection that held for a while resets the backoff (accept-then-drop must not spin at 2 Hz).
-      if (Date.now() - this.openedAt > 10_000) this.retry = 0;
+      if (this.openedAt && Date.now() - this.openedAt > 10_000) this.retry = 0;
       // The host's hello is a resume, a player's a fresh join.
       this.later();
     };

@@ -207,6 +207,16 @@ describe("relay reconnects", () => {
     expect(await joined).toBe(4);
   });
 
+  it("a join waiting on an api that stays away gives up with offline", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    const r = new Relay("ws://x", () => Promise.reject(new Error("502")));
+    const joined = r.join("ROOM01", "Ana", "guest");
+    const failed = joined.catch((e: Error) => e.message);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(await failed).toBe("offline");
+    expect(FakeWS.all).toHaveLength(0);
+  });
+
   it("a host whose room expired opens a fresh one and says so", async () => {
     const r = new Relay("ws://x");
     const seen: Control[] = [];
