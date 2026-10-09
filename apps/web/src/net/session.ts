@@ -339,9 +339,12 @@ export async function hostOpen(clubName: string) {
   relay.onStatus = (on) => set({ status: on ? "live" : "connecting" });
   relay.onFrame = onHostFrame;
   relay.onControl = (c) => {
-    // This club is open in another tab now: this one lets go.
-    if (c.t === "error" && (c.code === "replaced" || c.code === "bad_ticket"))
-      return set({ status: "error", error: c.code });
+    // Open in another tab now, or this account can't host any more: this one lets go (and stops announcing).
+    if (c.t === "error" && (c.code === "replaced" || c.code === "bad_ticket")) {
+      hostClose();
+      useGame.getState().notify(en.live.error(c.code), true);
+      return;
+    }
     if (c.t === "created") {
       // Back after a drop: the relay re-announces who is still here (they say hello again); the rest left.
       for (const id of Object.keys(useNet.getState().players)) letGo(+id);

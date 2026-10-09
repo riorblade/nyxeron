@@ -44,7 +44,7 @@ func sign(secret []byte, sub string, exp time.Time) string {
 
 func TestTicketsKeyKicksAndRoomsByAccount(t *testing.T) {
 	h, url := setup(t, time.Minute)
-	h.ticketKey = []byte("s3cret")
+	h.ticketKey = []byte("0123456789abcdef0123456789abcdef")
 	h.maxRoomsPer = 1
 	tk := func(who string) string { return sign(h.ticketKey, who, time.Now().Add(time.Minute)) }
 
@@ -81,7 +81,7 @@ func TestTicketsKeyKicksAndRoomsByAccount(t *testing.T) {
 
 func TestTicketResumeOnlyByTheOwner(t *testing.T) {
 	h, url := setup(t, time.Minute)
-	h.ticketKey = []byte("s3cret")
+	h.ticketKey = []byte("0123456789abcdef0123456789abcdef")
 	tk := func(who string) string { return sign(h.ticketKey, who, time.Now().Add(time.Minute)) }
 	host := dial(t, url)
 	host.send(control{T: "create", Ticket: tk("ceo")})

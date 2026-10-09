@@ -54,8 +54,10 @@ A room only resumes for the account that opened it (a leaked room token isn't en
 32 bytes (`openssl rand -hex 32`); the relay won't start with a shorter one. Tickets are checked on create/join/resume,
 so a ban keeps a player out of new rooms at once but doesn't drop one already inside (until they disconnect).
 
-The client (`net/ticket.ts`) fetches the ticket before opening the socket, keeps it 9 minutes for the account it was
-issued to, fetches a new one after `bad_ticket`, and stops with a message if a fresh one is refused too.
+The client (`net/ticket.ts`) fetches the ticket before opening the socket (5 s timeout), keeps it 9 minutes for the
+account it was issued to, and fetches a new one after `bad_ticket` (also on a first join). If the api is away it waits
+and retries with the backoff; if a fresh ticket is refused too (signed out, banned) it stops with a message, and a host
+closes its club.
 
 `TRUST_PROXY` lists the proxies (container names, IPs or CIDRs) whose `X-Forwarded-For` is believed; the client IP is
 its last hop (the one Caddy wrote). A header from anyone else on the Docker network is ignored. IPv6 clients are keyed

@@ -62,13 +62,21 @@ export const relayUrl = () =>
 
 const TOKEN_KEY = "nyxeron:relay-host";
 
+const withTimeout = <T>(p: Promise<T>, ms: number) =>
+  new Promise<T>((ok, no) => {
+    const id = setTimeout(() => no(new Error("timeout")), ms);
+    p.then(
+      (v) => (clearTimeout(id), ok(v)),
+      (e: unknown) => (clearTimeout(id), no(e)),
+    );
+  });
+
 /** Errors that mean "not right now": on a reconnect the client backs off and tries again. */
 const retryable = new Set([
   "room_full",
   "server_full",
   "rate_limited",
   "too_many_connections",
-  "bad_ticket",
 ]);
 
 /**
@@ -187,16 +195,29 @@ export class Relay {
       return;
     if (!this.ticket) return this.dial();
     // The ticket first, then the socket: the relay's 10 s hello deadline only starts once we can talk.
+    // "" = definitely none (signed out); a throw or no answer in 5 s = the api is away: try again later.
     this.dialing = true;
     this.sentFresh = this.freshTicket;
     this.freshTicket = false;
-    void this.ticket(this.sentFresh)
-      .catch(() => "")
-      .then((t) => {
+    void withTimeout(this.ticket(this.sentFresh), 5000).then(
+      (t) => {
         this.dialing = false;
         this.helloTicket = t;
         if (this.open) this.dial();
-      });
+      },
+      () => {
+        this.dialing = false;
+        this.freshTicket = this.sentFresh;
+        if (this.open) this.later();
+      },
+    );
+  }
+
+  /** Try again after the backoff: 0.5 s → 8 s with equal jitter, so a restart isn't hit by every player at once. */
+  private later() {
+    const base = Math.min(8000, 500 * 2 ** this.retry++);
+    const wait = base / 2 + (Math.random() * base) / 2;
+    setTimeout(() => this.open && this.connect(), wait);
   }
 
   private dial() {
@@ -241,10 +262,13 @@ export class Relay {
         (m.t === "error" || m.t === "joined" || m.t === "created");
       if (answer) this.helloOut = false;
       if (answer && m.t === "error" && m.code === "bad_ticket") {
-        // A brand-new ticket refused too (signed out, banned, api down): stop and say so. Otherwise it had
-        // expired or the secret rotated: fetch a fresh one on the next try.
-        if (this.sentFresh || !this.ticket) this.open = false;
-        else this.freshTicket = true;
+        // A cached ticket (expired, secret rotated): hang up and come back with a fresh one, even on a first join.
+        if (this.ticket && !this.sentFresh) {
+          this.freshTicket = true;
+          return ws.close();
+        }
+        this.open = false; // a fresh one refused too (signed out, banned): stop and say so
+        ws.close();
       }
       const w = this.waiting;
       if (w && (m.t === w.want || m.t === "error")) {
@@ -284,11 +308,8 @@ export class Relay {
       if (!this.open) return;
       // Only a connection that held for a while resets the backoff (accept-then-drop must not spin at 2 Hz).
       if (Date.now() - this.openedAt > 10_000) this.retry = 0;
-      // Backoff 0.5 s → 8 s with equal jitter, so a relay restart isn't hit by every player at the same instant.
       // The host's hello is a resume, a player's a fresh join.
-      const base = Math.min(8000, 500 * 2 ** this.retry++);
-      const wait = base / 2 + (Math.random() * base) / 2;
-      setTimeout(() => this.open && this.connect(), wait);
+      this.later();
     };
   }
 }

@@ -5,7 +5,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const settle = vi.fn();
-vi.mock("@/api/player", () => ({ player: { settle } }));
+vi.mock("@/api/player", () => ({
+  player: { settle },
+  online: () => false, // signed out: no relay ticket
+  call: vi.fn(),
+}));
 vi.mock("@/state/store", () => {
   const st = { game: null, notify: vi.fn(), set: vi.fn() };
   return { useGame: { getState: () => st, subscribe: () => () => {} } };
@@ -88,7 +92,7 @@ vi.stubGlobal("location", { protocol: "http:", host: "x" });
 
 /** Let queued microtasks (socket opens) run under fake timers. */
 const flush = async () => {
-  for (let i = 0; i < 5; i++) await Promise.resolve();
+  for (let i = 0; i < 20; i++) await Promise.resolve();
 };
 
 beforeEach(() => {

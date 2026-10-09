@@ -132,7 +132,7 @@ describe("relay reconnects", () => {
   it("hellos carry the api's ticket; a refused one is fetched fresh on the next try", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout"] });
     const micro = async () => {
-      for (let n = 0; n < 6; n++) await Promise.resolve();
+      for (let n = 0; n < 20; n++) await Promise.resolve();
     };
     const asked: boolean[] = [];
     const r = new Relay("ws://x", async (fresh) => {
@@ -146,10 +146,10 @@ describe("relay reconnects", () => {
     await joined;
 
     FakeWS.all[0]!.close();
-    vi.advanceTimersByTime(500);
+    await vi.advanceTimersByTimeAsync(500);
     await micro();
     FakeWS.all[1]!.say({ t: "error", code: "bad_ticket" }); // expired while away: hang up, retry with a new one
-    vi.advanceTimersByTime(10_000);
+    await vi.advanceTimersByTimeAsync(10_000);
     await micro();
     expect(FakeWS.all[2]!.sent[0]).toMatchObject({ t: "join", ticket: "new" });
     expect(asked).toEqual([false, false, true]);
@@ -158,7 +158,7 @@ describe("relay reconnects", () => {
   it("a fresh ticket refused too (signed out, banned) stops reconnecting and says so", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout"] });
     const micro = async () => {
-      for (let n = 0; n < 6; n++) await Promise.resolve();
+      for (let n = 0; n < 20; n++) await Promise.resolve();
     };
     const r = new Relay("ws://x", async () => "t");
     const seen: Control[] = [];
@@ -168,17 +168,43 @@ describe("relay reconnects", () => {
     FakeWS.all[0]!.say({ t: "joined", room: "ROOM01", id: 3 });
     await joined;
     FakeWS.all[0]!.close();
-    vi.advanceTimersByTime(500);
+    await vi.advanceTimersByTimeAsync(500);
     await micro();
     FakeWS.all[1]!.say({ t: "error", code: "bad_ticket" }); // cached one: retry with a fresh one
-    vi.advanceTimersByTime(10_000);
+    await vi.advanceTimersByTimeAsync(10_000);
     await micro();
     FakeWS.all[2]!.say({ t: "error", code: "bad_ticket" }); // the fresh one too: give up
     expect(seen.at(-1)).toMatchObject({ code: "bad_ticket" });
     FakeWS.all[2]!.close();
-    vi.advanceTimersByTime(60_000);
+    await vi.advanceTimersByTimeAsync(60_000);
     await micro();
     expect(FakeWS.all).toHaveLength(3);
+  });
+
+  it("api away or silent: the client waits and retries; a stale ticket on a first join is replaced", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    let mode: "down" | "hang" | "up" = "down";
+    const asked: boolean[] = [];
+    const r = new Relay("ws://x", (fresh) => {
+      asked.push(fresh);
+      if (mode === "down") return Promise.reject(new Error("502"));
+      if (mode === "hang") return new Promise<string>(() => {});
+      return Promise.resolve(fresh ? "new" : "stale");
+    });
+    const joined = r.join("ROOM01", "Ana", "guest");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(FakeWS.all).toHaveLength(0); // no ticket, no socket: nothing to be refused
+    mode = "hang";
+    await vi.advanceTimersByTimeAsync(1_000); // retried: this fetch never answers
+    expect(FakeWS.all).toHaveLength(0);
+    mode = "up";
+    await vi.advanceTimersByTimeAsync(10_000); // 5 s timeout, then the backoff, then a ticket
+    expect(FakeWS.all[0]!.sent[0]).toMatchObject({ ticket: "stale" });
+    FakeWS.all[0]!.say({ t: "error", code: "bad_ticket" }); // a first join: fetch fresh, don't fail
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(FakeWS.all[1]!.sent[0]).toMatchObject({ ticket: "new" });
+    FakeWS.all[1]!.say({ t: "joined", room: "ROOM01", id: 4 });
+    expect(await joined).toBe(4);
   });
 
   it("a host whose room expired opens a fresh one and says so", async () => {
