@@ -13,6 +13,11 @@ export const hasScope = () => scope !== "";
 export const userKey = (base: string, legacy: string) =>
   scope ? `nyxeron:u:${scope}:${base}` : legacy;
 
+/** Where a venue's furniture layout is saved (venue/furniture.ts), kept here so api/docs.ts can sync it without
+ * pulling three.js into the first load. */
+export const layoutKey = (name: string) =>
+  userKey(`furniture.${name}.v2`, `nyxeron.furniture.${name}.v2`);
+
 /** Called after the browser saved something that belongs to the account. */
 export const syncHooks: {
   save?: (slot: string, raw: string | null) => void;

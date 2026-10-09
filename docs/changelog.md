@@ -23,6 +23,12 @@ teammate would notice.
   waits instead of every 0.5 s in lockstep. Only the edge proxy's word about a player's IP is believed, and IPv6
   players count per /64. Load test: 10 clubs × 30 players, 100% of snapshots delivered, ~31 MB.
 
+## 2026-10-09 · Web: a lighter first load
+
+- **Landing loads without three.js:** the save sync imported the furniture storage key from the 3D venue module, so
+  the venue chunk (three.js) was preloaded on every first visit. The key now lives in `state/scope.ts`; the first
+  load's JavaScript drops from 787 KB to 566 KB (243 KB → 184 KB gzip, −24%) and three.js arrives with the night.
+
 ## 2026-10-09 · Multiplayer: reconnects that hold
 
 - **Live clubs survive a bad connection:** a guest whose connection drops says hello again and gets their own seat
