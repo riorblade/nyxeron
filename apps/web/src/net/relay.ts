@@ -60,6 +60,14 @@ export const relayUrl = () =>
 
 const TOKEN_KEY = "nyxeron:relay-host";
 
+/** Errors that mean "not right now": on a reconnect the client backs off and tries again. */
+const retryable = new Set([
+  "room_full",
+  "server_full",
+  "rate_limited",
+  "too_many_connections",
+]);
+
 /**
  * One connection to the relay. `host()` opens a room (and resumes it after a drop, within the relay's grace
  * period); `join()` enters one. Reconnects with backoff while `open`.
@@ -73,6 +81,9 @@ export class Relay {
   private ws: WebSocket | null = null;
   private open = true;
   private retry = 0;
+  private openedAt = 0;
+  /** A (re)connect's hello is out and unanswered: only then is "not right now" a reason to hang up and retry. */
+  private helloOut = false;
   private hello: Control | null = null;
   private waiting: {
     ok: (m: Control) => void;
@@ -152,9 +163,12 @@ export class Relay {
     ws.binaryType = "arraybuffer";
     this.ws = ws;
     ws.onopen = () => {
-      this.retry = 0;
+      this.openedAt = Date.now();
       this.onStatus?.(true);
-      if (this.hello) this.sendControl(this.hello);
+      if (this.hello) {
+        this.helloOut = true;
+        this.sendControl(this.hello);
+      }
     };
     ws.onmessage = (e) => {
       if (typeof e.data !== "string") {
@@ -171,6 +185,7 @@ export class Relay {
       ) {
         sessionStorage.removeItem(TOKEN_KEY);
         this.hello = { t: "create", name: this.hello.name ?? "" };
+        this.helloOut = true;
         return this.sendControl(this.hello);
       }
       // Every (re)connect is answered: a reconnecting player gets a new id, a host maybe a new room.
@@ -184,26 +199,46 @@ export class Relay {
         );
       }
       this.room = m.room ?? this.room;
+      const answer =
+        this.helloOut &&
+        (m.t === "error" || m.t === "joined" || m.t === "created");
+      if (answer) this.helloOut = false;
       const w = this.waiting;
       if (w && (m.t === w.want || m.t === "error")) {
         this.waiting = null;
         return m.t === "error" ? w.fail(new Error(m.code)) : w.ok(m);
       }
+      // Turned away for now (full, busy, throttled) while reconnecting: hang up and try again after the backoff.
+      // In a room, "rate_limited" only means slow down (the relay throttles messages too): stay.
+      if (answer && m.t === "error" && m.code && retryable.has(m.code))
+        return ws.close();
       // Closed or kicked: don't walk straight back in.
       if (
         m.t === "closed" ||
         m.t === "kicked" ||
-        (m.t === "error" && m.code === "room_not_found")
+        (m.t === "error" &&
+          (m.code === "room_not_found" ||
+            m.code === "kicked" ||
+            m.code === "replaced"))
       )
         this.open = false;
       this.onControl?.(m);
     };
-    ws.onclose = () => {
+    ws.onclose = (e?: { reason?: string }) => {
       this.onStatus?.(false);
+      // Another tab took over this room (same saved token): stand down instead of taking it back forever.
+      if (e?.reason === "replaced" && this.open) {
+        this.open = false;
+        this.onControl?.({ t: "error", code: "replaced" });
+      }
       if (!this.open) return;
-      // Backoff 0.5 s → 8 s; the host's hello is a resume, a player's a fresh join.
-      const wait = Math.min(8000, 500 * 2 ** this.retry++);
-      setTimeout(() => this.connect(), wait);
+      // Only a connection that held for a while resets the backoff (accept-then-drop must not spin at 2 Hz).
+      if (Date.now() - this.openedAt > 10_000) this.retry = 0;
+      // Backoff 0.5 s → 8 s with equal jitter, so a relay restart isn't hit by every player at the same instant.
+      // The host's hello is a resume, a player's a fresh join.
+      const base = Math.min(8000, 500 * 2 ** this.retry++);
+      const wait = base / 2 + (Math.random() * base) / 2;
+      setTimeout(() => this.open && this.connect(), wait);
     };
   }
 }

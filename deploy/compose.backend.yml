@@ -14,6 +14,9 @@ services:
     environment:
       # Sites allowed to open a WebSocket: the game's domain, plus an extra host (e.g. the Vercel project URL).
       ORIGINS: ${DOMAIN:-localhost},${FRONTEND_EXTRA_HOST:-${DOMAIN:-localhost}}
+      # The shared Caddy's container name (or IP/CIDR) on the gateway network: only its X-Forwarded-For is believed.
+      # Wrong or empty → every player shares Caddy's IP and the per-IP limits hit everyone (the relay logs a warning).
+      TRUST_PROXY: ${RELAY_TRUSTED_PROXY:-caddy}
     networks:
       default: {}
       gateway:

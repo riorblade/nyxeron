@@ -37,6 +37,17 @@ services:
       MAX_ROOMS: "2000"
       MAX_PEERS: "64"
       GRACE_SEC: "60"
+      # Abuse limits (docs/multiplayer.md). Sockets must fit mem_limit: the load test (10 rooms × 30 players, live
+      # snapshots) peaks at ~31 MB RSS for 310 sockets, so 400 is the safe cap at 48 MB. Raise MAX_CONNS together
+      # with mem_limit (~85 KB a busy socket: 96 MB ≈ 900).
+      MAX_CONNS: "400"
+      MAX_CONNS_PER_IP: "100"
+      MAX_ROOMS_PER_IP: "8"
+      QUEUE_BUDGET_MB: "8"
+      KICK_BAN_SEC: "600"
+      # Whose X-Forwarded-For is the real client IP: the edge proxy's container (names, IPs or CIDRs). Anyone else
+      # on the network writing that header is ignored.
+      TRUST_PROXY: edge
       # Keep the Go heap well under the container cap: collect at +50% heap growth (default 100%), and hard at
       # the soft limit before an OOM kill.
       GOGC: "50"

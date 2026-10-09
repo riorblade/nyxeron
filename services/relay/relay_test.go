@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"net"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -200,6 +203,7 @@ func TestHostResumeAndGrace(t *testing.T) {
 
 func TestCloseAndKick(t *testing.T) {
 	h, url := setup(t, time.Minute)
+	h.kickBan = 0 // every test socket is 127.0.0.1: the kicked guest's IP ban would also keep `other` out
 	host := dial(t, url)
 	host.send(control{T: "create"})
 	c := host.expect("created")
@@ -242,5 +246,173 @@ func TestRateLimit(t *testing.T) {
 	}
 	if !limited {
 		t.Fatal("no rate limiting")
+	}
+}
+
+func TestRoomsPerIPAndQueueBudgetReleased(t *testing.T) {
+	h, url := setup(t, time.Minute)
+	h.maxRoomsPerIP = 1
+	host := dial(t, url)
+	host.send(control{T: "create"})
+	c := host.expect("created")
+	second := dial(t, url)
+	second.send(control{T: "create"})
+	if m := second.expect("error"); m.Code != "too_many_rooms" {
+		t.Fatalf("second room from one IP: %+v", m)
+	}
+
+	// A peer that stops reading: what it pinned is given back to the hub's budget once it's gone.
+	g := dial(t, url)
+	g.send(control{T: "join", Room: c.Room, Role: "guest"})
+	id := g.expect("joined").ID
+	host.expect("peer")
+	payload := strings.Repeat("x", 100<<10)
+	for i := 0; i < 20; i++ {
+		host.frame(kindTo, id, payload)
+	}
+	_ = g.ws.CloseNow()
+	deadline := time.Now().Add(10 * time.Second)
+	for h.queued.Load() != 0 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if q := h.queued.Load(); q != 0 {
+		t.Fatalf("budget leaked: %d bytes still counted", q)
+	}
+}
+
+func TestClientIP(t *testing.T) {
+	r := httptest.NewRequest("GET", "/ws", nil)
+	r.RemoteAddr = "10.0.0.2:5555"
+	r.Header.Set("X-Forwarded-For", "6.6.6.6, 203.0.113.9")
+	if ip := clientIP(r, nil); ip != "10.0.0.2" {
+		t.Fatalf("no trusted proxy: %s", ip)
+	}
+	// Only the trusted proxy's word counts, and only its own hop (the last), never a client-written one.
+	if ip := clientIP(r, newProxies("10.0.0.0/24")); ip != "203.0.113.9" {
+		t.Fatalf("trusted: %s", ip)
+	}
+	if ip := clientIP(r, newProxies("10.0.1.7, 192.168.0.0/16")); ip != "10.0.0.2" {
+		t.Fatalf("another container on the network set XFF: %s", ip)
+	}
+	if ip := clientIP(r, newProxies("localhost")); ip != "10.0.0.2" {
+		t.Fatalf("hostname not resolving to the socket: %s", ip)
+	}
+	r.Header.Del("X-Forwarded-For")
+	if ip := clientIP(r, newProxies("10.0.0.0/24")); ip != "10.0.0.2" {
+		t.Fatalf("no header: %s", ip)
+	}
+	// IPv6: one /64 is one subscriber.
+	r.RemoteAddr = "[2001:db8:1:2:aaaa::1]:443"
+	a := clientIP(r, nil)
+	r.RemoteAddr = "[2001:db8:1:2:bbbb::9]:443"
+	if b := clientIP(r, nil); a != b || a != "2001:db8:1:2::/64" {
+		t.Fatalf("v6 keyed by address, not /64: %s %s", a, b)
+	}
+}
+
+func TestReplacedHostIsToldInBand(t *testing.T) {
+	_, url := setup(t, time.Minute)
+	a := dial(t, url)
+	a.send(control{T: "create"})
+	c := a.expect("created")
+	b := dial(t, url)
+	b.send(control{T: "resume", Room: c.Room, Token: c.Token})
+	b.expect("created")
+	// Browsers don't see the close frame's reason, so the old tab must hear it as a message.
+	if m := a.expect("error"); m.Code != "replaced" {
+		t.Fatalf("old host got %+v", m)
+	}
+}
+
+func TestRoomChurnPerIPIsCapped(t *testing.T) {
+	h, url := setup(t, time.Minute)
+	h.maxRooms, h.maxRoomsPerIP = 1000, 3
+	for i := 0; i < 3; i++ {
+		a := dial(t, url)
+		a.send(control{T: "create"})
+		a.expect("created")
+		_ = a.ws.CloseNow() // abandoned, but still counts during its grace period
+	}
+	time.Sleep(50 * time.Millisecond)
+	x := dial(t, url)
+	x.send(control{T: "create"})
+	if m := x.expect("error"); m.Code != "too_many_rooms" {
+		t.Fatalf("4th room from one IP: %+v", m)
+	}
+}
+
+func TestControlsIgnoreTheSharedBudget(t *testing.T) {
+	h := newHub(10, 64, time.Minute)
+	h.queueBudget = 1 // someone else filled it
+	h.queued.Store(1)
+	host := fake(h)
+	r, _ := h.create(host)
+	for i := 0; i < 30; i++ {
+		h.join(fake(h), r.code) // 30 "peer" controls to the host
+	}
+	if isDone(host) {
+		t.Fatalf("host dropped by a full shared budget: %q", reasonOf(host))
+	}
+}
+
+func TestProxyLookupFailureKeepsLastGood(t *testing.T) {
+	p := newProxies("edge.invalid")
+	_, n, _ := net.ParseCIDR("10.0.0.7/32")
+	p.byEntry["edge.invalid"] = []*net.IPNet{n} // resolved earlier; the proxy's DNS name is gone for now
+	p.at = time.Now().Add(-time.Minute)
+	p.refresh()
+	if !p.trusts(net.ParseIP("10.0.0.7")) {
+		t.Fatal("a failed lookup dropped the proxy: every player would share its IP")
+	}
+}
+
+func TestGuestInputBytesCannotStarveHostControls(t *testing.T) {
+	h := newHub(10, 64, time.Minute)
+	host := fake(h)
+	r, _ := h.create(host)
+	g := fake(h)
+	h.join(g, r.code)
+	big := make([]byte, 8<<10)
+	big[0] = kindFrom
+	for i := 0; i < queueLen; i++ {
+		g.route(big) // capped at half the host's bytes, then host_busy
+	}
+	filler := make([]byte, maxQueueBytes) // nothing else may squeeze in past the half either
+	filler[0] = kindFrom
+	g.route(filler)
+	for i := 0; i < 20; i++ {
+		h.join(fake(h), r.code)
+	}
+	if isDone(host) {
+		t.Fatalf("guest input starved the host's controls: %q", reasonOf(host))
+	}
+}
+
+func TestProxyPartialFailureKeepsThatEntry(t *testing.T) {
+	p := newProxies("edge.invalid, 10.9.0.0/16")
+	_, n, _ := net.ParseCIDR("10.0.0.7/32")
+	p.byEntry["edge.invalid"] = []*net.IPNet{n} // resolved earlier
+	p.refresh()                                 // edge's lookup fails now, the CIDR still parses
+	if !p.trusts(net.ParseIP("10.0.0.7")) || !p.trusts(net.ParseIP("10.9.1.1")) {
+		t.Fatal("one failed name dropped its last good addresses")
+	}
+}
+
+func TestProxyCallersWaitForTheLookupInFlight(t *testing.T) {
+	p := newProxies("127.0.0.1")
+	var wg sync.WaitGroup
+	var untrusted atomic.Int32
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if !p.trusts(net.ParseIP("127.0.0.1")) {
+				untrusted.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	if n := untrusted.Load(); n != 0 {
+		t.Fatalf("%d of 50 concurrent first callers turned away untrusted", n)
 	}
 }

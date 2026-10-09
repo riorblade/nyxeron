@@ -15,10 +15,14 @@ import (
 const (
 	writeTimeout = 5 * time.Second
 	pingEvery    = 25 * time.Second
-	// Reliable frames waiting for a slow client. Control messages past this drop the client (a stuck client must
-	// not grow memory); peer input past this is refused with "host_busy" instead (the host is never dropped for
-	// being popular). 64 slice headers ≈ 1.5 KB per connection.
-	queueLen = 64
+	// Reliable frames waiting for a slow client, bounded twice: by count (256 slice headers ≈ 6 KB) and by bytes
+	// (maxQueueBytes per connection, plus the hub's budget for all of them), so no client can pin relay memory.
+	// Control messages past a bound drop the client (a stuck client must not grow memory); peer input is refused
+	// with "host_busy" instead, and may only fill half the host's queue so controls to the host always fit.
+	queueLen      = 256
+	maxQueueBytes = 256 << 10
+	// A socket must create, join or resume within this; silent sockets are closed.
+	helloDeadline = 10 * time.Second
 )
 
 // limits per role: biggest frame accepted and a token bucket for message rate.
@@ -38,6 +42,7 @@ var (
 type conn struct {
 	ws   *websocket.Conn
 	hub  *hub
+	ip   string
 	room *room
 	host bool
 	id   uint16
@@ -53,6 +58,10 @@ type conn struct {
 	flushed chan struct{}
 	once    sync.Once
 	reason  atomic.Value
+	// Bytes waiting in queue (qmu guards it with the hub's budget); dead once the write loop has finished.
+	qmu    sync.Mutex
+	qbytes int64
+	qdead  bool
 
 	tokens float64
 	last   time.Time
@@ -78,29 +87,62 @@ func (c *conn) closeWith(reason string) {
 	})
 }
 
-// offer queues a frame if there is room; false = the receiver is backed up.
-func (c *conn) offer(b []byte) bool {
+// push queues a frame within the count and byte bounds; false = the receiver is backed up. `slots` and `maxBytes`
+// cap how much of the queue this frame may use (peer input gets half, so controls to the host always have room).
+func (c *conn) push(b []byte, slots int, maxBytes int64, budget bool) bool {
+	n := int64(len(b))
+	c.qmu.Lock()
+	defer c.qmu.Unlock()
+	// One frame always fits an empty queue (a host may send up to 256 KB); after that the byte bounds apply.
+	// Controls skip the shared budget: a few hundred bytes each, and other clients filling it must not cost a
+	// player (or a resuming host) their connection.
+	full := c.qbytes > 0 && (c.qbytes+n > maxBytes || (budget && c.hub.queued.Load()+n > c.hub.queueBudget))
+	if c.qdead || full || len(c.queue) >= slots {
+		return false
+	}
 	select {
 	case c.queue <- b:
+		c.qbytes += n
+		c.hub.queued.Add(n)
 		return true
 	default:
 		return false
 	}
 }
 
+// popped: the write loop took b off the queue.
+func (c *conn) popped(b []byte) {
+	c.qmu.Lock()
+	c.qbytes -= int64(len(b))
+	c.hub.queued.Add(-int64(len(b)))
+	c.qmu.Unlock()
+}
+
+// release: the write loop is done; whatever is still queued no longer counts against the hub's budget.
+func (c *conn) release() {
+	c.qmu.Lock()
+	c.qdead = true
+	c.hub.queued.Add(-c.qbytes)
+	c.qbytes = 0
+	c.qmu.Unlock()
+}
+
+// offer queues peer input for the host if there is room; false = the host is backed up ("host_busy").
+// Half the slots and half the bytes: the other half is always there for controls to the host.
+func (c *conn) offer(b []byte) bool { return c.push(b, queueLen/2, maxQueueBytes/2, true) }
+
 // enqueue a reliable frame; a client too slow to drain its queue is disconnected.
-func (c *conn) enqueue(b []byte) {
-	select {
-	case c.queue <- b:
-	case <-c.done:
-	default:
+func (c *conn) enqueue(b []byte) { c.reliable(b, true) }
+
+func (c *conn) reliable(b []byte, budget bool) {
+	if !c.push(b, queueLen, maxQueueBytes, budget) {
 		c.closeWith("too slow")
 	}
 }
 
 func (c *conn) control(m control) {
 	b, _ := json.Marshal(m)
-	c.enqueue(b)
+	c.reliable(b, false)
 }
 
 // setLatest replaces any unsent snapshot (latest wins).
@@ -146,6 +188,7 @@ func typeOf(b []byte) websocket.MessageType {
 // writeLoop is the only writer on the socket: reliable queue first, then the latest snapshot, plus pings.
 func (c *conn) writeLoop(ctx context.Context) {
 	defer close(c.flushed)
+	defer c.release()
 	// Cancelling the read context closes the socket (coder/websocket), so only do it after the flush below:
 	// it unblocks the reader and ends the request.
 	defer c.cancel()
@@ -165,6 +208,7 @@ func (c *conn) writeLoop(ctx context.Context) {
 			for {
 				select {
 				case b := <-c.queue:
+					c.popped(b)
 					if c.ws.Write(fctx, typeOf(b), b) != nil {
 						return
 					}
@@ -173,6 +217,7 @@ func (c *conn) writeLoop(ctx context.Context) {
 				}
 			}
 		case b := <-c.queue:
+			c.popped(b)
 			if write(b) != nil {
 				c.closeWith("write failed")
 				return
@@ -197,9 +242,20 @@ func (c *conn) writeLoop(ctx context.Context) {
 // readLoop handles everything the client sends until it goes away.
 func (c *conn) readLoop(ctx context.Context) {
 	defer c.closeWith("read ended")
+	var hello time.Time // when this socket's current lobby wait ends
 	for {
 		c.ws.SetReadLimit(c.limits().maxFrame)
-		t, b, err := c.ws.Read(ctx)
+		rctx, cancel := ctx, context.CancelFunc(func() {})
+		if c.room == nil { // in the lobby: create, join or resume in time, or go
+			if hello.IsZero() {
+				hello = time.Now().Add(helloDeadline)
+			}
+			rctx, cancel = context.WithDeadline(ctx, hello)
+		} else {
+			hello = time.Time{}
+		}
+		t, b, err := c.ws.Read(rctx)
+		cancel()
 		if err != nil {
 			return
 		}
@@ -284,6 +340,9 @@ func (c *conn) route(b []byte) {
 	}
 	kind := b[0]
 	if c.host {
+		if c.hub.hostOf(c.room) != c {
+			return // replaced by a resume from another tab, or the room closed
+		}
 		switch kind {
 		case kindState:
 			for _, p := range c.hub.peersOf(c.room) {
@@ -300,8 +359,8 @@ func (c *conn) route(b []byte) {
 		}
 		return
 	}
-	if kind != kindFrom {
-		return
+	if kind != kindFrom || c.hub.peer(c.room, c.id) != c {
+		return // kicked or gone
 	}
 	// Stamp the real sender id; the host sees who sent it, peers can't pretend to be someone else.
 	out := make([]byte, len(b))

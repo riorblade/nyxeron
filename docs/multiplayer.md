@@ -30,7 +30,29 @@ JSON control (text frames):
 ```
 
 Error codes: `room_not_found`, `room_full`, `server_full`, `bad_request`, `already_in_room`, `rate_limited`,
-`host_busy`. Limits: 64 peers a room, per-connection rate limits, frame size caps, bounded queues.
+`host_busy`, `kicked`, `too_many_rooms`, `too_many_connections` (the client backs off and retries the full/busy ones).
+
+Limits (one relay process, all in memory; env in `deploy/compose.yml`):
+
+| What | Default | Why |
+| --- | --- | --- |
+| Peers a room | 64 (`MAX_PEERS`) | |
+| Sockets in total / per IP | 1000 / 100 (`MAX_CONNS`, `MAX_CONNS_PER_IP`) | memory: ~40 KB a socket; over the cap the socket is told `too_many_connections` and closed |
+| Hello deadline | 10 s | a socket that never creates/joins/resumes is closed |
+| Rooms with a live host per IP | 8 (`MAX_ROOMS_PER_IP`) | one client can't take every room |
+| Server full | `MAX_ROOMS` | the room whose host has been gone longest closes early (still resumable) instead of refusing |
+| Wrong room codes per IP | 20, then 12 a minute | codes can't be guessed by reconnecting |
+| Queued bytes per client / all clients | 256 KB / 16 MB (`QUEUE_BUDGET_MB`) | a client that doesn't read is dropped, never pins memory; peer input may fill half the host's queue, so the host is never dropped for its guests' spam |
+| Kick | the IP can't rejoin that room for 10 min (`KICK_BAN_SEC`) | per IP (players behind one NAT share it) until the relay checks signed api tickets |
+
+`TRUST_PROXY` lists the proxies (container names, IPs or CIDRs) whose `X-Forwarded-For` is believed; the client IP is
+its last hop (the one Caddy wrote). A header from anyone else on the Docker network is ignored. IPv6 clients are keyed
+by their /64. Empty or wrong → every player shares the proxy's IP and the per-IP limits hit everyone; the relay logs a
+warning at start.
+
+The client (`relay.ts`) reconnects with exponential backoff and equal jitter (0.25–0.5 s, up to 4–8 s), resets it only
+after a connection held 10 s, stops for good on closed/kicked/room gone, and stands down when another tab takes the
+room over (`replaced`).
 
 ## Session layer (apps/web/src/net)
 

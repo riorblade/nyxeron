@@ -225,6 +225,10 @@ export const en = {
           invalid_token: "Your sign-in expired. Sign in again.",
           venue_limit: "You already rent as many venues as you can.",
           kicked: "The CEO asked you to leave.",
+          replaced: "This club is open in another tab.",
+          too_many_connections:
+            "Too many connections from your network. Try again in a minute.",
+          too_many_rooms: "Your network already has too many clubs open.",
           seat_lost:
             "You were away too long and lost your spot. What you had is in your wallet; join again.",
         }) as Record<string, string>
