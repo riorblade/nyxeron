@@ -1,4 +1,5 @@
 import {
+  isId,
   levelData,
   night,
   priceScale,
@@ -35,6 +36,16 @@ export function setPolicy(
 ): ActionResult {
   if (s.phase !== "day") return fail("wrongPhase");
   if (s.level < POLICY_MIN_LEVEL) return fail("levelLocked");
+  // Only house rules the game knows: an unknown dress code or happy-hour slot would break every night after.
+  if (
+    (patch.dressCode !== undefined &&
+      !isId(strategy.dressCode, patch.dressCode)) ||
+    (patch.happyHour !== undefined &&
+      patch.happyHour !== "off" &&
+      !isId(strategy.happyHour, patch.happyHour)) ||
+    (patch.ladiesNight !== undefined && typeof patch.ladiesNight !== "boolean")
+  )
+    return fail("invalidTarget");
   if (
     patch.cover != null &&
     (!Number.isInteger(patch.cover) || patch.cover < 0)
@@ -138,6 +149,7 @@ export const commissionOf = (_s: GameState, id: PromoterId) =>
 /** Book (or cancel) a promoter for tonight: their guest list arrives early and skips the cover; paid per head. */
 export function bookPromoter(s: GameState, id: PromoterId): ActionResult {
   if (s.phase !== "day") return fail("wrongPhase");
+  if (!isId(promoters, id)) return fail("invalidTarget");
   if (s.level < promoters[id].minLevel) return fail("levelLocked");
   if (s.promoters.includes(id))
     return {
@@ -170,6 +182,7 @@ export const upgradeCost = (s: GameState, id: UpgradeId) =>
 /** Next tier of the sound system or lighting rig (by day). A new venue starts with the house rig again. */
 export function buyUpgrade(s: GameState, id: UpgradeId): ActionResult {
   if (s.phase !== "day") return fail("wrongPhase");
+  if (!isId(strategy.upgrades, id)) return fail("invalidTarget");
   if (s.level < strategy.upgrades[id].minLevel) return fail("levelLocked");
   const cost = upgradeCost(s, id);
   if (cost === null) return fail("maxLevel");
@@ -285,6 +298,7 @@ export function setMinSpend(
 ): ActionResult {
   if (s.phase !== "day") return fail("wrongPhase");
   if (s.level < POLICY_MIN_LEVEL) return fail("levelLocked");
+  if (!isId(strategy.seats, t)) return fail("invalidTarget");
   if (price !== null && (!Number.isInteger(price) || price < 0))
     return fail("invalidPrice");
   const minSpend = { ...s.minSpend };
@@ -393,6 +407,7 @@ export function tacticBlock(s: GameState, id: TacticId): TacticBlock {
  * then needs a cooldown; repeating a move tires the crowd (weaker each time). The anthem also keeps guests longer.
  */
 export function crowdMove(s: GameState, id: TacticId): ActionResult {
+  if (!isId(strategy.tactics, id)) return fail("invalidTarget");
   const block = tacticBlock(s, id);
   if (block === "wrongPhase") return fail("wrongPhase");
   if (block === "noStaff" || block === "noDj" || block === "noTables")

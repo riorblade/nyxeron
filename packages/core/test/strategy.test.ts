@@ -306,6 +306,39 @@ describe("cover price", () => {
     expect(setPolicy(club(), { cover: -5 }).ok).toBe(false);
     expect(setPolicy(club(), { cover: 10.5 }).ok).toBe(false);
   });
+  it("a guest who can't pay the cover is turned away; the guest list and ladies' night women still get in free", () => {
+    const huge = 1e9;
+    const s = ticks(
+      startNight(
+        club({
+          policy: { ...DEFAULT_POLICY, cover: huge, ladiesNight: true },
+        }),
+      ),
+      200,
+    );
+    const admitted = s.night!.guests.filter((g) => g.admitted);
+    expect(admitted.length).toBeGreaterThan(0);
+    expect(admitted.every((g) => g.female)).toBe(true);
+    expect(s.nightRevenue.cover).toBe(0);
+    // A man who reached the door went home with his budget intact.
+    const men = s.night!.guests.filter(
+      (g) => !g.female && g.state === "left" && !g.admitted,
+    );
+    expect(men.length).toBeGreaterThan(0);
+    expect(men.every((g) => g.budget > 0)).toBe(true);
+  });
+  it("rejects an unknown dress code, happy-hour slot or a non-boolean ladies' night", () => {
+    expect(setPolicy(club(), { dressCode: "toString" as never }).ok).toBe(
+      false,
+    );
+    expect(setPolicy(club(), { happyHour: "__proto__" as never }).ok).toBe(
+      false,
+    );
+    expect(setPolicy(club(), { ladiesNight: 1 as never }).ok).toBe(false);
+    expect(
+      setPolicy(club(), { dressCode: "strict", happyHour: "late" }).ok,
+    ).toBe(true);
+  });
 });
 
 describe("scheduled happy hour", () => {

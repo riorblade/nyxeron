@@ -305,8 +305,13 @@ export function tickNight(s: GameState): GameState {
       n.rejectedDress++;
       continue;
     }
+    // A guest who can't pay the cover goes home (like a visitor): the door never takes a whole wallet.
+    const pay = coverFor(st, g);
+    if (pay > g.budget) {
+      g.state = "left";
+      continue;
+    }
     if (g.underage) n.underageAdmitted++;
-    const pay = Math.min(coverFor(st, g), g.budget);
     g.budget -= pay;
     // The promoter is paid for every guest-list guest who gets in.
     const fee = g.guestList ? commissionOf(st, g.guestList) : 0;

@@ -3,6 +3,20 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-10 · Tougher sim: closed doors stay closed
+
+- **Cover you can't pay = you go home:** a guest whose budget is below the cover is turned away instead of handing
+  over the whole wallet. A huge cover now empties the club rather than out-earning a stocked bar. Balance moves a
+  hair (only the poorest Level 5 locals are below the standard 2,500 cover).
+- **Price ceiling:** a list price can be at most 100× the venue's default (`economy.json → maxPriceMultiple`); a
+  huge price used to turn into Infinity after moving up and break the save. Old saves with a broken price load with
+  a valid one.
+- **After closing time** guest players can't walk in or buy (and not in a sealed venue), and the door can't be
+  forced after 04:00. Once a career is over, nothing spends Coin or moves stock.
+- **Moving up** never overfills the new stock room: what doesn't fit (old storage tiers stay behind) is left behind.
+- Unknown ids, a bad dress code / happy-hour slot, or a NaN avatar are refused cleanly instead of writing NaN or
+  bricking every later night; the AI CEO no longer hangs when handed a night.
+
 ## 2026-10-10 · The office comes alive (neon UI)
 
 - **A real game look:** the office is now a neon nightclub instead of black and white: violet glass panels, magenta

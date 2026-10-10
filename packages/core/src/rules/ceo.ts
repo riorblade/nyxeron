@@ -8,6 +8,8 @@ const isInside = (state: string) =>
 /** CEO Call (Q), once per night: "Happy Hour" (+satisfaction, cheaper tokens) or "Close Door" (no more admissions). */
 export function ceoCall(s: GameState, call: CeoCall): ActionResult {
   if (s.phase !== "night" || !s.night) return fail("wrongPhase");
+  if (call !== "happyHour" && call !== "closeDoor")
+    return fail("invalidTarget");
   if (s.ceoCallUsed) return fail("alreadyActive");
   const n = s.night;
   const next =

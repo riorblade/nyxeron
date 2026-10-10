@@ -1,6 +1,8 @@
 import type { Visitor } from "./rules/visitor";
 import {
   tokens,
+  defaultPrice,
+  maxPrice,
   economy,
   ids,
   levels,
@@ -421,6 +423,22 @@ export function compactForSave(s: GameState): GameState {
   };
 }
 
+/** List prices a save can hold: a positive integer up to the venue's ceiling (an old save may carry null/huge ones). */
+function repairPrices(s: GameState): GameState["prices"] {
+  const ok = (d: TokenId) => {
+    const p = s.prices?.[d];
+    return Number.isInteger(p) && p > 0 && p <= maxPrice(d, s.level);
+  };
+  if (ids(tokens).every(ok)) return s.prices;
+  return fill(ids(tokens), (d) =>
+    ok(d)
+      ? s.prices[d]
+      : Number.isFinite(s.prices?.[d]) && s.prices[d] > 0
+        ? Math.max(1, Math.min(maxPrice(d, s.level), Math.round(s.prices[d])))
+        : defaultPrice(d, s.level),
+  );
+}
+
 export function migrateState(s: GameState): GameState {
   const staff = { ...fill(ids(staffRoles), () => 0), ...s.staff };
   const n = s.night;
@@ -429,6 +447,7 @@ export function migrateState(s: GameState): GameState {
     // The old player sandbox is gone (venue access comes from the back office): its saves play on as careers.
     mode: (s.mode as string) === "sandbox" ? "career" : s.mode,
     staff,
+    prices: repairPrices(s),
     policy: { ...DEFAULT_POLICY, ...s.policy },
     promoters: s.promoters ?? [],
     bookedBand: s.bookedBand ?? null,
