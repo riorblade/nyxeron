@@ -22,6 +22,7 @@
     "5": 2000
   },
   "agent": {
+    "minUnits": 10,
     "maxUsdPerSwap": 50,
     "maxUsdPerDay": 500,
     "maxPriceOverSpotPercent": 5,

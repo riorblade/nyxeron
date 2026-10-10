@@ -3,6 +3,14 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-11 · The agent stocks the warehouse on its own
+
+- **Warehouse floor:** `/api/agent/demand` now suggests a restock whenever a whitelisted bStock has fewer than
+  `agent.minUnits` (10) units on hand, not only after sales, so an empty warehouse fills itself and players have
+  something to buy from day one.
+- **Schedule:** the agent runs every 10 minutes on the server and buys only what demand suggests, within its caps
+  (`deploy/README.md` → Stock agent). No swap is started by hand.
+
 ## 2026-10-11 · The stock agent runs on the server
 
 - **Agent container:** `deploy/agent.Dockerfile` and a profiled `agent` service run the stock agent and the Binance
