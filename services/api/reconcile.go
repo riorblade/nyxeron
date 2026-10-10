@@ -15,8 +15,10 @@ import (
 
 // Reconciliation (docs/payments.md): every hour, prove from BSC that the money in the game is real.
 //
-//  1. Credits are backed: Σ players' credits (held ones included) ≤ USDC + USDT in the Agentic Wallet − the
-//     platform's own money (fees, wholesale, seed, restocks; platform_ledger). In cents (1 credit = 1 cent).
+//  1. Credits are backed: Σ players' credits (held ones included) + money owed back to senders (unknown, rejected
+//     and over-cap top-ups not yet refunded) ≤ USDC + USDT in the Agentic Wallet − the platform's own money (fees,
+//     wholesale, seed, restocks; platform_ledger). In cents (1 credit = 1 cent). Money owed back is in the wallet
+//     but belongs to its senders: counted as backing, it would hide credits nobody paid for.
 //  2. Units are backed, per whitelisted token: warehouse + reserved + players' real units ≤ the wallet's bStock,
 //     in units of payments.json's sharesPerUnit.
 //
@@ -24,7 +26,10 @@ import (
 // matches resumes them. A check that can't read BSC changes nothing (it can't prove anything either way). Every
 // result is kept in the audit log ("reconcile"), which is the history the back office shows.
 
-var errPaused = errors.New("payments are paused: the last reconciliation didn't match")
+var (
+	errPaused  = errors.New("payments are paused: the last reconciliation didn't match")
+	errNoTopup = errors.New("no such top-up")
+)
 
 const pauseKey = "payments_paused" // settings: present while paused, with the problems found
 
@@ -34,6 +39,7 @@ type Recon struct {
 	OwedCents      int64             `json:"owedCents"`     // players' credits incl. held, in cents
 	WalletCents    int64             `json:"walletCents"`   // USDC + USDT in the Agentic Wallet, in cents
 	PlatformCents  int64             `json:"platformCents"` // the platform's own money in that wallet
+	RefundCents    int64             `json:"refundCents"`   // owed back to senders, not refunded yet
 	Units          map[string]Backed `json:"units"`         // per whitelisted token
 	Problems       []string          `json:"problems"`
 	walletReadings map[string]string // raw balances, for the record
@@ -69,10 +75,14 @@ func (s *store) Reconcile(ctx context.Context, c *bsc, actor, reason string, now
 		onChain[id] = bal
 	}
 	var owedCredits, platformCredits int64
+	// Owed back: not in a tx the platform booked (a restock's or seed's stablecoin coming back, e.g. a router's
+	// change, is already netted in platform_ledger).
 	if err := s.db.QueryRowContext(ctx, `SELECT
 		COALESCE((SELECT SUM(credits) FROM users), 0) +
 		COALESCE((SELECT SUM(price * qty) FROM sales WHERE status = 'held'), 0),
-		COALESCE((SELECT SUM(delta) FROM platform_ledger), 0)`).Scan(&owedCredits, &platformCredits); err != nil {
+		COALESCE((SELECT SUM(delta) FROM platform_ledger), 0),
+		COALESCE((SELECT SUM(refund_cents) FROM topups WHERE refunded_at = 0 AND tx NOT IN `+bookedTxs+`), 0)`).Scan(&owedCredits,
+		&platformCredits, &r.RefundCents); err != nil {
 		return r, err
 	}
 	r.OwedCents, r.PlatformCents = centsOf(owedCredits), centsOf(platformCredits)
@@ -83,9 +93,9 @@ func (s *store) Reconcile(ctx context.Context, c *bsc, actor, reason string, now
 		r.Problems = append(r.Problems, fmt.Sprintf("platform: spent %d cents more than it has (players' money; record the seed?)",
 			-r.PlatformCents))
 	}
-	if r.OwedCents > r.WalletCents-max(r.PlatformCents, 0) {
-		r.Problems = append(r.Problems, fmt.Sprintf("credits: players are owed %d cents, the wallet backs %d (%d − %d platform)",
-			r.OwedCents, r.WalletCents-max(r.PlatformCents, 0), r.WalletCents, r.PlatformCents))
+	if r.OwedCents+r.RefundCents > r.WalletCents-max(r.PlatformCents, 0) {
+		r.Problems = append(r.Problems, fmt.Sprintf("credits: players are owed %d cents and senders %d to refund, the wallet backs %d (%d − %d platform)",
+			r.OwedCents, r.RefundCents, r.WalletCents-max(r.PlatformCents, 0), r.WalletCents, r.PlatformCents))
 	}
 	ids := make([]string, 0, len(onChain))
 	for id := range onChain {
@@ -127,7 +137,7 @@ func (s *store) Reconcile(ctx context.Context, c *bsc, actor, reason string, now
 			verdict += " (" + reason + ")"
 		}
 		return audit(t, actor, "reconcile", "payments", map[string]any{"ok": r.OK, "owedCents": r.OwedCents,
-			"walletCents": r.WalletCents, "platformCents": r.PlatformCents, "units": r.Units, "problems": r.Problems,
+			"walletCents": r.WalletCents, "platformCents": r.PlatformCents, "refundCents": r.RefundCents, "units": r.Units, "problems": r.Problems,
 			"wallet": r.walletReadings}, verdict)
 	})
 }
@@ -229,9 +239,11 @@ func (s *store) reconcileEvery(ctx context.Context, c *bsc, every time.Duration)
 // AdminTopup: a top-up as the back office lists it (unknown senders included).
 type AdminTopup struct {
 	Topup
-	UserID string `json:"userId"`
-	Email  string `json:"email,omitempty"`
-	Sender string `json:"sender"`
+	UserID      string `json:"userId"`
+	Email       string `json:"email,omitempty"`
+	Sender      string `json:"sender"`
+	RefundCents int64  `json:"refundCents"`          // owed back to the sender (or was, once refunded)
+	RefundedAt  int64  `json:"refundedAt,omitempty"` // when the back office marked it refunded
 }
 
 // AdminSale: a sale as the back office lists it.
@@ -253,6 +265,11 @@ type Payments struct {
 	Sales           []AdminSale      `json:"sales"`
 }
 
+// bookedTxs: the txs the platform booked as a restock or as the team's seed. Stablecoin coming back to the Agentic
+// Wallet in one (a router's change) is already netted in platform_ledger, so it is never owed back: not in
+// reconciliation, not in the back office, not markable refunded.
+const bookedTxs = `(SELECT lower(ref) FROM platform_ledger WHERE kind IN ('restock', 'seed'))`
+
 func (s *store) Payments(ctx context.Context) (Payments, error) {
 	var p Payments
 	var err error
@@ -263,7 +280,9 @@ func (s *store) Payments(ctx context.Context) (Payments, error) {
 		return p, err
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT t.tx, t.log_index, t.token, t.usd_cents, t.fee, t.credits, t.status,
-		t.created_at, t.user_id, COALESCE(u.email, ''), t.sender FROM topups t LEFT JOIN users u ON u.id = t.user_id
+		t.created_at, t.user_id, COALESCE(u.email, ''), t.sender,
+		CASE WHEN t.refunded_at = 0 AND t.tx IN `+bookedTxs+` THEN 0 ELSE t.refund_cents END, t.refunded_at
+		FROM topups t LEFT JOIN users u ON u.id = t.user_id
 		ORDER BY t.id DESC LIMIT 200`)
 	if err != nil {
 		return p, err
@@ -272,7 +291,7 @@ func (s *store) Payments(ctx context.Context) (Payments, error) {
 	for rows.Next() {
 		var x AdminTopup
 		if err := rows.Scan(&x.Tx, &x.LogIndex, &x.Token, &x.USDCents, &x.Fee, &x.Credits, &x.Status, &x.At,
-			&x.UserID, &x.Email, &x.Sender); err != nil {
+			&x.UserID, &x.Email, &x.Sender, &x.RefundCents, &x.RefundedAt); err != nil {
 			rows.Close()
 			return p, err
 		}
@@ -355,7 +374,7 @@ func (s *store) RecordSeed(ctx context.Context, c *bsc, actor, tx, reason string
 		// Booked already, as the seed or as anything else (a restock's refund leg is not seed money: issue #55).
 		if err := t.QueryRow(`SELECT (SELECT COUNT(*) FROM platform_ledger WHERE lower(ref) = ?1) +
 			(SELECT COUNT(*) FROM stock_moves WHERE lower(tx) = ?1 AND kind = 'restock'),
-			(SELECT COUNT(*) FROM topups WHERE tx = ?1 AND user_id != '')`, tx).Scan(&booked, &players); err != nil {
+			(SELECT COUNT(*) FROM topups WHERE tx = ?1 AND (user_id != '' OR refunded_at > 0))`, tx).Scan(&booked, &players); err != nil {
 			return err
 		}
 		if players > 0 {
@@ -367,10 +386,51 @@ func (s *store) RecordSeed(ctx context.Context, c *bsc, actor, tx, reason string
 		if err := platformLedger(t, toCredits(cents), "seed", tx, reason); err != nil {
 			return err
 		}
-		if _, err := t.Exec(`UPDATE topups SET status = 'rejected', reason = 'seed', updated_at = ? WHERE tx = ? AND status = 'unknown'`,
+		if _, err := t.Exec(`UPDATE topups SET status = 'rejected', reason = 'seed', refund_cents = 0, updated_at = ?
+			WHERE tx = ? AND status = 'unknown'`,
 			now.Unix(), tx); err != nil {
 			return err
 		}
 		return audit(t, actor, "payments-seed", tx, map[string]any{"usdCents": cents}, reason)
+	})
+}
+
+// MarkRefunded records that the back office paid back what a top-up transfer is owed (an unknown sender's money, a
+// rejected top-up, or the part over the caps): reconciliation stops counting it as owed. Once per transfer; an
+// unknown one becomes "rejected", so no player can claim it afterwards. Returns the cents refunded.
+func (s *store) MarkRefunded(ctx context.Context, actor, tx string, logIndex int64, reason string, now time.Time) (int64, error) {
+	tx = strings.ToLower(tx)
+	if !hashRe.MatchString(tx) || logIndex < 0 || strings.TrimSpace(reason) == "" || len(reason) > 200 {
+		return 0, errBad
+	}
+	var cents int64
+	return cents, s.inTx(ctx, func(t *sql.Tx) error {
+		var refundedAt int64
+		var sender string
+		err := t.QueryRow(`SELECT CASE WHEN tx IN `+bookedTxs+` THEN 0 ELSE refund_cents END, refunded_at, sender
+			FROM topups WHERE tx = ? AND log_index = ?`, tx, logIndex).Scan(&cents, &refundedAt, &sender)
+		if errors.Is(err, sql.ErrNoRows) {
+			return errNoTopup
+		}
+		if err != nil {
+			return err
+		}
+		if refundedAt > 0 {
+			return errConflict // already refunded
+		}
+		if cents <= 0 {
+			return errRejected // nothing is owed back on it (or it is a booked restock's or seed's change)
+		}
+		res, err := t.Exec(`UPDATE topups SET refunded_at = ?1, updated_at = ?1,
+			status = CASE WHEN status = 'unknown' THEN 'rejected' ELSE status END
+			WHERE tx = ?2 AND log_index = ?3 AND refunded_at = 0`, now.Unix(), tx, logIndex)
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n != 1 {
+			return errConflict
+		}
+		return audit(t, actor, "topup-refund", fmt.Sprintf("%s:%d", tx, logIndex),
+			map[string]any{"refundCents": cents, "sender": sender}, reason)
 	})
 }

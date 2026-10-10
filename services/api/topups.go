@@ -27,7 +27,8 @@ import (
 // nothing when that is below minUsd. What isn't credited stays recorded for the back office to refund by hand: a
 // "rejected" row when nothing was credited, or a "credited" row whose reason says how many cents were over the
 // caps (usd_cents is then the credited part; amount is always what arrived). Senders that are no player's wallet
-// are recorded as "unknown", without credits.
+// are recorded as "unknown", without credits. refund_cents keeps what is owed back, until the back office marks it
+// refunded (MarkRefunded); reconciliation counts it as owed, not as backing.
 
 type Topup struct {
 	Tx       string `json:"tx"`
@@ -81,6 +82,13 @@ func topupToken(addr string) bool {
 // (recorded "unknown", no credits). A later call with the sender's player claims such a row and credits it then
 // (the scanner can see a transfer before the player's wallet is stored). fresh is false when nothing changed.
 func (s *store) recordTopup(ctx context.Context, tr Transfer, gasUsed uint64, user string, now time.Time) (tp Topup, fresh bool, err error) {
+	return s.recordTransfer(ctx, tr, gasUsed, user, false, now)
+}
+
+// recordTransfer is recordTopup; change: the Agentic Wallet itself paid stablecoin out in the same transaction (a
+// swap whose router sent back what it didn't use). Such a transfer from no player is the platform's own money,
+// netted in the restock's books (restock.go), so nothing is owed back on it.
+func (s *store) recordTransfer(ctx context.Context, tr Transfer, gasUsed uint64, user string, change bool, now time.Time) (tp Topup, fresh bool, err error) {
 	if !topupToken(tr.Token) || !strings.EqualFold(tr.To, game.payments.AgenticWallet) || tr.Amount == nil || tr.Amount.Sign() < 0 {
 		return tp, false, errBad
 	}
@@ -93,6 +101,10 @@ func (s *store) recordTopup(ctx context.Context, tr Transfer, gasUsed uint64, us
 	}
 	tp = Topup{Tx: strings.ToLower(tr.Tx), LogIndex: int64(tr.LogIndex), Token: tr.Token, USDCents: cents,
 		Status: "unknown", At: now.Unix()}
+	refund := cents // owed back to the sender: all of it until it is credited (reconcile.go counts it as owed)
+	if change && user == "" {
+		refund = 0
+	}
 	t, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return tp, false, err
@@ -111,16 +123,17 @@ func (s *store) recordTopup(ctx context.Context, tr Transfer, gasUsed uint64, us
 		default:
 			tp.Status, tp.USDCents, tp.Fee = "credited", ok, topupFee(ok)
 			tp.Credits = toCredits(ok - tp.Fee)
+			refund = cents - ok
 			if ok < cents {
 				tp.Reason = fmt.Sprintf("%d cents over the caps, to refund", cents-ok)
 			}
 		}
 	}
 	res, err := t.Exec(`INSERT INTO topups (tx, log_index, user_id, sender, token, amount, usd_cents, fee, gas_used, credits,
-		status, reason, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		status, reason, refund_cents, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (tx, log_index) DO NOTHING`,
 		tp.Tx, tp.LogIndex, user, tr.From, tp.Token, tr.Amount.String(), tp.USDCents, tp.Fee, int64(gasUsed), tp.Credits,
-		tp.Status, tp.Reason, tp.At, tp.At)
+		tp.Status, tp.Reason, refund, tp.At, tp.At)
 	if err != nil {
 		return tp, false, err
 	}
@@ -129,9 +142,11 @@ func (s *store) recordTopup(ctx context.Context, tr Transfer, gasUsed uint64, us
 			return tp, false, nil
 		}
 		// Recorded before the sender was known: this player's wallet sent it, so it is theirs now.
+		// Not once it was refunded (the back office marks a refunded unknown row "rejected" too).
 		claim, err := t.Exec(`UPDATE topups SET user_id = ?, status = ?, usd_cents = ?, fee = ?, credits = ?, reason = ?,
-			updated_at = ? WHERE tx = ? AND log_index = ? AND user_id = '' AND status = 'unknown' AND lower(sender) = lower(?)`,
-			user, tp.Status, tp.USDCents, tp.Fee, tp.Credits, tp.Reason, tp.At, tp.Tx, tp.LogIndex, tr.From)
+			refund_cents = ?, updated_at = ? WHERE tx = ? AND log_index = ? AND user_id = '' AND status = 'unknown'
+			AND refunded_at = 0 AND lower(sender) = lower(?)`,
+			user, tp.Status, tp.USDCents, tp.Fee, tp.Credits, tp.Reason, refund, tp.At, tp.Tx, tp.LogIndex, tr.From)
 		if err != nil {
 			return tp, false, err
 		}
@@ -516,8 +531,13 @@ func (s *store) scanTopups(ctx context.Context, c *bsc, now time.Time) error {
 	return nil
 }
 
-// scanRange records every transfer to the Agentic Wallet in blocks [from, to].
+// scanRange records every transfer to the Agentic Wallet in blocks [from, to]. Only a player's top-up costs its
+// receipt (its gas). A transfer from anyone else is never read further than its log: it is owed back in full, unless
+// the Agentic Wallet itself paid stablecoin out in the same tx (a swap's change: the platform's own money). Whether
+// it did is one eth_getLogs per token for the whole range, read once, and only when such a transfer shows up, so a
+// stranger's transfer can't make the scanner fetch, or choke on, a receipt of any size.
 func (s *store) scanRange(ctx context.Context, c *bsc, from, to uint64, now time.Time) error {
+	var paidOut map[string]bool // txs in the range in which the Agentic Wallet sent stablecoin out; nil until read
 	for _, token := range game.payments.Topup.Tokens {
 		trs, err := c.TransfersTo(ctx, token, game.payments.AgenticWallet, from, to)
 		if err != nil {
@@ -537,8 +557,9 @@ func (s *store) scanRange(ctx context.Context, c *bsc, from, to uint64, now time
 				return err
 			}
 			var gas uint64
-			if user != "" { // the receipt costs two rpc calls: only for a player's top-up (its gas is recorded)
-				rc, err := c.Receipt(ctx, tr.Tx)
+			change := false
+			if user != "" {
+				rc, err := c.Receipt(ctx, tr.Tx) // two rpc calls: the gas the player paid
 				if err != nil {
 					return err
 				}
@@ -546,8 +567,20 @@ func (s *store) scanRange(ctx context.Context, c *bsc, from, to uint64, now time
 					return fmt.Errorf("topup scan: %s does not match its receipt", tr.Tx)
 				}
 				gas = rc.GasUsed
+			} else {
+				if paidOut == nil {
+					if paidOut, err = walletPaidOut(ctx, c, from, to); err != nil {
+						// Anyone can make this answer huge (transferFrom(agenticWallet, x, 0) needs no allowance), so it
+						// must not stop the scan: strangers' transfers here are owed in full. Safe: a swap's change is
+						// zeroed when the swap is booked as a restock (VerifiedRestock).
+						slog.Warn("topup scan: the wallet's payouts can't be read; strangers' transfers owed in full",
+							"from", from, "to", to, "err", err)
+						paidOut = map[string]bool{}
+					}
+				}
+				change = paidOut[strings.ToLower(tr.Tx)]
 			}
-			if _, _, err := s.recordTopup(ctx, tr, gas, user, now); err != nil {
+			if _, _, err := s.recordTransfer(ctx, tr, gas, user, change, now); err != nil {
 				return err
 			}
 		}
@@ -576,4 +609,23 @@ func (s *store) scanTopupsEvery(ctx context.Context, c *bsc, every time.Duration
 		case <-tick.C:
 		}
 	}
+}
+
+// walletPaidOut: the txs in blocks [from, to] in which the Agentic Wallet sent a positive amount of USDC/USDT to
+// someone else. A zero amount doesn't count: anyone can call transferFrom(agenticWallet, x, 0) without an
+// allowance (BEP20), which logs a "payout" the wallet never made.
+func walletPaidOut(ctx context.Context, c *bsc, from, to uint64) (map[string]bool, error) {
+	out := map[string]bool{}
+	for _, stable := range game.payments.Topup.Tokens {
+		trs, err := c.TransfersFrom(ctx, stable, game.payments.AgenticWallet, from, to)
+		if err != nil {
+			return nil, err
+		}
+		for _, tr := range trs {
+			if tr.Amount != nil && tr.Amount.Sign() > 0 && !strings.EqualFold(tr.To, game.payments.AgenticWallet) {
+				out[strings.ToLower(tr.Tx)] = true
+			}
+		}
+	}
+	return out, nil
 }

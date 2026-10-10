@@ -271,6 +271,289 @@ func TestTopupPausedOverHTTP(t *testing.T) {
 	}
 }
 
+// sendTopup records a USDC transfer of usd dollars to the Agentic Wallet (user "" = no player known: "unknown").
+func sendTopup(t *testing.T, s *store, n int, usd int64, user, from string) Topup {
+	t.Helper()
+	amt := new(big.Int).Mul(big.NewInt(usd), big.NewInt(1e18))
+	tp, _, err := s.recordTopup(ctx, Transfer{Tx: fmt.Sprintf("0x%064x", n), LogIndex: 0, Token: game.payments.Topup.Tokens["USDC"],
+		From: from, To: game.payments.AgenticWallet, Amount: amt}, 0, user, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tp
+}
+
+const stranger = "0x00000000000000000000000000000000000000aa"
+
+// Money owed back to senders (an over-cap remainder, an unknown sender's transfer) sits in the Agentic Wallet but
+// is neither a player's credits nor the platform's: it can't back credits, or unbacked credits hide behind it.
+func TestReconcileDoesNotCountRefundsOwedAsBacking(t *testing.T) {
+	s := testStore(t)
+	s.Get(ctx, "a")
+	s.Get(ctx, "b")
+	sendTopup(t, s, 1, 50, "a", player)  // $20 credited (1,980 + 20 fee), $30 over the caps, to refund
+	sendTopup(t, s, 2, 40, "", stranger) // a stranger: "unknown", $40 to refund
+	// A bug mints 7,000 credits nobody paid for.
+	if err := s.inTx(ctx, func(tx *sql.Tx) error { return creditLedger(tx, "b", 7000, "refund", "", "bug") }); err != nil {
+		t.Fatal(err)
+	}
+	a, b := newFakeRPC(t, usdcAt+20), newFakeRPC(t, usdcAt+20)
+	walletHolds(a, b, 9000, 0) // exactly the $90 that arrived
+	r, err := s.Reconcile(ctx, newBSC(a.serve(t), b.serve(t)), "system", "test", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.OK {
+		t.Fatalf("matched although 7,000 credits are unbacked once the $70 owed back is refunded: %+v", r)
+	}
+}
+
+// Paying refunds out by hand lowers the wallet: until the back office marks them refunded the check is short (the
+// money may still be owed), and once marked it matches again. Without the mark, every refund would pause payments
+// for good.
+func TestReconcileAfterRefundsArePaidAndMarked(t *testing.T) {
+	s := testStore(t)
+	s.Get(ctx, "a")
+	sendTopup(t, s, 1, 50, "a", player)  // 1,980 credits, 20 fee, 3,000 cents over the caps
+	sendTopup(t, s, 2, 2, "a", player)   // no room left: rejected, 200 cents
+	sendTopup(t, s, 3, 40, "", stranger) // unknown, 4,000 cents
+	a, b := newFakeRPC(t, usdcAt+20), newFakeRPC(t, usdcAt+20)
+	ch := newBSC(a.serve(t), b.serve(t))
+	walletHolds(a, b, 9200, 0)
+	if r, err := s.Reconcile(ctx, ch, "system", "test", time.Now()); err != nil || !r.OK || r.RefundCents != 7200 ||
+		r.OwedCents != 1980 || r.PlatformCents != 20 {
+		t.Fatalf("before refunds: %+v %v", r, err)
+	}
+	walletHolds(a, b, 2000, 0) // the $72 went back to their senders
+	if r, _ := s.Reconcile(ctx, ch, "system", "test", time.Now()); r.OK {
+		t.Fatalf("refunds paid but not marked: %+v", r)
+	}
+	for n := 1; n <= 3; n++ {
+		if _, err := s.MarkRefunded(ctx, "kiel@x", fmt.Sprintf("0x%064x", n), 0, "sent back from the wallet", time.Now()); err != nil {
+			t.Fatalf("refund %d: %v", n, err)
+		}
+	}
+	if r, err := s.Reconcile(ctx, ch, "system", "test", time.Now()); err != nil || !r.OK || r.RefundCents != 0 {
+		t.Fatalf("after marking: %+v %v", r, err)
+	}
+	if why, _ := s.Paused(ctx); why != nil {
+		t.Fatalf("still paused: %v", why)
+	}
+}
+
+// Marking a refund: a reason, once, only where something is owed, audited; a refunded unknown transfer can't be
+// claimed by a player afterwards, nor booked as the seed.
+func TestMarkRefunded(t *testing.T) {
+	s := testStore(t)
+	s.Get(ctx, "a")
+	s.SetIdentity(ctx, "a", "", player, time.Now())
+	sendTopup(t, s, 1, 10, "a", player) // credited in full: nothing owed
+	sendTopup(t, s, 2, 40, "", player)  // seen before the player was known: unknown
+	tx := func(n int) string { return fmt.Sprintf("0x%064x", n) }
+	cases := []struct {
+		tx     string
+		index  int64
+		reason string
+		want   error
+	}{
+		{tx(2), 0, " ", errBad},
+		{"0x12", 0, "x", errBad},
+		{tx(2), -1, "x", errBad},
+		{tx(9), 0, "x", errNoTopup},
+		{tx(2), 1, "x", errNoTopup},
+		{tx(1), 0, "x", errRejected}, // credited in full
+	}
+	for _, c := range cases {
+		if _, err := s.MarkRefunded(ctx, "kiel@x", c.tx, c.index, c.reason, time.Now()); !errors.Is(err, c.want) {
+			t.Errorf("%s:%d %q: %v, want %v", c.tx, c.index, c.reason, err, c.want)
+		}
+	}
+	if cents, err := s.MarkRefunded(ctx, "kiel@x", tx(2), 0, "sent back", time.Now()); err != nil || cents != 4000 {
+		t.Fatalf("refund: %d %v", cents, err)
+	}
+	if _, err := s.MarkRefunded(ctx, "kiel@x", tx(2), 0, "again", time.Now()); !errors.Is(err, errConflict) {
+		t.Fatalf("refunded twice: %v", err)
+	}
+	if n := count(t, s, `SELECT COUNT(*) FROM audit WHERE action = 'topup-refund' AND reason = 'sent back'`); n != 1 {
+		t.Fatalf("audit rows %d", n)
+	}
+	if n := count(t, s, `SELECT COUNT(*) FROM topups WHERE status = 'rejected' AND refunded_at > 0`); n != 1 {
+		t.Fatalf("refunded unknown row not closed: %d", n)
+	}
+	// The player reports the transfer now: it was given back, so no credits.
+	before := credits(t, s, "a")
+	if _, fresh, err := s.recordTopup(ctx, Transfer{Tx: tx(2), Token: game.payments.Topup.Tokens["USDC"], From: player,
+		To: game.payments.AgenticWallet, Amount: new(big.Int).Mul(big.NewInt(40), big.NewInt(1e18))}, 0, "a", time.Now()); err != nil || fresh {
+		t.Fatalf("claimed after refund: fresh=%v %v", fresh, err)
+	}
+	if credits(t, s, "a") != before {
+		t.Fatal("credited a refunded transfer")
+	}
+}
+
+// A refunded transfer is not the platform's money: it can't be booked as the seed.
+func TestRecordSeedRefusesARefundedTransfer(t *testing.T) {
+	s := testStore(t)
+	a, b := newFakeRPC(t, usdcAt+20), newFakeRPC(t, usdcAt+20)
+	a.receipts[usdcTx], b.receipts[usdcTx] = topupReceipt(t), topupReceipt(t)
+	ch := newBSC(a.serve(t), b.serve(t))
+	tr := Transfer{Tx: usdcTx, Token: game.payments.Topup.Tokens["USDC"], From: stranger,
+		To: game.payments.AgenticWallet, Amount: big.NewInt(3e18)}
+	if _, _, err := s.recordTopup(ctx, tr, 0, "", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.MarkRefunded(ctx, "kiel@x", usdcTx, 0, "not ours", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordSeed(ctx, ch, "kiel@x", usdcTx, "seed", time.Now()); !errors.Is(err, errRejected) {
+		t.Fatalf("refunded transfer booked as seed: %v", err)
+	}
+	// And a seed is the platform's: nothing owed back on it.
+	s2 := testStore(t)
+	if _, _, err := s2.recordTopup(ctx, tr, 0, "", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s2.RecordSeed(ctx, ch, "kiel@x", usdcTx, "seed", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, s2, `SELECT COALESCE(SUM(refund_cents), 0) FROM topups`); n != 0 {
+		t.Fatalf("seed still owed back: %d", n)
+	}
+}
+
+// A claim of an unknown transfer keeps only the part over the caps as owed back.
+func TestClaimedTopupOwesBackOnlyTheExcess(t *testing.T) {
+	s := testStore(t)
+	s.Get(ctx, "a")
+	sendTopup(t, s, 1, 40, "", player)
+	if n := count(t, s, `SELECT refund_cents FROM topups`); n != 4000 {
+		t.Fatalf("unknown: %d", n)
+	}
+	sendTopup(t, s, 1, 40, "a", player) // $20 room today
+	if n := count(t, s, `SELECT refund_cents FROM topups WHERE status = 'credited'`); n != 2000 {
+		t.Fatalf("claimed: %d", n)
+	}
+}
+
+// Over HTTP: viewers can't mark refunds; admins can, with a reason, once.
+func TestRefundAdminEndpoint(t *testing.T) {
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	s := testStore(t)
+	sendTopup(t, s, 1, 40, "", stranger)
+	adm := &admin{owners: map[string]bool{}, client: http.DefaultClient}
+	srv := httptest.NewServer(routes(&quoter{}, nil, fakePrivy(t, key), s, adm))
+	defer srv.Close()
+	tok := signJWT(t, key, map[string]any{"alg": "ES256", "kid": "k1"}, good(time.Now().Add(time.Hour)))
+	do := func(body string) (int, map[string]any) {
+		req, _ := http.NewRequest("POST", srv.URL+"/api/admin/topups/refund", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+tok)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		var out map[string]any
+		json.NewDecoder(res.Body).Decode(&out)
+		return res.StatusCode, out
+	}
+	ok := fmt.Sprintf(`{"tx":"0x%064x","logIndex":0,"reason":"sent back"}`, 1)
+	s.SetAdmin(ctx, "test", "kiel@gmail.com", "viewer")
+	if code, _ := do(ok); code != 403 {
+		t.Fatalf("a viewer marked a refund: %d", code)
+	}
+	s.SetAdmin(ctx, "test", "kiel@gmail.com", "admin")
+	if code, _ := do(fmt.Sprintf(`{"tx":"0x%064x","logIndex":0,"reason":""}`, 1)); code != 400 {
+		t.Fatalf("no reason: %d", code)
+	}
+	if code, _ := do(fmt.Sprintf(`{"tx":"0x%064x","logIndex":0,"reason":"x"}`, 2)); code != 404 {
+		t.Fatalf("unknown tx: %d", code)
+	}
+	if code, out := do(ok); code != 200 || out["refundCents"] != float64(4000) {
+		t.Fatalf("refund %d %v", code, out)
+	}
+	if code, _ := do(ok); code != 409 {
+		t.Fatalf("twice: %d", code)
+	}
+	p, _ := s.Payments(ctx)
+	if len(p.Topups) != 1 || p.Topups[0].RefundCents != 4000 || p.Topups[0].RefundedAt == 0 {
+		t.Fatalf("payments page: %+v", p.Topups)
+	}
+}
+
+// changeSwap: the Agentic Wallet's swap that pays paidCents of USDC to the pool and gets changeCents back from it
+// (a router returning what it didn't use), buying TSLAB. In usdcTx's block.
+func changeSwap(t *testing.T, paidCents, changeCents int64) string {
+	var rc map[string]any
+	if err := json.Unmarshal([]byte(swapReceipt(t, paidCents, bought, game.payments.AgenticWallet)), &rc); err != nil {
+		t.Fatal(err)
+	}
+	logs := rc["logs"].([]any)
+	change := map[string]any{}
+	for k, v := range logs[0].(map[string]any) {
+		change[k] = v
+	}
+	change["topics"] = []any{transferTopic, padded(pool), padded(game.payments.AgenticWallet)}
+	change["data"] = fmt.Sprintf("0x%064x", new(big.Int).Mul(big.NewInt(changeCents), big.NewInt(1e16)))
+	change["logIndex"] = "0x1a"
+	rc["logs"] = append(logs, change)
+	b, _ := json.Marshal(rc)
+	return string(b)
+}
+
+// A restock swap pays $5 and gets $2 back from the router: the scanner sees the $2 come in from a sender that is
+// nobody's wallet. That is the platform's own change (the restock books the net $3 out), not a stranger's money to
+// refund: counted as owed back, it would pause payments for everyone. Either order of scan and report.
+func TestReconcileSwapChangeIsNotOwedBack(t *testing.T) {
+	for _, scanFirst := range []bool{true, false} {
+		t.Run(fmt.Sprint("scanFirst=", scanFirst), func(t *testing.T) {
+			s := testStore(t)
+			s.Get(ctx, "a")
+			sendTopup(t, s, 1, 10, "a", player) // 990 credits, 10 fee
+			if err := s.inTx(ctx, func(tx *sql.Tx) error { return platformLedger(tx, 500, "seed", "0xseed", "team") }); err != nil {
+				t.Fatal(err)
+			}
+			ch, a, b := restockChain(t, changeSwap(t, 500, 200), usdcAt+20)
+			walletHolds(a, b, 1000+500-500+200, 8) // top-up + seed − paid + change; 8 units bought
+			scan := func() {
+				s.setScanned(ctx, usdcAt-1, time.Now())
+				if err := s.scanTopups(ctx, ch, time.Now()); err != nil {
+					t.Fatal(err)
+				}
+			}
+			restock := func() {
+				if got, err := s.VerifiedRestock(ctx, ch, "agent", "tsla", usdcTx, "", time.Now()); err != nil || got.USDCents != 300 {
+					t.Fatalf("restock %+v %v", got, err)
+				}
+			}
+			if scanFirst {
+				scan()
+				restock()
+			} else {
+				restock()
+				scan()
+			}
+			if n := count(t, s, `SELECT COUNT(*) FROM topups WHERE tx = ?`, usdcTx); n != 1 {
+				t.Fatalf("change rows %d", n)
+			}
+			if n := count(t, s, `SELECT refund_cents FROM topups WHERE tx = ?`, usdcTx); n != 0 {
+				t.Fatalf("the change is owed back: %d cents", n)
+			}
+			r, err := s.Reconcile(ctx, ch, "system", "test", time.Now())
+			if err != nil || !r.OK || r.RefundCents != 0 || r.OwedCents != 990 || r.PlatformCents != 210 {
+				t.Fatalf("%+v %v", r, err)
+			}
+			if _, err := s.MarkRefunded(ctx, "kiel@x", usdcTx, 0x1a, "x", time.Now()); !errors.Is(err, errRejected) {
+				t.Fatalf("change marked refundable: %v", err)
+			}
+			// A row recorded owing before the scanner knew (pre-fix data): the booked restock still rules it out.
+			s.db.Exec(`UPDATE topups SET refund_cents = 200 WHERE tx = ?`, usdcTx)
+			if r, err := s.Reconcile(ctx, ch, "system", "test", time.Now()); err != nil || !r.OK || r.RefundCents != 0 {
+				t.Fatalf("legacy row: %+v %v", r, err)
+			}
+		})
+	}
+}
+
 // Issue #55 (F1): the agent swaps $0.30 of platform USDC for 0.0009 TSLAB (less than one unit). The swap is booked
 // (the spend, no unit; the fraction stays in the wallet as surplus) and the next reconciliation still matches,
 // instead of pausing payments for everyone over a spend nobody could book.
