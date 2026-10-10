@@ -10,6 +10,9 @@ teammate would notice.
   something to buy from day one.
 - **Schedule:** the agent runs every 10 minutes on the server and buys only what demand suggests, within its caps
   (`deploy/README.md` → Stock agent). No swap is started by hand.
+- **Order ids past 2^53:** the first scheduled swap (2026-10-10, $3 → 0.00784 TSLAB, tx `0x4eb8…db91`) came back
+  with its 20-digit order id rounded (…860615 for …860851), so the agent couldn't find it. It now matches a
+  swap by the same rounded id, token and amount (and stops if two match).
 
 ## 2026-10-11 · The stock agent runs on the server
 
