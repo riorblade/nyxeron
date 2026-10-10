@@ -240,11 +240,15 @@ async function main() {
   try {
     o.orderId = (await swap(usd, lock.contract)).orderId;
   } catch (e) {
-    if (e instanceof BawRefused)
-      clear(statePath, o); // the wallet said no: nothing was placed
-    else
-      (e as Error).message +=
-        ` (the swap may have been placed: recorded in ${statePath}; no new swap until someone checks)`;
+    // Even a structured refusal from the wallet doesn't prove no order went out (a timeout can be reported after
+    // the submit), so the record stays: real money fails closed, and a person checks before the next swap.
+    if (e instanceof BawRefused) {
+      o.error = e.message;
+      save(statePath, o);
+    }
+    (e as Error).message +=
+      ` (the swap may have been placed: recorded in ${statePath}; check \`baw market-order list\`, report a placed ` +
+      `swap with --token ${o.token} --report <tx>, then remove ${statePath}; no new swap until then)`;
     throw e;
   }
   save(statePath, o);

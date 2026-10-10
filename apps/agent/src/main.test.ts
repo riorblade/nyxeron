@@ -214,13 +214,24 @@ test("a swap whose submit outcome is unknown blocks every later buy until someon
   expect(swaps.length).toBe(0);
 });
 
-test("a swap the wallet refused clears its record: nothing was placed", async () => {
+test("a swap the wallet refused keeps its record (fail closed): no new swap until someone checks", async () => {
   api = { demand: demand(), restock: restocked };
   const { BawRefused } = await import("./baw");
-  swapFails = new BawRefused("InsufficientBalance: not enough USDC");
+  // A structured error doesn't prove nothing was placed (e.g. a timeout reported after the submit).
+  swapFails = new BawRefused("Timeout: no confirmation from the exchange");
   const a = await run();
-  expect(a.err).toMatch(/InsufficientBalance/);
-  expect(() => state()).toThrow(/ENOENT/);
+  expect(a.code).toBe(1);
+  expect(a.err).toMatch(/Timeout/);
+  expect(state()).toMatchObject({
+    token: "tsla",
+    usd: 50,
+    error: expect.stringMatching(/Timeout/),
+  });
+  swapFails = undefined;
+  const b = await run();
+  expect(b.code).toBe(1);
+  expect(b.err).toMatch(/no order id/);
+  expect(swaps.length).toBe(0);
 });
 
 test("two runs at once: the second can't take the slot the first holds", async () => {

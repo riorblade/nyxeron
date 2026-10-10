@@ -20,8 +20,9 @@ Before it swaps, a `--buy` run refuses when:
 order id and tx, and the record is removed only once the api has counted the tx (or the wallet says the swap
 failed: nothing spent). The next run finishes an outstanding swap first (follows the order, reports the tx) and
 only then may buy; while it can't, it buys nothing. A record without an order id means the submit's outcome is
-unknown: check `baw market-order list`, report its tx if it swapped, then delete the file. A record with an
-`error` is a tx the api refused (4xx): check it in the back office, then delete the file.
+unknown, even when the wallet answered with an error (a timeout can be reported after the submit): check
+`baw market-order list`, report its tx if it swapped, then delete the file. A record with a tx and an `error` is a
+tx the api refused (4xx): check it in the back office, then delete the file.
 
 **Reporting retries.** A not-yet-final tx (202) is reported again every 10 s, a 5xx or network error with backoff
 (5 s doubling to 60 s), for up to 10 minutes; a 4xx stops at once. `409 tx_used` means it already counted.
