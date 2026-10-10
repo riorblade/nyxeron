@@ -215,21 +215,121 @@ func (s *store) playerByWallet(ctx context.Context, wallet string) (string, erro
 // topupEvery: how often one player may report a tx (each report costs several rpc calls; the web asks every 5 s).
 var topupEvery = 2 * time.Second
 
-func (pl *players) routeTopups(mux *http.ServeMux) {
-	var mu sync.Mutex
-	last := map[string]time.Time{}
-	tooSoon := func(id string, now time.Time) bool {
-		mu.Lock()
-		defer mu.Unlock()
-		if now.Sub(last[id]) < topupEvery {
-			return true
-		}
-		if len(last) > 10_000 { // forget everyone now and then; the window is seconds
-			clear(last)
-		}
-		last[id] = now
-		return false
+// The rpcs are paid and shared with the scanner and reconciliation, so what one player can make them spend on
+// hashes that aren't their top-ups is bounded. A "miss" is a report that turned out not to be one: no such
+// transaction (yet), a failed one, or one that isn't a top-up from the player's wallet. A player gets
+// topupMissBudget misses per topupMissWindow; past it they get 429 too_many_misses until old misses age out (the
+// scanner still credits a real transfer meanwhile). A transfer that exists but isn't final yet (202 while it
+// confirms) is never a miss, so its owner can re-report it for as long as it takes. A settled refusal (tx_failed,
+// not_a_topup) is remembered for the window and answered again without the rpcs. Not player-facing: constants.
+const (
+	topupMissBudget = 20               // misses per player per window (a just-sent transfer misses only for a few seconds)
+	topupMissWindow = 10 * time.Minute // how long a miss, and a remembered refusal, counts
+	topupGuardSweep = 10_000           // entries kept before old ones are swept (never everyone's: only stale ones)
+)
+
+type topupRefusal struct {
+	code int
+	err  string
+	at   time.Time
+}
+
+// topupGuard: the per-player pace, misses and remembered refusals of POST /api/topups, in memory (one api).
+type topupGuard struct {
+	mu      sync.Mutex
+	last    map[string]time.Time    // player → last report
+	misses  map[string][]time.Time  // player → their misses within the window
+	settled map[string]topupRefusal // player|tx → a settled refusal
+	sweepAt int                     // the size that triggers the next sweep
+	every   time.Duration           // the pace last asked for
+}
+
+func newTopupGuard() *topupGuard {
+	return &topupGuard{last: map[string]time.Time{}, misses: map[string][]time.Time{},
+		settled: map[string]topupRefusal{}, sweepAt: topupGuardSweep}
+}
+
+// tooSoon: whether id reported less than every ago; if not, this report is the new last one.
+func (g *topupGuard) tooSoon(id string, now time.Time, every time.Duration) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if t, ok := g.last[id]; ok && now.Sub(t) < every {
+		return true
 	}
+	g.last[id], g.every = now, every
+	if len(g.last)+len(g.misses)+len(g.settled) > g.sweepAt {
+		g.sweep(now)
+	}
+	return false
+}
+
+// refused: a remembered refusal of this tx for id, if any.
+func (g *topupGuard) refused(id, tx string, now time.Time) (topupRefusal, bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	r, ok := g.settled[id+"|"+strings.ToLower(tx)]
+	return r, ok && now.Sub(r.at) < topupMissWindow
+}
+
+// spent: whether id has used up their misses.
+func (g *topupGuard) spent(id string, now time.Time) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.misses[id] = recent(g.misses[id], now)
+	if len(g.misses[id]) == 0 {
+		delete(g.misses, id)
+	}
+	return len(g.misses[id]) >= topupMissBudget
+}
+
+// miss counts a report that wasn't id's top-up.
+func (g *topupGuard) miss(id string, now time.Time) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.misses[id] = append(recent(g.misses[id], now), now)
+}
+
+// refuse remembers a settled refusal (it is a miss too).
+func (g *topupGuard) refuse(id, tx string, code int, err string, now time.Time) {
+	g.miss(id, now)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.settled[id+"|"+strings.ToLower(tx)] = topupRefusal{code: code, err: err, at: now}
+}
+
+// sweep drops what no longer counts (g.mu held). Its cost is paid back by the doubling: sweeps stay rare.
+func (g *topupGuard) sweep(now time.Time) {
+	for id, t := range g.last {
+		if now.Sub(t) >= g.every {
+			delete(g.last, id)
+		}
+	}
+	for id, ms := range g.misses {
+		if ms = recent(ms, now); len(ms) == 0 {
+			delete(g.misses, id)
+		} else {
+			g.misses[id] = ms
+		}
+	}
+	for k, r := range g.settled {
+		if now.Sub(r.at) >= topupMissWindow {
+			delete(g.settled, k)
+		}
+	}
+	g.sweepAt = max(topupGuardSweep, 2*(len(g.last)+len(g.misses)+len(g.settled)))
+}
+
+// recent: the times within the miss window (oldest first, as appended).
+func recent(ts []time.Time, now time.Time) []time.Time {
+	i := 0
+	for i < len(ts) && now.Sub(ts[i]) >= topupMissWindow {
+		i++
+	}
+	return ts[i:]
+}
+
+func (pl *players) routeTopups(mux *http.ServeMux) {
+	guard := newTopupGuard()
 	answer := func(w http.ResponseWriter, r *http.Request, id string, extra map[string]any) {
 		c, sums, list, err := pl.db.Topups(r.Context(), id, time.Now())
 		if err != nil {
@@ -269,8 +369,17 @@ func (pl *players) routeTopups(mux *http.ServeMux) {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "paused"})
 			return
 		}
-		if tooSoon(id, time.Now()) {
+		now := time.Now()
+		if guard.tooSoon(id, now, topupEvery) {
 			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too_soon"})
+			return
+		}
+		if r, ok := guard.refused(id, in.Tx, now); ok { // settled already: no rpc calls
+			writeJSON(w, r.code, map[string]string{"error": r.err})
+			return
+		}
+		if guard.spent(id, now) {
+			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too_many_misses"})
 			return
 		}
 		// The sender to match: the embedded wallet Privy reports for this player, read server-side.
@@ -290,10 +399,15 @@ func (pl *players) routeTopups(mux *http.ServeMux) {
 		_ = pl.db.SetIdentity(r.Context(), id, me.Email, me.Wallet, time.Now())
 		rc, err := pl.chain.Final(r.Context(), in.Tx)
 		switch {
-		case errors.Is(err, errUnconfirmed) || errors.Is(err, errNoTx):
-			writeJSON(w, http.StatusAccepted, map[string]string{"status": "pending"}) // not final yet: ask again
+		case errors.Is(err, errUnconfirmed): // a real transaction, not final yet: ask again (never a miss)
+			writeJSON(w, http.StatusAccepted, map[string]string{"status": "pending"})
+			return
+		case errors.Is(err, errNoTx): // not seen yet (just sent), or no such transaction: a miss
+			guard.miss(id, now)
+			writeJSON(w, http.StatusAccepted, map[string]string{"status": "pending"})
 			return
 		case errors.Is(err, errTxFailed):
+			guard.refuse(id, in.Tx, http.StatusUnprocessableEntity, "tx_failed", now)
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "tx_failed"})
 			return
 		case err != nil:
@@ -305,6 +419,7 @@ func (pl *players) routeTopups(mux *http.ServeMux) {
 		for _, token := range game.payments.Topup.Tokens {
 			trs, err := transfersIn(rc, token)
 			if err != nil {
+				guard.refuse(id, in.Tx, http.StatusUnprocessableEntity, "not_a_topup", now)
 				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "not_a_topup"})
 				return
 			}
@@ -315,6 +430,7 @@ func (pl *players) routeTopups(mux *http.ServeMux) {
 			}
 		}
 		if len(mine) == 0 { // no USDC/USDT from this player's wallet to the platform in that transaction
+			guard.refuse(id, in.Tx, http.StatusUnprocessableEntity, "not_a_topup", now)
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "not_a_topup"})
 			return
 		}

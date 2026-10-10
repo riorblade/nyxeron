@@ -3,6 +3,16 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-10 · Top-up reports can't drain the chain quota
+
+- **Bounded RPC cost per player:** reporting made-up transaction hashes to the top-up endpoint used to cost two paid
+  BNB Chain lookups each, from the same quota top-ups, the scanner and reconciliation need. Each player now gets 20
+  such misses per 10 minutes (then `429 too_many_misses`; the scanner still credits a real transfer), and a refused
+  hash (`tx_failed`, `not_a_topup`) is answered again from memory. A real top-up that's still confirming can be
+  re-reported as often as before.
+- **The pace limit no longer resets:** past 10,000 players the per-player limiter forgot everyone at once; it now
+  drops only stale entries.
+
 ## 2026-10-10 · A paid band always plays
 
 - **Booking a DJ at night no longer cancels the band:** a band booked by day plays its slot even if the CEO books a DJ
