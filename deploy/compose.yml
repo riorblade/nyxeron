@@ -90,7 +90,22 @@ services:
     expose: ["8788"]
     mem_limit: 48m
 
+  # Stock agent (one-off runs, never started by `up`): the baw session (the Agentic Wallet owner's QR sign-in) and
+  # the outstanding-swap record + run lock live on the agent_home volume, so every run sees the same ones.
+  agent:
+    profiles: [agent]
+    build: { context: .., dockerfile: deploy/agent.Dockerfile }
+    environment:
+      AGENT_KEY: ${AGENT_KEY:-}
+      NYXERON_API: https://api.${DOMAIN:-localhost}
+      AGENT_BUY_USD: ${AGENT_BUY_USD:-3}
+      AGENT_STATE: /root/state.json
+    volumes:
+      - agent_home:/root
+    mem_limit: 512m
+
 volumes:
   api_data:
   caddy_data:
   caddy_config:
+  agent_home:
