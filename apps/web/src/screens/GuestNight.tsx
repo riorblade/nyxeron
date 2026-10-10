@@ -27,6 +27,7 @@ import { art } from "@/lib/art";
 import { Img } from "@/components/Img";
 import { Button } from "@/components/ui/button";
 import { TickerTape } from "@/hud/TickerTape";
+import { escLeaving } from "@/screens/leaveKey";
 import { TokenLink } from "@/hud/TokenDetail";
 import { clock, en, fmt, reasonText } from "@/i18n/en";
 import { cn, trapFocus } from "@/lib/utils";
@@ -96,7 +97,7 @@ export function GuestNight({
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) return;
       const k = e.key.toLowerCase();
-      if (e.key === "Escape") setLeaving(true);
+      if (e.key === "Escape") setLeaving((l) => escLeaving(l, over));
       else if (e.key === " " && !online) {
         e.preventDefault();
         setRunning(!useGame.getState().running);
@@ -108,7 +109,7 @@ export function GuestNight({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [setRunning, setSpeed, online]);
+  }, [setRunning, setSpeed, online, over]);
 
   const walkOut = () => {
     // Buy-only: the tokens are the guest's, so they go home to the portfolio with the cash.
