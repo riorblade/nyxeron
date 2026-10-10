@@ -21,5 +21,8 @@
   the PR checks workflow enforces it.
 - Production (VPS, deploys, deploy/.env secrets, applying migrations) is the owner's (@riorblade); contributors'
   PRs list what production needs under Deploy notes. See CONTRIBUTING.md → Ownership.
+- docs/site is the public copy of game-design.md: rule/balance changes update docs/site/engine/* in the same PR.
+  Public site, private repo: no anti-abuse numbers, payment/agent internals, infra, internal endpoints or source
+  links (issue #47).
 - After each task: run pnpm test and pnpm lint (and pnpm test:go if services/ changed), add a docs/changelog.md
   line for anything a player or admin would notice, then summarize changes briefly.

@@ -5,6 +5,7 @@
 | [PRD.md](PRD.md) | you need the why: users, roles, economy, features, requirements, metrics |
 | [architecture.md](architecture.md) | you're touching how parts fit: client, sim core, relay, api, storage, trust |
 | [game-design.md](game-design.md) | you change a rule, a number or balance |
+| [site/](site) | you present NYXERON to players or judges: public Mintlify docs, the engine written as formulas (`cd docs/site && npx mint dev`) |
 | [api.md](api.md) | you call or add an endpoint (player, city, back office, agent) |
 | [multiplayer.md](multiplayer.md) | you work on live sessions or the relay |
 | [roadmap.md](roadmap.md) | you're picking what to build next |
