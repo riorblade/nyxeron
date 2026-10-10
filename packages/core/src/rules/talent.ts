@@ -82,10 +82,12 @@ export function bookBand(s: GameState, band: BandId): ActionResult {
 
 /**
  * When the band plays tonight, in night minutes [start, end): the main act from 22:30 without a DJ, or the opening
- * act 22:00–23:00 when a DJ follows.
+ * act 22:00–23:00 when a DJ follows. The slot is fixed when the night starts, so a DJ booked during the night can't
+ * move a paid band into an opener slot that has already passed.
  */
 export function bandSet(s: GameState): [number, number] | null {
   if (!s.bookedBand) return null;
+  if (s.night?.bandSlot !== undefined) return s.night.bandSlot;
   const b = night.band;
   return s.bookedTalent.length
     ? [b.openerStart, b.openerStart + b.openerLength]

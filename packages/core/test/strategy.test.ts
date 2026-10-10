@@ -7,6 +7,7 @@ import {
   bandPlaying,
   bandSet,
   bookBand,
+  r03_bookDj,
   securityStatus,
   bookingsFor,
   SEAT_TYPES,
@@ -659,5 +660,17 @@ describe("live bands", () => {
       energyTarget(on, { ...n, bandMultiplier: null }, 40, 10),
     );
     expect(ticks(on, end - start).night!.bandMultiplier).toBe(null);
+  });
+  it("still play when a DJ is booked during the night (the band's slot is set when the night starts)", () => {
+    // Level 4, band booked by day, no DJ yet: the main act is due at minute 30.
+    const s = club({ bookedTalent: [], bookedBand: "neonPulse" });
+    const early = ticks(startNight(s), 10);
+    const dj = r03_bookDj(early, "jax");
+    expect(dj.ok).toBe(true);
+    if (!dj.ok) return;
+    const after = ticks(dj.state, night.band.start); // well past minute 30
+    expect(after.log.some((e) => e.kind === "bandStarted")).toBe(true);
+    expect(after.night!.bandMultiplier).toBeGreaterThan(0);
+    expect(bandPlaying(after)).toBe(true);
   });
 });

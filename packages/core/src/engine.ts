@@ -223,6 +223,7 @@ export function startNight(s: GameState): GameState {
       guests,
       djMultiplier: night.noDjDanceFactor,
       bandMultiplier: null,
+      bandSlot: bandSet(s),
       market: {},
       marketEma: {},
       marketHist: {},

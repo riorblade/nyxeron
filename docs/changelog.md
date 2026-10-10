@@ -21,6 +21,45 @@ teammate would notice.
 - **Tests:** `pnpm test` runs a smoke-sized fuzz of the sim (a few seconds); `pnpm test:brutal` runs the full
   hostile fuzz (80 seeds × 350 steps + 30 hostile-id runs, about a minute) and CI runs both.
 
+## 2026-10-10 · Top-up reports can't drain the chain quota
+
+- **Bounded RPC cost per player:** reporting made-up transaction hashes to the top-up endpoint used to cost two paid
+  BNB Chain lookups each, from the same quota top-ups, the scanner and reconciliation need. Each player now gets 20
+  such misses per 10 minutes (then `429 too_many_misses`; the scanner still credits a real transfer), and a refused
+  hash (`tx_failed`, `not_a_topup`) is answered again from memory. Anything that isn't shown to be the player's own
+  transfer counts, including someone else's transaction still confirming, an unreadable (oversized) receipt and RPC
+  errors. A real top-up that's still confirming can be re-reported as often as before: its transfer is already in
+  the receipt.
+- **The pace limit no longer resets:** past 10,000 players the per-player limiter forgot everyone at once; it now
+  drops only stale entries, at least once per 10 minutes.
+
+## 2026-10-10 · A paid band always plays
+
+- **Booking a DJ at night no longer cancels the band:** a band booked by day plays its slot even if the CEO books a DJ
+  during the night. Before, the late DJ moved the band to the opener slot (22:00), which had already passed, so the
+  band's fee was spent and it never went on stage. The band's slot is now fixed when the night starts.
+
+## 2026-10-10 · Esc closes the Leave dialog
+
+- **Esc works both ways on guest and gig nights:** Esc opens Leave and Esc again closes it (Stay); on a gig the
+  decks' own keys pause while the dialog is up, and Esc with the decks collapsed now opens Leave too.
+
+## 2026-10-10 · Lighter landing page
+
+- **Half the landing download:** the second landing video (the reveal clip) now loads only as you scroll towards it
+  instead of with the page, so the first visit fetches about 1.1 MB of media instead of 2.1 MB.
+
+## 2026-10-10 · Private parties stay private; sales check inside the sale
+
+- **A private party sells only to its guests:** buying at a private party, or reading its price list, now needs its
+  invite link opened first (the host always can). Public parties are unchanged.
+- **An event can't point at a negative venue id** (it was stored as a city party); setting prices at a party with no
+  venue is a 404, not a 500.
+- **Cancels and evictions win their races:** settlement reads a party's cancelled flag inside its transaction, so an
+  admin cancel just before it voids the sales instead of paying them out; a shop buy checks the lease (tenant, open,
+  not ended) inside its transaction, so nothing sells after an eviction or a close.
+- **A banned tenant's shop and parties sell nothing** (a ban already stopped them changing anything).
+
 ## 2026-10-10 · The office comes alive (neon UI)
 
 - **A real game look:** the office is now a neon nightclub instead of black and white: violet glass panels, magenta
