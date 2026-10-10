@@ -3,6 +3,17 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-10 · Private parties stay private; sales check inside the sale
+
+- **A private party sells only to its guests:** buying at a private party, or reading its price list, now needs its
+  invite link opened first (the host always can). Public parties are unchanged.
+- **An event can't point at a negative venue id** (it was stored as a city party); setting prices at a party with no
+  venue is a 404, not a 500.
+- **Cancels and evictions win their races:** settlement reads a party's cancelled flag inside its transaction, so an
+  admin cancel just before it voids the sales instead of paying them out; a shop buy checks the lease (tenant, open,
+  not ended) inside its transaction, so nothing sells after an eviction or a close.
+- **A banned tenant's shop and parties sell nothing** (a ban already stopped them changing anything).
+
 ## 2026-10-10 · The office comes alive (neon UI)
 
 - **A real game look:** the office is now a neon nightclub instead of black and white: violet glass panels, magenta

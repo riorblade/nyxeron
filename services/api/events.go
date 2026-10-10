@@ -133,7 +133,7 @@ func (s *store) Event(ctx context.Context, id string, in EventInput, now time.Ti
 	}
 	title, ok := cleanName(in.Title)
 	club, okClub := cleanName(in.Club)
-	if !ok || !okClub || in.Minutes < pc.MinMinutes || in.Minutes > pc.MaxMinutes ||
+	if !ok || !okClub || in.Lease < 0 || in.Minutes < pc.MinMinutes || in.Minutes > pc.MaxMinutes ||
 		in.StartsAt < now.Unix()-60 || in.StartsAt > now.Unix()+int64(pc.MaxAheadDays)*86400 {
 		return PartyView{}, errBad
 	}
