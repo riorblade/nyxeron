@@ -35,10 +35,10 @@ never count as real stock.
 | --- | --- | --- |
 | Credit | 1 USD = 100 credits | integers only |
 | Unit | 1 unit = 0.001 share | integers only |
-| Wholesale price of a unit | live bStock price × 0.001 × 100, rounded up | quoted server-side |
-| CEO's price | up to 3× wholesale (`city.json → shop.maxMarkup`) | set per party, before it starts |
+| Wholesale price of a unit | live bStock price × 0.001 × 100, rounded up (never below cost) | quoted server-side |
+| CEO's price | up to 3× wholesale (`city.json → shop.maxMarkup`) | set per party, before it starts; checked again at each sale |
 | Top-up fee | 1% (min top-up $3) | covers gas sponsorship; the rest is revenue |
-| Per-player top-up cap | $20 a day, $100 in total during the hackathon | there's no withdrawal yet |
+| Per-player top-up cap | $20 a day, $100 in total during the hackathon | there's no withdrawal yet; the day counts by when a top-up is credited |
 | Agent limits | $50 per swap, $500 a day | in code; Binance App limit is a backstop |
 | Top-up tokens | USDC, USDT on BSC (18 decimals) | contract addresses locked in config |
 | Tokens | TSLA (bStock) | whitelist with contract addresses |
@@ -57,7 +57,33 @@ Fund the embedded wallet (Privy `useFundWallet`, card via MoonPay) → send USDC
 sponsorship → the browser posts **only the tx hash** to `POST /api/topups` → the api verifies on BSC (checks below)
 → in one database transaction: record the top-up (tx hash + log index unique), add `credits` (amount − 1% fee) ×
 100, write the ledger. A scanner picks up top-ups whose browser closed. Unknown senders get no credits (flagged in
-the back office).
+the back office). No single transaction or block can stop the scanner:
+
+- Zero-value transfers are skipped.
+- A player's transfer whose receipt both RPCs refuse (over 4 MB, malformed, or a JSON-RPC error from each) is
+  recorded `unknown` with the reason, owed back in full, without credits.
+- One block whose Transfer logs for a token both RPCs refuse (anyone can fill a block with ~10k zero-value transfers
+  to the Agentic Wallet for a few dollars) is passed: at most 5 such blocks or receipts per pass, so a shared outage
+  isn't swept away in one go.
+- A JSON-RPC error from both isn't proof the request is the problem: providers throttle (`-32005 limit exceeded`),
+  time out upstream, or don't serve the method, with the same HTTP 200 answer. So before moving past a block or a
+  receipt the scanner asks both a question that can't be too big (`eth_getLogs` over that block for the zero
+  address, which matches nothing; the receipt of the zero hash, which is `null`). If they refuse that too, the pass
+  stops like an outage and nothing is skipped.
+
+Both are recorded in `scan_retries` and read again on later passes, players' receipts first, only the ones due:
+right away, then after 1, 2, 4 … 128 minutes, then every 128 minutes. A block's logs get 10 reads (about 4 h), a
+player's receipt 30 (about 2 days). A read refused while the providers also refuse the probe doesn't count. What reads
+is credited like any scanned transfer; what never reads is `given_up`. The back office's Payments page lists the open
+and given-up ones ("Unread on chain", each with its own window of 200, players' receipts first) and each top-up's
+reason; once one is checked on BscScan and credited or refunded by hand, **Resolve** closes it (reason in the audit
+log). A player's own
+report (`POST /api/topups`) still credits such a deposit meanwhile. One RPC failing alone still stops the scan, so an
+outage never skips a transfer. A transfer recorded `unknown` and claimed later counts against the daily cap when it is
+credited (`credited_at`; `created_at` stays when it was first seen). A tx booked as the team's seed or as a restock
+is the platform's money: the scanner skips it (records nothing, whoever sent it) and `POST /api/topups` refuses it
+(`not_a_topup`). A tx a player's wallet sent is never booked as the seed: neither the wallet stored now nor any of the
+tx's own top-up rows with a player (credited or rejected, so owed back).
 
 ### 3. Warehouse restock (platform; replaces "CEO orders")
 
@@ -124,7 +150,10 @@ open, not ended) is checked inside that same transaction; a banned tenant's shop
   units the wallet's balance doesn't back are written off (admin) or pause payments (agent); the tx not already
   booked as a restock or a seed.
 - Before a sale: credits and warehouse checked and held in the same transaction; prices from the server, never from
-  the browser.
+  the browser; the price must still be within wholesale … 3× wholesale at today's quote (a shop priced before the
+  market fell doesn't sell until its tenant reprices).
+- The pause is read inside the transaction that moves the money (sale or top-up credit), so a reconciliation that
+  pauses meanwhile stops it.
 - Always: every credit change goes through the ledger in the same transaction as its cause; secrets and addresses
   live in server config.
 
@@ -138,21 +167,43 @@ open, not ended) is checked inside that same transaction; a banned tenant's shop
    nothing to refund), nor anything in a tx booked as a restock or seed (already netted in platform funds; the back
    office shows it with nothing owed and won't mark it refunded). The scanner reads no receipt for a transfer from a
    non-player: whether the wallet paid out in its tx comes from one `eth_getLogs` per token for the whole range, and
-   a zero-value "payout" (anyone can log `transferFrom(agenticWallet, x, 0)`) doesn't count.
+   a zero-value "payout" (anyone can log `transferFrom(agenticWallet, x, 0)`) doesn't count. If those payouts can't
+   be read (anyone can make that answer huge), the strangers' transfers in the range are owed in full, the range goes
+   into `scan_retries` (`payouts`) and is read again like the rest, and until it reads (or is given up) those rows
+   say so and can't be marked refunded (409 `payouts_unread`): one of them may be a swap's change.
 2. Units are backed, per token: (warehouse on hand + reserved + Σ players' real units) × 0.001 ≤ bStock held.
 
-**Before deploying migration 7** (money owed back), list the transfers its backfill will count as owed in full: an
-unknown sender's transfer outside any booked restock or seed. A swap's change from a swap that was never booked shows
-up here and would pause payments at the first reconciliation; book that swap (report it as a restock) first. Anything
-else listed is a stranger's money, owed back.
+**Before deploying migration 7** (money owed back), list every row its backfill will count as owed, with the amount:
+an unknown sender's transfer (all of it), a rejected top-up and the part of a credited one over the caps (the cents
+its reason starts with), outside any tx booked as a restock or seed. A swap's change from a swap that was never booked
+shows up here and would pause payments at the first reconciliation; book that swap (report it as a restock) first.
+Anything else listed is owed back to its sender. The database has no record of refunds yet (`refunded_at` comes with
+migration 7), so rows already paid back by hand are listed too: **right after deploying, mark each of them Refunded in
+the back office (Payments) before the next hourly reconciliation**, or it counts them as owed and may pause payments.
+This query uses migration 7's own rule (a test runs it on a v6 database and compares it with what the migration
+writes).
 
 ```sql
-SELECT tx, log_index, sender, token, usd_cents, datetime(created_at, 'unixepoch') AS at
-FROM topups
-WHERE status = 'unknown'
-  AND lower(tx) NOT IN (SELECT lower(ref) FROM platform_ledger WHERE kind IN ('restock', 'seed'))
+-- owed by migration 7: one row per transfer it will owe, total_owed_cents = their sum
+SELECT tx, log_index, status, sender, token, usd_cents, reason, owed_cents,
+  SUM(owed_cents) OVER () AS total_owed_cents, datetime(created_at, 'unixepoch') AS at
+FROM (
+  SELECT *, CASE
+    WHEN lower(tx) IN (SELECT lower(ref) FROM platform_ledger WHERE kind IN ('restock', 'seed')) THEN 0
+    WHEN status = 'unknown' THEN usd_cents
+    WHEN status IN ('rejected', 'credited') THEN MAX(0, CAST(reason AS INTEGER))
+    ELSE 0 END AS owed_cents
+  FROM topups
+)
+WHERE owed_cents > 0
 ORDER BY created_at;
 ```
+
+**Migration 8** (`credited_at`, `scan_retries`, the `platform_ledger(lower(ref))` index) needs no data check: it
+backfills `credited_at` for credited rows from `updated_at` and only adds a table and an index. After deploying it,
+`GET /api/admin/payments` answers `scanRetries` (empty at first). Migration 8 changed inside PR #64 (the `payouts`
+kind); a database that ran an earlier head of that PR (none in production) must be recreated or get the new table by
+hand.
 
 Balances are read from BSC, never from the database.
 

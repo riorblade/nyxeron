@@ -819,10 +819,33 @@ func (a *admin) route(mux *http.ServeMux) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found"})
 		case errors.Is(err, errRejected):
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "nothing_owed"})
+		case errors.Is(err, errPayoutsUnread):
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "payouts_unread"})
 		case err != nil:
 			fail(w, err) // bad_request, conflict (already refunded)
 		default:
 			writeJSON(w, http.StatusOK, map[string]int64{"refundCents": cents})
+		}
+	})
+	// Close what the top-up scanner couldn't read, once checked by hand (Payments, "Unread on chain").
+	mux.HandleFunc("POST /api/admin/scan-retries/resolve", func(w http.ResponseWriter, r *http.Request) {
+		actor, _, yes := a.who(w, r, roleAdmin)
+		var in struct {
+			Kind   string `json:"kind"`
+			Ref    string `json:"ref"`
+			Block  int64  `json:"block"`
+			Reason string `json:"reason"`
+		}
+		if !yes || !body(w, r, &in) {
+			return
+		}
+		switch err := a.db.ResolveScanRetry(r.Context(), actor, in.Kind, in.Ref, in.Block, in.Reason, time.Now()); {
+		case errors.Is(err, errNoScanRetry):
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found"})
+		case err != nil:
+			fail(w, err) // bad_request, conflict (resolved or read already)
+		default:
+			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 		}
 	})
 	mux.HandleFunc("POST /api/admin/sales/{id}/void", func(w http.ResponseWriter, r *http.Request) {

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"math/big"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -193,6 +194,19 @@ func (s *store) unpaused(ctx context.Context) error {
 	return nil
 }
 
+// pausedIn: errPaused while a reconciliation mismatch stands, read inside the transaction that moves the money
+// (unpaused is only an early answer: a reconciliation can pause between it and the commit).
+func pausedIn(t *sql.Tx) error {
+	var n int
+	if err := t.QueryRow(`SELECT COUNT(*) FROM settings WHERE key = ?`, pauseKey).Scan(&n); err != nil {
+		return err
+	}
+	if n > 0 {
+		return errPaused
+	}
+	return nil
+}
+
 // Reconciliations: the last results, newest first (from the audit log).
 func (s *store) Reconciliations(ctx context.Context, limit int) ([]map[string]any, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT detail, reason, at FROM audit WHERE action = 'reconcile'
@@ -257,12 +271,28 @@ type AdminSale struct {
 	SettledAt int64  `json:"settledAt,omitempty"`
 }
 
+// ScanRetry: something the top-up scanner moved past unread (scan_retries): a block's Transfer logs for one token
+// ("logs", ref = the token), a player's receipt ("receipt", ref = the tx), or the Agentic Wallet's payouts in blocks
+// Block..Ref ("payouts", ref = the last block; strangers' transfers there can't be marked refunded while it is open). "open" is read again on later passes;
+// "given_up" is the back office's: check the block on an explorer and credit or refund by hand.
+type ScanRetry struct {
+	Kind      string `json:"kind"`
+	Ref       string `json:"ref"`
+	Block     int64  `json:"block"`
+	Reason    string `json:"reason"`
+	Attempts  int    `json:"attempts"`
+	Status    string `json:"status"`
+	CreatedAt int64  `json:"createdAt"`
+	UpdatedAt int64  `json:"updatedAt"`
+}
+
 // Payments: what the back office's Payments page shows.
 type Payments struct {
 	Paused          []string         `json:"paused"`
 	Reconciliations []map[string]any `json:"reconciliations"`
 	Topups          []AdminTopup     `json:"topups"`
 	Sales           []AdminSale      `json:"sales"`
+	ScanRetries     []ScanRetry      `json:"scanRetries"` // not "done": still being read, or given up
 }
 
 // bookedTxs: the txs the platform booked as a restock or as the team's seed. Stablecoin coming back to the Agentic
@@ -280,7 +310,7 @@ func (s *store) Payments(ctx context.Context) (Payments, error) {
 		return p, err
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT t.tx, t.log_index, t.token, t.usd_cents, t.fee, t.credits, t.status,
-		t.created_at, t.user_id, COALESCE(u.email, ''), t.sender,
+		t.reason, t.created_at, t.user_id, COALESCE(u.email, ''), t.sender,
 		CASE WHEN t.refunded_at = 0 AND t.tx IN `+bookedTxs+` THEN 0 ELSE t.refund_cents END, t.refunded_at
 		FROM topups t LEFT JOIN users u ON u.id = t.user_id
 		ORDER BY t.id DESC LIMIT 200`)
@@ -290,7 +320,7 @@ func (s *store) Payments(ctx context.Context) (Payments, error) {
 	p.Topups = []AdminTopup{}
 	for rows.Next() {
 		var x AdminTopup
-		if err := rows.Scan(&x.Tx, &x.LogIndex, &x.Token, &x.USDCents, &x.Fee, &x.Credits, &x.Status, &x.At,
+		if err := rows.Scan(&x.Tx, &x.LogIndex, &x.Token, &x.USDCents, &x.Fee, &x.Credits, &x.Status, &x.Reason, &x.At,
 			&x.UserID, &x.Email, &x.Sender, &x.RefundCents, &x.RefundedAt); err != nil {
 			rows.Close()
 			return p, err
@@ -298,6 +328,28 @@ func (s *store) Payments(ctx context.Context) (Payments, error) {
 		p.Topups = append(p.Topups, x)
 	}
 	rows.Close()
+	// Open and given-up rows each get their own window, players' receipts first in each: anyone can make blocks
+	// unreadable for a few dollars, and their rows must never push a player's deposit off the page.
+	p.ScanRetries = []ScanRetry{}
+	for _, status := range []string{"open", "given_up"} {
+		rows, err = s.db.QueryContext(ctx, `SELECT kind, ref, block, reason, attempts, status, created_at, updated_at
+			FROM scan_retries WHERE status = ? ORDER BY kind = 'receipt' DESC, updated_at DESC, block DESC LIMIT 200`, status)
+		if err != nil {
+			return p, err
+		}
+		for rows.Next() {
+			var x ScanRetry
+			if err := rows.Scan(&x.Kind, &x.Ref, &x.Block, &x.Reason, &x.Attempts, &x.Status, &x.CreatedAt, &x.UpdatedAt); err != nil {
+				rows.Close()
+				return p, err
+			}
+			p.ScanRetries = append(p.ScanRetries, x)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return p, err
+		}
+	}
 	rows, err = s.db.QueryContext(ctx, `SELECT id, party_id, lease_id, buyer, seller, token, qty, price, wholesale,
 		status, created_at, settled_at FROM sales ORDER BY id DESC LIMIT 200`)
 	if err != nil {
@@ -352,6 +404,7 @@ func (s *store) RecordSeed(ctx context.Context, c *bsc, actor, tx, reason string
 		return 0, err
 	}
 	var cents int64
+	var senders []string
 	for _, stable := range game.payments.Topup.Tokens {
 		trs, err := transfersIn(rc, stable)
 		if err != nil {
@@ -360,7 +413,19 @@ func (s *store) RecordSeed(ctx context.Context, c *bsc, actor, tx, reason string
 		for _, tr := range trs {
 			if strings.EqualFold(tr.To, game.payments.AgenticWallet) && !strings.EqualFold(tr.From, game.payments.AgenticWallet) {
 				cents += usdCents(tr.Amount)
+				senders = append(senders, tr.From)
 			}
+		}
+	}
+	// A player's wallet sent it (banned or not, reported or not): a top-up, theirs to be credited or refunded.
+	for _, from := range senders {
+		var n int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE lower(wallet_address) = ? AND wallet_address != ''`,
+			strings.ToLower(from)).Scan(&n); err != nil {
+			return 0, err
+		}
+		if n > 0 {
+			return 0, errRejected
 		}
 	}
 	if cents <= 0 {
@@ -406,9 +471,9 @@ func (s *store) MarkRefunded(ctx context.Context, actor, tx string, logIndex int
 	var cents int64
 	return cents, s.inTx(ctx, func(t *sql.Tx) error {
 		var refundedAt int64
-		var sender string
-		err := t.QueryRow(`SELECT CASE WHEN tx IN `+bookedTxs+` THEN 0 ELSE refund_cents END, refunded_at, sender
-			FROM topups WHERE tx = ? AND log_index = ?`, tx, logIndex).Scan(&cents, &refundedAt, &sender)
+		var sender, why string
+		err := t.QueryRow(`SELECT CASE WHEN tx IN `+bookedTxs+` THEN 0 ELSE refund_cents END, refunded_at, sender, reason
+			FROM topups WHERE tx = ? AND log_index = ?`, tx, logIndex).Scan(&cents, &refundedAt, &sender, &why)
 		if errors.Is(err, sql.ErrNoRows) {
 			return errNoTopup
 		}
@@ -420,6 +485,19 @@ func (s *store) MarkRefunded(ctx context.Context, actor, tx string, logIndex int
 		}
 		if cents <= 0 {
 			return errRejected // nothing is owed back on it (or it is a booked restock's or seed's change)
+		}
+		// Recorded while the wallet's payouts in its blocks couldn't be read: maybe a swap's change. Not while they're
+		// still read again; once given up, the back office checks the tx by hand.
+		var from, to uint64
+		if n, _ := fmt.Sscanf(why, payoutsNoteFmt, &from, &to); n == 2 {
+			var open int
+			if err := t.QueryRow(`SELECT COUNT(*) FROM scan_retries WHERE kind = 'payouts' AND ref = ? AND block = ?
+				AND status = 'open'`, strconv.FormatUint(to, 10), int64(from)).Scan(&open); err != nil {
+				return err
+			}
+			if open > 0 {
+				return errPayoutsUnread
+			}
 		}
 		res, err := t.Exec(`UPDATE topups SET refunded_at = ?1, updated_at = ?1,
 			status = CASE WHEN status = 'unknown' THEN 'rejected' ELSE status END
@@ -434,3 +512,41 @@ func (s *store) MarkRefunded(ctx context.Context, actor, tx string, logIndex int
 			map[string]any{"refundCents": cents, "sender": sender}, reason)
 	})
 }
+
+// ResolveScanRetry closes what the scanner couldn't read (open or given up) once the back office checked it by hand
+// (credited or refunded the deposit, or found nothing to do): it is no longer read again nor shown. The reason goes
+// to the audit log with the row as it was.
+func (s *store) ResolveScanRetry(ctx context.Context, actor, kind, ref string, block int64, reason string, now time.Time) error {
+	reason = strings.TrimSpace(reason)
+	if kind == "" || ref == "" || block < 0 || reason == "" || len(reason) > 200 {
+		return errBad
+	}
+	return s.inTx(ctx, func(t *sql.Tx) error {
+		var status, why string
+		var attempts int
+		err := t.QueryRow(`SELECT status, reason, attempts FROM scan_retries WHERE kind = ? AND ref = ? AND block = ?`,
+			kind, ref, block).Scan(&status, &why, &attempts)
+		if errors.Is(err, sql.ErrNoRows) {
+			return errNoScanRetry
+		}
+		if err != nil {
+			return err
+		}
+		if status == "done" {
+			return errConflict
+		}
+		if _, err := t.Exec(`UPDATE scan_retries SET status = 'done', reason = ?, updated_at = ?
+			WHERE kind = ? AND ref = ? AND block = ? AND status = ?`,
+			shortErr(errors.New("resolved by hand: "+reason)), now.Unix(), kind, ref, block, status); err != nil {
+			return err
+		}
+		return audit(t, actor, "scan-retry-resolve", fmt.Sprintf("%s:%s:%d", kind, ref, block),
+			map[string]any{"status": status, "attempts": attempts, "reason": why}, reason)
+	})
+}
+
+var errNoScanRetry = errors.New("scan retry: not found")
+
+// errPayoutsUnread: the transfer sits in a block range whose Agentic Wallet payouts the scanner couldn't read yet
+// (scan_retries "payouts", open): it may be a swap's change, owed to nobody. Refundable once they read or are given up.
+var errPayoutsUnread = errors.New("refund: the wallet's payouts in this transfer's blocks aren't read yet")

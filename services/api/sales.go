@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"math/big"
 	"net/http"
 	"strconv"
 	"time"
@@ -45,15 +46,18 @@ func wholesaleOf(token string, quotes map[string]float64) (int64, error) {
 	if !(price > 0) || math.IsInf(price, 0) {
 		return 0, errNoPrice
 	}
-	// Whole numbers: the price in credits per share (cents today), then up to whole credits per unit. Float math
-	// alone rounds one credit too many at some prices ($70.00 × 0.001 × 100 = 7.000…01 → 8).
+	// Exact: the quote (a float64 is an exact binary fraction) × creditsPerUsd ÷ units per share as a rational,
+	// rounded up to whole credits, so a unit never wholesales below what it costs and never a credit above (float
+	// math rounds $70.00 × 0.001 × 100 to 7.000…01 → 8; no slack lets $70.0000000049 through at 7 either).
 	per := int64(math.Round(1 / game.payments.SharesPerUnit))
-	perShare := price * float64(game.payments.CreditsPerUSD)
-	if perShare > float64(maxWholesale*per) { // an absurd quote is no price (and keeps price × qty far from overflowing)
+	if price*float64(game.payments.CreditsPerUSD) > float64(maxWholesale*per) { // an absurd quote is no price (and keeps price × qty far from overflowing)
 		return 0, errNoPrice
 	}
-	c := int64(math.Round(perShare))
-	return max(1, (c+per-1)/per), nil
+	cost := new(big.Rat).SetFloat64(price)
+	cost.Mul(cost, big.NewRat(int64(game.payments.CreditsPerUSD), per))
+	c := new(big.Int).Add(cost.Num(), new(big.Int).Sub(cost.Denom(), big.NewInt(1)))
+	c.Quo(c, cost.Denom()) // ceil(num / denom), both positive
+	return max(1, c.Int64()), nil
 }
 
 // maxWholesale: one unit (0.001 share) above $10,000 means a broken feed, not a stock.
@@ -250,8 +254,8 @@ type Sale struct {
 // errPriceChanged: the seller's price is above what the buyer saw (a shop's price changed in between).
 var errPriceChanged = errors.New("sales: the price changed")
 
-// sellable: a price the CEO set for the token that still covers today's wholesale price, and that is no more
-// than the buyer agreed to pay (maxPrice; 0 = the price shown is the price paid).
+// sellable: a price the CEO set for the token that is still between today's wholesale price and maxMarkup × it
+// (checked when it is set, and again here: the market moves), and that is no more than the buyer agreed to pay (maxPrice; 0 = the price shown is the price paid).
 func sellable(prices map[string]int64, token string, qty, maxPrice int64, quotes map[string]float64) (price, wholesale int64, err error) {
 	if qty < 1 || qty > game.city.Shop.MaxBuy || maxPrice < 0 {
 		return 0, 0, errBad
@@ -269,6 +273,9 @@ func sellable(prices map[string]int64, token string, qty, maxPrice int64, quotes
 	if price < wholesale {
 		return 0, 0, errRejected // the market moved above the CEO's price: they'd sell at a loss
 	}
+	if float64(price) > game.city.Shop.MaxMarkup*float64(wholesale) {
+		return 0, 0, errRejected // the market fell below the CEO's price ÷ maxMarkup: over the cap until they reprice
+	}
 	return price, wholesale, nil
 }
 
@@ -281,6 +288,9 @@ func (s *store) BuyAtParty(ctx context.Context, buyer string, pid int64, token s
 		return sale, err
 	}
 	err := s.inTx(ctx, func(t *sql.Tx) error {
+		if err := pausedIn(t); err != nil {
+			return err
+		}
 		p, err := partyOf(t, pid)
 		if err != nil {
 			return err
@@ -334,6 +344,9 @@ func (s *store) BuyAtShop(ctx context.Context, buyer string, lease int64, token 
 	// The lease (its tenant, open, not ended) and the prices are read inside the sale's transaction: a buy racing an
 	// eviction or a close can't settle after it, paying the margin to a tenant who no longer runs the shop.
 	err := s.inTx(ctx, func(t *sql.Tx) error {
+		if err := pausedIn(t); err != nil {
+			return err
+		}
 		var owner string
 		var open int
 		err := t.QueryRow(`SELECT user_id, open FROM leases WHERE id = ? AND ends_at > ?`, lease, now.Unix()).Scan(&owner, &open)

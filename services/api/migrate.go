@@ -196,20 +196,23 @@ var migrations = []string{
 	// real stock and go, each removal written as a stock move. Nothing is reserved before the cutover. Coin shops
 	// are gone too: what CEOs still hold on their shelves is bought back in NYX Points at their own shelf price,
 	// one ledger row per player, and the shelves are emptied.
+	// Edited after it ran in production (#38): units reserved for held sales count against the verified ones
+	// (on hand + reserved never exceeds them), and a shelf with no positive price buys nothing back. Production
+	// had nothing reserved and no such shelf when it ran, so only fresh databases (and the tests) see the change.
 	`CREATE TEMP TABLE verified AS
 		SELECT ps.token, COALESCE((SELECT SUM(m.delta) FROM stock_moves m WHERE m.token = ps.token AND m.kind = 'restock'
 			AND m.tx != '' AND m.tx IN (SELECT ref FROM platform_ledger WHERE kind = 'restock')), 0) AS units
 		FROM platform_stock ps;
 	INSERT INTO stock_moves (token, delta, kind, actor, reason, at)
-		SELECT ps.token, MIN(v.units, ps.qty) - ps.qty, 'adjust', 'cutover', 'hand-entered units are not real stock',
-			CAST(strftime('%s', 'now') AS INTEGER)
-		FROM platform_stock ps JOIN verified v ON v.token = ps.token WHERE ps.qty > MIN(v.units, ps.qty);
-	UPDATE platform_stock SET qty = MIN(qty, (SELECT units FROM verified WHERE verified.token = platform_stock.token)),
+		SELECT ps.token, MAX(0, MIN(ps.qty, v.units - ps.reserved)) - ps.qty, 'adjust', 'cutover',
+			'hand-entered units are not real stock', CAST(strftime('%s', 'now') AS INTEGER)
+		FROM platform_stock ps JOIN verified v ON v.token = ps.token WHERE ps.qty > MAX(0, MIN(ps.qty, v.units - ps.reserved));
+	UPDATE platform_stock SET qty = MAX(0, MIN(qty, (SELECT units FROM verified WHERE verified.token = platform_stock.token) - reserved)),
 		updated_at = CAST(strftime('%s', 'now') AS INTEGER);
 	DROP TABLE verified;
 	CREATE TEMP TABLE buyback AS
 		SELECT user_id, SUM(qty * price) AS np, group_concat(qty || ' ' || upper(token), ', ') AS what
-		FROM shop_stock WHERE qty > 0 GROUP BY user_id;
+		FROM shop_stock WHERE qty > 0 AND price > 0 GROUP BY user_id;
 	UPDATE users SET wallet = wallet + (SELECT np FROM buyback WHERE buyback.user_id = users.id)
 		WHERE id IN (SELECT user_id FROM buyback);
 	INSERT INTO ledger (user_id, delta, balance, kind, actor, reason, at)
@@ -234,6 +237,31 @@ var migrations = []string{
 		WHEN status IN ('rejected', 'credited') THEN MAX(0, CAST(reason AS INTEGER))
 		ELSE 0 END
 		WHERE refund_cents = 0 AND refunded_at = 0;`,
+	// 8 — when a top-up was credited. The 24 h cap counts credits by this, not by created_at (when the transfer was
+	// first recorded): a transfer recorded "unknown" and claimed days later counts on the day it is credited (#38).
+	// Existing credited rows were credited when last updated.
+	// scan_retries: what the top-up scanner couldn't read and moved past (a block's Transfer logs for one token, a
+	// player's receipt, or the Agentic Wallet's payouts in a block range: both rpcs answered too big, malformed or
+	// refused). Read again on later passes, a bounded
+	// number of times; the back office sees what is still open (Payments). Players' own reports credit those
+	// deposits meanwhile.
+	// platform_ledger_ref: the "booked already?" lookups (seed, restock) match lower(ref); one row per credited
+	// top-up (its fee) lands there, so they'd scan the table.
+	`ALTER TABLE topups ADD COLUMN credited_at INTEGER NOT NULL DEFAULT 0;
+	UPDATE topups SET credited_at = updated_at WHERE status = 'credited' AND credited_at = 0;
+	CREATE INDEX IF NOT EXISTS topups_credited ON topups(user_id, credited_at);
+	CREATE TABLE IF NOT EXISTS scan_retries (
+		kind TEXT NOT NULL CHECK (kind IN ('logs', 'receipt', 'payouts')),
+		ref TEXT NOT NULL,                  -- logs: the token contract; receipt: the tx; payouts: the range's last block
+		block INTEGER NOT NULL,
+		reason TEXT NOT NULL,
+		attempts INTEGER NOT NULL DEFAULT 1,
+		status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'done', 'given_up')),
+		created_at INTEGER NOT NULL,
+		updated_at INTEGER NOT NULL,
+		PRIMARY KEY (kind, ref, block)
+	);
+	CREATE INDEX IF NOT EXISTS platform_ledger_ref ON platform_ledger(lower(ref));`,
 }
 
 func migrate(db *sql.DB) error {
@@ -272,8 +300,13 @@ var addColumnRe = regexp.MustCompile(`(?i)ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN\s
 // adds them.
 const onceMark = "-- once: backfill of the new columns"
 
-// withoutColumnsPresent drops a migration's ADD COLUMN statements for columns the table already has, so a
-// migration runs again on a database that has it (SQLite has no ADD COLUMN IF NOT EXISTS; a test harness may
+// rerunnable: the only columns whose ADD COLUMN may be skipped when the table has them already (migrations 7 and 8).
+// Any other ADD COLUMN runs as written, so a column that exists where it shouldn't (schema drift) fails the
+// migration instead of being hidden.
+var rerunnable = map[string]bool{"topups.refund_cents": true, "topups.refunded_at": true, "topups.credited_at": true}
+
+// withoutColumnsPresent drops a migration's ADD COLUMN statements for rerunnable columns the table already has, so
+// a migration runs again on a database that has it (SQLite has no ADD COLUMN IF NOT EXISTS; a test harness may
 // rewind user_version). If it had them all, it ran before: its backfill after onceMark is dropped too (columns are
 // added in the same transaction as the backfill, so having them means it was done).
 func withoutColumnsPresent(t *sql.Tx, m string) (string, error) {
@@ -282,6 +315,9 @@ func withoutColumnsPresent(t *sql.Tx, m string) (string, error) {
 	out := addColumnRe.ReplaceAllStringFunc(m, func(stmt string) string {
 		added++
 		g := addColumnRe.FindStringSubmatch(stmt)
+		if !rerunnable[strings.ToLower(g[1]+"."+g[2])] {
+			return stmt
+		}
 		var n int
 		if e := t.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`, g[1], g[2]).Scan(&n); e != nil {
 			err = e

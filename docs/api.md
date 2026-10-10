@@ -45,7 +45,7 @@ Base URL: `https://api.nyxeron.xyz` (dev: same origin, Vite proxies `/api` to `:
 | POST | `/api/nights` | `{cash, bought, pnl, room?}` | a night out as a guest (play money): every unit cost ≥ 1, `pnl` within what the market range allows, `room` a relay code or empty, one per account per minute (409 if sooner) |
 | POST | `/api/gigs` | `{fee}` | a DJ gig played to the end (capped, rate-limited) |
 | GET | `/api/topups` | — | `{credits, topups}`: the player's credit balance and last 20 top-ups |
-| POST | `/api/topups` | `{tx}` | report a USDC/USDT transfer from your embedded wallet to the Agentic Wallet; the api reads it on BSC and credits it once it is final. 202 `{status:"pending"}` until then; errors `tx_failed`, `not_a_topup` (422), `no_wallet` (409), `too_soon` (429), `paused`, `chain_unavailable`, `auth_unavailable`, `not_configured` (503). Minimum and caps: `payments.json` (see [payments.md](payments.md)) |
+| POST | `/api/topups` | `{tx}` | report a USDC/USDT transfer from your embedded wallet to the Agentic Wallet; the api reads it on BSC and credits it once it is final. 202 `{status:"pending"}` until then; errors `tx_failed`, `not_a_topup` (422; also a tx booked as the platform's seed or a restock), `no_wallet` (409), `too_soon` (429), `paused`, `chain_unavailable`, `auth_unavailable`, `not_configured` (503). Minimum and caps: `payments.json` (see [payments.md](payments.md)) |
 | GET | `/api/docs/{kind}` | — | `[{slot, updatedAt, meta}]` |
 | GET/PUT/DELETE | `/api/docs/{kind}/{slot}` | document | kinds: `saves` (auto, 1–3), `djsets` (main), `layouts`, `shoutouts` |
 
@@ -112,9 +112,10 @@ Every change requires `reason` (except announcement/admin role changes) and is w
 | GET | `/api/admin/stock` | — | viewer |
 | PUT | `/api/admin/stock/{token}` | `{tx, reason}` (a swap, verified on BSC) or `{delta < 0, reason}` (take units out) | admin |
 | POST | `/api/admin/sales/{id}/void` | `{reason}` (a held party sale: credits back, units released) | admin |
-| GET | `/api/admin/payments` | — (paused?, reconciliation history, top-ups incl. unknown senders, sales) | viewer |
+| GET | `/api/admin/payments` | — (paused?, reconciliation history, top-ups incl. unknown senders with their `reason`, sales, `scanRetries`: blocks, receipts or the Agentic Wallet's payouts in a block range that the top-up scanner moved past unread, `open` while it reads them again, `given_up` after 10 reads (30 for a player's receipt); open and given-up rows each up to 200, players' receipts first) | viewer |
+| POST | `/api/admin/scan-retries/resolve` | `{kind, ref, block, reason}` (closes an open or given-up `scanRetries` row once it was checked by hand: not read again nor shown; the row as it was goes to the audit log; once: 409 after; 404 `not_found`) | admin |
 | POST | `/api/admin/reconcile` | `{reason}` (check now against BSC; a match resumes paused payments) | admin |
-| POST | `/api/admin/topups/refund` | `{tx, logIndex, reason}` (what a top-up transfer is owed back was paid back by hand: reconciliation stops counting it as owed; once; an unknown transfer can't be claimed after; 422 `nothing_owed` when nothing is owed on it, a swap's change in a booked restock or seed tx included) | admin |
+| POST | `/api/admin/topups/refund` | `{tx, logIndex, reason}` (what a top-up transfer is owed back was paid back by hand: reconciliation stops counting it as owed; once; an unknown transfer can't be claimed after; 422 `nothing_owed` when nothing is owed on it, a swap's change in a booked restock or seed tx included; 409 `payouts_unread` while the wallet's payouts in its blocks are still being read again: it may be a swap's change) | admin |
 | POST | `/api/admin/seed` | `{tx, reason}` (book USDC/USDT the team sent to the Agentic Wallet as the platform's own money; read on BSC, once; 409 `credited_to_a_player` for a player's transfer (credited or rejected) or one refunded by hand; 422 `not_a_seed` if the wallet sent anything out in the tx) | admin |
 | GET | `/api/admin/audit?target&before&limit` | — | viewer |
 | GET/PUT | `/api/admin/announcement` | `{text, active}` | viewer / admin |

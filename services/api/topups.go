@@ -82,13 +82,14 @@ func topupToken(addr string) bool {
 // (recorded "unknown", no credits). A later call with the sender's player claims such a row and credits it then
 // (the scanner can see a transfer before the player's wallet is stored). fresh is false when nothing changed.
 func (s *store) recordTopup(ctx context.Context, tr Transfer, gasUsed uint64, user string, now time.Time) (tp Topup, fresh bool, err error) {
-	return s.recordTransfer(ctx, tr, gasUsed, user, false, now)
+	return s.recordTransfer(ctx, tr, gasUsed, user, false, "", now)
 }
 
 // recordTransfer is recordTopup; change: the Agentic Wallet itself paid stablecoin out in the same transaction (a
 // swap whose router sent back what it didn't use). Such a transfer from no player is the platform's own money,
-// netted in the restock's books (restock.go), so nothing is owed back on it.
-func (s *store) recordTransfer(ctx context.Context, tr Transfer, gasUsed uint64, user string, change bool, now time.Time) (tp Topup, fresh bool, err error) {
+// netted in the restock's books (restock.go), so nothing is owed back on it. note: the reason of a row recorded
+// "unknown" (no player), for the back office (the scanner's payoutsNote); a player's claim replaces it.
+func (s *store) recordTransfer(ctx context.Context, tr Transfer, gasUsed uint64, user string, change bool, note string, now time.Time) (tp Topup, fresh bool, err error) {
 	if !topupToken(tr.Token) || !strings.EqualFold(tr.To, game.payments.AgenticWallet) || tr.Amount == nil || tr.Amount.Sign() < 0 {
 		return tp, false, errBad
 	}
@@ -110,7 +111,23 @@ func (s *store) recordTransfer(ctx context.Context, tr Transfer, gasUsed uint64,
 		return tp, false, err
 	}
 	defer t.Rollback()
-	if user != "" {
+	if err := pausedIn(t); err != nil { // read again inside: a reconciliation that paused meanwhile stops this
+		return tp, false, err
+	}
+	// Booked as the team's seed or as a restock already: these dollars are the platform's, never also a player's.
+	// The scanner and POST /api/topups skip such a tx before they get here; this is the last line.
+	var booked string
+	if err := t.QueryRow(`SELECT kind FROM platform_ledger WHERE lower(ref) = ? AND kind IN ('seed', 'restock') LIMIT 1`,
+		tp.Tx).Scan(&booked); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return tp, false, err
+	}
+	switch {
+	case booked != "":
+		tp.Status, tp.Reason = "rejected", booked+": booked as the platform's own money, for the back office to check"
+		refund = 0 // the platform's own money: owed to nobody
+	case user == "":
+		tp.Reason = note
+	case user != "":
 		// Inside the transaction: the api's single connection serializes top-ups, so two claims can't share room.
 		ok, err := topupRoom(t, user, now)
 		if err != nil {
@@ -130,10 +147,10 @@ func (s *store) recordTransfer(ctx context.Context, tr Transfer, gasUsed uint64,
 		}
 	}
 	res, err := t.Exec(`INSERT INTO topups (tx, log_index, user_id, sender, token, amount, usd_cents, fee, gas_used, credits,
-		status, reason, refund_cents, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		status, reason, refund_cents, created_at, updated_at, credited_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (tx, log_index) DO NOTHING`,
 		tp.Tx, tp.LogIndex, user, tr.From, tp.Token, tr.Amount.String(), tp.USDCents, tp.Fee, int64(gasUsed), tp.Credits,
-		tp.Status, tp.Reason, refund, tp.At, tp.At)
+		tp.Status, tp.Reason, refund, tp.At, tp.At, creditedAt(tp))
 	if err != nil {
 		return tp, false, err
 	}
@@ -141,12 +158,13 @@ func (s *store) recordTransfer(ctx context.Context, tr Transfer, gasUsed uint64,
 		if user == "" {
 			return tp, false, nil
 		}
-		// Recorded before the sender was known: this player's wallet sent it, so it is theirs now.
+		// Recorded before the sender was known: this player's wallet sent it, so it is theirs now. It counts against
+		// the daily cap from now (credited_at), whenever it arrived (created_at stays when it was first recorded).
 		// Not once it was refunded (the back office marks a refunded unknown row "rejected" too).
 		claim, err := t.Exec(`UPDATE topups SET user_id = ?, status = ?, usd_cents = ?, fee = ?, credits = ?, reason = ?,
-			refund_cents = ?, updated_at = ? WHERE tx = ? AND log_index = ? AND user_id = '' AND status = 'unknown'
+			refund_cents = ?, updated_at = ?, credited_at = ? WHERE tx = ? AND log_index = ? AND user_id = '' AND status = 'unknown'
 			AND refunded_at = 0 AND lower(sender) = lower(?)`,
-			user, tp.Status, tp.USDCents, tp.Fee, tp.Credits, tp.Reason, refund, tp.At, tp.Tx, tp.LogIndex, tr.From)
+			user, tp.Status, tp.USDCents, tp.Fee, tp.Credits, tp.Reason, refund, tp.At, creditedAt(tp), tp.Tx, tp.LogIndex, tr.From)
 		if err != nil {
 			return tp, false, err
 		}
@@ -165,10 +183,19 @@ func (s *store) recordTransfer(ctx context.Context, tr Transfer, gasUsed uint64,
 	return tp, true, t.Commit()
 }
 
-// topupRoom: how many cents this player may still be credited: payments.json's caps over 24 h and in total.
+// creditedAt: when a row is credited (now), 0 while it isn't.
+func creditedAt(tp Topup) int64 {
+	if tp.Status == "credited" {
+		return tp.At
+	}
+	return 0
+}
+
+// topupRoom: how many cents this player may still be credited: payments.json's caps over 24 h (by when each
+// top-up was credited, not when it arrived) and in total.
 func topupRoom(t *sql.Tx, user string, now time.Time) (int64, error) {
 	var day, total int64
-	if err := t.QueryRow(`SELECT COALESCE(SUM(CASE WHEN created_at > ? THEN usd_cents END), 0), COALESCE(SUM(usd_cents), 0)
+	if err := t.QueryRow(`SELECT COALESCE(SUM(CASE WHEN credited_at > ? THEN usd_cents END), 0), COALESCE(SUM(usd_cents), 0)
 		FROM topups WHERE user_id = ? AND status = 'credited'`, now.Unix()-86400, user).Scan(&day, &total); err != nil {
 		return 0, err
 	}
@@ -191,7 +218,7 @@ func (s *store) Topups(ctx context.Context, user string, now time.Time) (credits
 	if err = s.db.QueryRowContext(ctx, `SELECT credits FROM users WHERE id = ?`, user).Scan(&credits); err != nil {
 		return
 	}
-	if err = s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(CASE WHEN created_at > ? THEN usd_cents END), 0),
+	if err = s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(CASE WHEN credited_at > ? THEN usd_cents END), 0),
 		COALESCE(SUM(usd_cents), 0) FROM topups WHERE user_id = ? AND status = 'credited'`,
 		now.Unix()-86400, user).Scan(&sums.Day, &sums.Total); err != nil {
 		return
@@ -445,6 +472,15 @@ func (pl *players) routeTopups(mux *http.ServeMux) {
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "not_a_topup"})
 			return
 		}
+		// A tx the platform booked (the team's seed, a restock) is the platform's money, never a player's top-up.
+		if booked, err := bookedTx(r.Context(), pl.db.db, in.Tx); err != nil {
+			fail(w, err)
+			return
+		} else if booked {
+			guard.refuse(id, in.Tx, http.StatusUnprocessableEntity, "not_a_topup", now)
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "not_a_topup"})
+			return
+		}
 		for _, tr := range mine {
 			if _, _, err := pl.db.recordTopup(r.Context(), tr, rc.GasUsed, id, time.Now()); err != nil {
 				fail(w, err)
@@ -493,10 +529,37 @@ func topupsFrom(rc Receipt, wallet string) []Transfer {
 const scanKey = "topup_scan_block" // settings: the last block the scanner read
 const scanSpan = 500               // blocks per read at most; halved while a provider refuses the range
 
+// scanSkipsPerPass: how many single blocks one pass may move past unread (scan_retries). Anyone can make a block's
+// logs unreadable (≈10k zero-value transfers to the Agentic Wallet), and both providers answering garbage for a while
+// looks the same, so one pass doesn't skip a whole outage: past this many, the pass stops and the next one goes on.
+const scanSkipsPerPass = 5
+
+// scanRetryMax: how many times a block's logs (or the wallet's payouts) the scanner couldn't read are read in all
+// (the first time included) before they are left to the back office ("given_up"). Retries wait 0, 1, 2, 4 … 128
+// minutes: about 4 h in all.
+const scanRetryMax = 10
+
+// scanReceiptRetryMax: the same for a player's receipt (a player's money): reads keep coming every 128 minutes after
+// the first ten, about 2 days in all.
+const scanReceiptRetryMax = 30
+
+// scanRetryWaitMax: the longest wait between two reads of a retry (2^7 minutes).
+const scanRetryWaitMax = 7
+
+// scanRetriesPerPass: the oldest open retries read per pass at most.
+const scanRetriesPerPass = 20
+
+// unanswerable: both rpcs answered, and neither answer can be used (too big, malformed, or a JSON-RPC error). Most
+// likely the request itself is the problem, but throttling looks the same: probe (LogsServed, ReceiptsServed)
+// before moving past it.
+func unanswerable(err error) bool { return errors.Is(err, errUnreadable) || errors.Is(err, errRefused) }
+
 // scanTopups credits transfers to the Agentic Wallet that no browser reported (closed tab, lost network), from
 // the last scanned block up to the newest final one. The first pass starts at the chain's tip: history before
 // the scanner ran is reported by players, not replayed. The cursor only moves past blocks that were read and
-// recorded in full, so an error never skips a transfer.
+// recorded in full, or that can't be read at all (one block whose logs both rpcs refuse: recorded in scan_retries,
+// read again later), so a provider that is down never skips a transfer and no single block wedges the scanner.
+// Each pass first reads again what earlier passes couldn't.
 func (s *store) scanTopups(ctx context.Context, c *bsc, now time.Time) error {
 	safe, err := c.SafeHead(ctx)
 	if err != nil || safe == 0 {
@@ -512,10 +575,13 @@ func (s *store) scanTopups(ctx context.Context, c *bsc, now time.Time) error {
 	if err != nil {
 		return err
 	}
-	span := uint64(scanSpan)
+	if err := s.retryScans(ctx, c, now); err != nil { // never stops the scan: retried next pass
+		slog.Warn("topup scan: retries", "err", err)
+	}
+	span, skips := uint64(scanSpan), 0
 	for last < safe {
 		to := min(safe, last+span)
-		err := s.scanRange(ctx, c, last+1, to, now)
+		err := s.scanRange(ctx, c, last+1, to, &skips, now)
 		if err != nil {
 			if span == 1 || ctx.Err() != nil {
 				return err
@@ -527,60 +593,371 @@ func (s *store) scanTopups(ctx context.Context, c *bsc, now time.Time) error {
 			return err
 		}
 		last = to
+		span = min(scanSpan, span*2) // past a hard block: back to full ranges
 	}
 	return nil
 }
 
-// scanRange records every transfer to the Agentic Wallet in blocks [from, to]. Only a player's top-up costs its
-// receipt (its gas). A transfer from anyone else is never read further than its log: it is owed back in full, unless
-// the Agentic Wallet itself paid stablecoin out in the same tx (a swap's change: the platform's own money). Whether
-// it did is one eth_getLogs per token for the whole range, read once, and only when such a transfer shows up, so a
-// stranger's transfer can't make the scanner fetch, or choke on, a receipt of any size.
-func (s *store) scanRange(ctx context.Context, c *bsc, from, to uint64, now time.Time) error {
-	var paidOut map[string]bool // txs in the range in which the Agentic Wallet sent stablecoin out; nil until read
+// scanRange records every transfer to the Agentic Wallet in blocks [from, to]. One transaction never stops it: a
+// zero-value transfer (anyone can emit one from any address) is skipped, a player's transfer whose receipt can't be
+// read (both rpcs refuse it) is recorded for the back office without credits and read again later, and a transfer
+// from anyone else is never read further than its log: it is owed back in full, unless the Agentic Wallet itself
+// paid stablecoin out in the same tx (a swap's change: the platform's own money). Whether it did is one eth_getLogs
+// per token for the whole range, read once, and only when such a transfer shows up. One block whose logs for a token
+// both rpcs refuse is recorded in scan_retries and passed (up to scanSkipsPerPass a pass). A provider that is down
+// still stops the scan, so nothing is skipped by an outage.
+func (s *store) scanRange(ctx context.Context, c *bsc, from, to uint64, skips *int, now time.Time) error {
+	var paid payouts // the Agentic Wallet's stablecoin payouts in the range, read once when needed
+	skipped := false // this block counted against the pass's skips already
 	for _, token := range game.payments.Topup.Tokens {
 		trs, err := c.TransfersTo(ctx, token, game.payments.AgenticWallet, from, to)
 		if err != nil {
-			return err
-		}
-		for _, tr := range trs {
-			var known int
-			if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM topups WHERE tx = ? AND log_index = ?`,
-				tr.Tx, tr.LogIndex).Scan(&known); err != nil {
+			if from != to || !unanswerable(err) || (!skipped && *skips >= scanSkipsPerPass) {
 				return err
 			}
-			if known > 0 {
+			// Throttled, timing out upstream, or no eth_getLogs at all: stop, the block is read when they answer.
+			if err := c.LogsServed(ctx, from); err != nil {
+				return err
+			}
+			if !skipped {
+				skipped = true
+				*skips++
+			}
+			if err := s.scanSkipped(ctx, "logs", strings.ToLower(token), from, err, now); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := s.scanTransfers(ctx, c, trs, from, to, &paid, skips, now); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// payouts: the txs in a block range in which the Agentic Wallet sent stablecoin out (walletPaidOut), read once.
+type payouts struct {
+	read   bool            // read, or tried
+	unread bool            // couldn't be read: recorded in scan_retries ("payouts"), read again later
+	txs    map[string]bool // lower-case tx hashes
+}
+
+// payoutsNote: the reason of a stranger's row recorded while the wallet's payouts in its blocks couldn't be read. It
+// may be a swap's change (owed to nobody), so the back office can't mark it refunded while they're read again.
+func payoutsNote(from, to uint64) string {
+	return fmt.Sprintf(payoutsNoteFmt+" may be a swap's change: not refundable while they're read again (Unread on chain)", from, to)
+}
+
+const payoutsNoteFmt = "the wallet's payouts in blocks %d-%d couldn't be read:"
+
+// bookedTx: tx is on the books as a restock or as the team's seed (any letter case): the platform's own money, never
+// a player's top-up nor owed back to anyone.
+func bookedTx(ctx context.Context, q querier, tx string) (bool, error) {
+	var n int
+	err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM platform_ledger WHERE lower(ref) = lower(?) AND kind IN ('restock', 'seed')`,
+		tx).Scan(&n)
+	return n > 0, err
+}
+
+// scanTransfers records the transfers to the Agentic Wallet read from blocks [from, to] (see scanRange). A tx the
+// platform booked (seed, restock) is skipped: nothing is recorded for it, whoever sent it. A player's receipt both
+// rpcs refuse counts against skips like a block (scanSkipsPerPass), and only once a probe shows they still answer
+// receipts: throttling stops the scan instead of recording every deposit in the range unreadable.
+func (s *store) scanTransfers(ctx context.Context, c *bsc, trs []Transfer, from, to uint64, paid *payouts, skips *int, now time.Time) error {
+	for _, tr := range trs {
+		if tr.Amount == nil || tr.Amount.Sign() == 0 { // nothing arrived: nothing to credit or refund
+			continue
+		}
+		if booked, err := bookedTx(ctx, s.db, tr.Tx); err != nil {
+			return err
+		} else if booked {
+			continue
+		}
+		var known int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM topups WHERE tx = ? AND log_index = ?`,
+			tr.Tx, tr.LogIndex).Scan(&known); err != nil {
+			return err
+		}
+		if known > 0 {
+			continue
+		}
+		user, err := s.playerByWallet(ctx, tr.From)
+		if err != nil {
+			return err
+		}
+		var gas uint64
+		change, note := false, ""
+		if user != "" { // the receipt costs two rpc calls: only for a player's top-up (its gas is recorded)
+			rc, err := scanReceipt(ctx, c, tr)
+			if unanswerable(err) {
+				if *skips >= scanSkipsPerPass {
+					return err
+				}
+				if err := c.ReceiptsServed(ctx); err != nil {
+					return err
+				}
+				*skips++
+				if err := s.recordUnreadable(ctx, tr, err, now); err != nil {
+					return err
+				}
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			gas = rc.GasUsed
+		} else {
+			if !paid.read {
+				paid.read = true
+				if paid.txs, err = walletPaidOut(ctx, c, from, to); err != nil {
+					// Anyone can make this answer huge (transferFrom(agenticWallet, x, 0) needs no allowance), so it
+					// must not stop the scan: strangers' transfers here are owed in full, noted (payoutsNote) so the
+					// back office doesn't refund a swap's change meanwhile, and the range is read again later
+					// (scan_retries "payouts"). A swap's change is also zeroed when the swap is booked as a restock.
+					if err := s.scanSkipped(ctx, "payouts", strconv.FormatUint(to, 10), from, err, now); err != nil {
+						return err
+					}
+					paid.unread, paid.txs = true, map[string]bool{}
+				}
+			}
+			change = paid.txs[strings.ToLower(tr.Tx)]
+			if paid.unread {
+				note = payoutsNote(from, to)
+			}
+		}
+		if _, _, err := s.recordTransfer(ctx, tr, gas, user, change, note, now); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// errReceiptMismatch: a scanned transfer's receipt says the tx failed or sits in another block.
+var errReceiptMismatch = errors.New("topup scan: the transfer does not match its receipt")
+
+// scanReceipt: the receipt of a scanned transfer, checked against it. unanswerable when both rpcs refuse it (the
+// caller records the transfer with recordUnreadable and moves on); any other error stops the scan.
+func scanReceipt(ctx context.Context, c *bsc, tr Transfer) (Receipt, error) {
+	rc, err := c.Receipt(ctx, tr.Tx)
+	if err != nil {
+		return rc, err
+	}
+	if !rc.OK || rc.Block != tr.Block {
+		return rc, fmt.Errorf("%w: %s", errReceiptMismatch, tr.Tx)
+	}
+	return rc, nil
+}
+
+// unreadableReason: the reason of a top-up row whose receipt couldn't be read (the back office's Payments shows it).
+const unreadableReason = "unreadable receipt (too big, malformed or refused by both rpcs): not credited yet, read again for a while, then for the back office"
+
+// recordUnreadable records a transfer whose receipt can't be read as "unknown" with no user and no credits, owed
+// back in full, the reason saying why, and puts its receipt in scan_retries: later passes read it again and credit
+// the player if it reads (or the player's own report claims it). Nothing changes if the transfer is recorded already.
+func (s *store) recordUnreadable(ctx context.Context, tr Transfer, why error, now time.Time) error {
+	if tr.Amount == nil || tr.Amount.Sign() < 0 {
+		return errBad
+	}
+	cents := usdCents(tr.Amount)
+	if cents < 0 {
+		return errBad
+	}
+	slog.Warn("topup scan: unreadable receipt, recorded for the back office", "tx", tr.Tx, "err", why)
+	return s.inTx(ctx, func(t *sql.Tx) error {
+		// Owed back in full (refund_cents) until it is credited or refunded: reconciliation counts it as owed.
+		if _, err := t.Exec(`INSERT INTO topups (tx, log_index, user_id, sender, token, amount, usd_cents,
+			status, reason, refund_cents, created_at, updated_at) VALUES (?, ?, '', ?, ?, ?, ?, 'unknown', ?, ?, ?, ?)
+			ON CONFLICT (tx, log_index) DO NOTHING`,
+			strings.ToLower(tr.Tx), int64(tr.LogIndex), tr.From, tr.Token, tr.Amount.String(), cents,
+			unreadableReason, cents, now.Unix(), now.Unix()); err != nil {
+			return err
+		}
+		return scanSkippedIn(t, "receipt", strings.ToLower(tr.Tx), tr.Block, why, now)
+	})
+}
+
+// scanSkipped records what the scanner moved past unread (a block's logs for one token, or a receipt), once.
+func (s *store) scanSkipped(ctx context.Context, kind, ref string, block uint64, why error, now time.Time) error {
+	slog.Warn("topup scan: moved past what can't be read; recorded for the back office and read again later",
+		"kind", kind, "ref", ref, "block", block, "err", why)
+	return s.inTx(ctx, func(t *sql.Tx) error { return scanSkippedIn(t, kind, ref, block, why, now) })
+}
+
+func scanSkippedIn(t *sql.Tx, kind, ref string, block uint64, why error, now time.Time) error {
+	_, err := t.Exec(`INSERT INTO scan_retries (kind, ref, block, reason, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT (kind, ref, block) DO NOTHING`, kind, ref, int64(block), shortErr(why), now.Unix(), now.Unix())
+	return err
+}
+
+// shortErr: an error's text cut to fit a row (a joined rpc error can be long).
+func shortErr(err error) string {
+	msg := strings.ReplaceAll(err.Error(), "\n", "; ")
+	if len(msg) > 300 {
+		msg = msg[:300] + "…"
+	}
+	return msg
+}
+
+// scanRetryDue: when an open retry with this many reads behind it may be read again: right away after the first,
+// then 1, 2, 4 … minutes after the last.
+func scanRetryDue(attempts int, last int64) int64 {
+	if attempts <= 1 {
+		return last
+	}
+	return last + int64(60)<<min(attempts-2, scanRetryWaitMax)
+}
+
+// scanRetryDueSQL: scanRetryDue in SQL, so a pass picks only rows that are due (rows waiting out a long backoff
+// never hold a due one up).
+var scanRetryDueSQL = fmt.Sprintf(`updated_at + CASE WHEN attempts <= 1 THEN 0 ELSE 60 << min(attempts - 2, %d) END`,
+	scanRetryWaitMax)
+
+// scanRetryLimit: how many reads a retry of this kind gets in all.
+func scanRetryLimit(kind string) int {
+	if kind == "receipt" {
+		return scanReceiptRetryMax
+	}
+	return scanRetryMax
+}
+
+// retryScans reads again what earlier passes couldn't (scan_retries "open") and is due now, players' receipts first,
+// then oldest first, at most scanRetriesPerPass a pass. What reads now is recorded like any scanned transfer
+// ("done"); what both rpcs still refuse, while they answer a probe, counts a read, up to scanRetryLimit ("given_up":
+// the back office's). Any other error (a provider down, throttled or failing the probe, the payments pause) ends
+// this pass's retries without counting: they go on next pass.
+func (s *store) retryScans(ctx context.Context, c *bsc, now time.Time) error {
+	type retry struct {
+		kind, ref string
+		block     uint64
+		attempts  int
+		updated   int64
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT kind, ref, block, attempts, updated_at FROM scan_retries
+		WHERE status = 'open' AND `+scanRetryDueSQL+` <= ? ORDER BY kind = 'receipt' DESC, updated_at, block LIMIT ?`,
+		now.Unix(), scanRetriesPerPass)
+	if err != nil {
+		return err
+	}
+	var open []retry
+	for rows.Next() {
+		var r retry
+		var block int64
+		if err := rows.Scan(&r.kind, &r.ref, &block, &r.attempts, &r.updated); err != nil {
+			rows.Close()
+			return err
+		}
+		r.block = uint64(block)
+		open = append(open, r)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, r := range open {
+		if now.Unix() < scanRetryDue(r.attempts, r.updated) {
+			continue
+		}
+		var err error
+		switch r.kind {
+		case "logs":
+			err = s.retryLogs(ctx, c, r.ref, r.block, now)
+		case "payouts":
+			err = s.retryPayouts(ctx, c, r.ref, r.block)
+		default:
+			err = s.retryReceipt(ctx, c, r.ref, r.block, now)
+		}
+		if unanswerable(err) { // a read counts only while the providers answer a probe of the same kind
+			probe := c.ReceiptsServed(ctx)
+			if r.kind != "receipt" {
+				probe = c.LogsServed(ctx, r.block)
+			}
+			if probe != nil {
+				return probe
+			}
+		}
+		switch {
+		case err == nil:
+			_, err = s.db.ExecContext(ctx, `UPDATE scan_retries SET status = 'done', attempts = attempts + 1, updated_at = ?
+				WHERE kind = ? AND ref = ? AND block = ?`, now.Unix(), r.kind, r.ref, int64(r.block))
+		case unanswerable(err) || errors.Is(err, errReceiptMismatch):
+			_, err = s.db.ExecContext(ctx, `UPDATE scan_retries SET attempts = attempts + 1, reason = ?, updated_at = ?,
+				status = CASE WHEN attempts + 1 >= ? THEN 'given_up' ELSE 'open' END
+				WHERE kind = ? AND ref = ? AND block = ?`, shortErr(err), now.Unix(), scanRetryLimit(r.kind), r.kind, r.ref, int64(r.block))
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// retryLogs reads one block's transfers of token to the Agentic Wallet again and records them.
+func (s *store) retryLogs(ctx context.Context, c *bsc, token string, block uint64, now time.Time) error {
+	trs, err := c.TransfersTo(ctx, token, game.payments.AgenticWallet, block, block)
+	if err != nil {
+		return err
+	}
+	var paid payouts
+	skips := 0
+	return s.scanTransfers(ctx, c, trs, block, block, &paid, &skips, now)
+}
+
+// retryPayouts reads the Agentic Wallet's payouts in blocks [from, ref] again. The strangers' rows recorded while they
+// couldn't be read (payoutsNote) lose the note; the ones in a tx in which the wallet paid stablecoin out are a
+// swap's change: owed nothing.
+func (s *store) retryPayouts(ctx context.Context, c *bsc, ref string, from uint64) error {
+	to, err := strconv.ParseUint(ref, 10, 64)
+	if err != nil || to < from {
+		return fmt.Errorf("%w: payouts range %d-%q", errUnreadable, from, ref)
+	}
+	paid, err := walletPaidOut(ctx, c, from, to)
+	if err != nil {
+		return err
+	}
+	note := payoutsNote(from, to)
+	return s.inTx(ctx, func(t *sql.Tx) error {
+		for tx := range paid {
+			if _, err := t.Exec(`UPDATE topups SET refund_cents = 0 WHERE tx = ? AND reason = ? AND user_id = ''
+				AND status = 'unknown' AND refunded_at = 0`, tx, note); err != nil {
+				return err
+			}
+		}
+		_, err := t.Exec(`UPDATE topups SET reason = '' WHERE reason = ?`, note)
+		return err
+	})
+}
+
+// retryReceipt reads a receipt the scanner couldn't again and records its players' transfers to the Agentic Wallet:
+// the rows recorded "unknown" for it are claimed and credited (or rejected over the caps), like a report would. A
+// transfer whose sender is no player any more stays "unknown", owed back.
+func (s *store) retryReceipt(ctx context.Context, c *bsc, tx string, block uint64, now time.Time) error {
+	if booked, err := bookedTx(ctx, s.db, tx); err != nil || booked { // the platform's money since: nobody's top-up
+		return err
+	}
+	rc, err := c.Receipt(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if !rc.OK || rc.Block != block {
+		return fmt.Errorf("%w: %s", errReceiptMismatch, tx)
+	}
+	for _, token := range game.payments.Topup.Tokens {
+		trs, err := transfersIn(rc, token)
+		if err != nil {
+			return fmt.Errorf("%w: %w", errReceiptMismatch, err)
+		}
+		for _, tr := range trs {
+			if !strings.EqualFold(tr.To, game.payments.AgenticWallet) || tr.Amount == nil || tr.Amount.Sign() == 0 {
 				continue
 			}
 			user, err := s.playerByWallet(ctx, tr.From)
 			if err != nil {
 				return err
 			}
-			var gas uint64
-			change := false
-			if user != "" {
-				rc, err := c.Receipt(ctx, tr.Tx) // two rpc calls: the gas the player paid
-				if err != nil {
-					return err
-				}
-				if !rc.OK || rc.Block != tr.Block {
-					return fmt.Errorf("topup scan: %s does not match its receipt", tr.Tx)
-				}
-				gas = rc.GasUsed
-			} else {
-				if paidOut == nil {
-					if paidOut, err = walletPaidOut(ctx, c, from, to); err != nil {
-						// Anyone can make this answer huge (transferFrom(agenticWallet, x, 0) needs no allowance), so it
-						// must not stop the scan: strangers' transfers here are owed in full. Safe: a swap's change is
-						// zeroed when the swap is booked as a restock (VerifiedRestock).
-						slog.Warn("topup scan: the wallet's payouts can't be read; strangers' transfers owed in full",
-							"from", from, "to", to, "err", err)
-						paidOut = map[string]bool{}
-					}
-				}
-				change = paidOut[strings.ToLower(tr.Tx)]
+			if user == "" {
+				continue
 			}
-			if _, _, err := s.recordTransfer(ctx, tr, gas, user, change, now); err != nil {
+			if _, _, err := s.recordTransfer(ctx, tr, rc.GasUsed, user, false, "", now); err != nil {
 				return err
 			}
 		}

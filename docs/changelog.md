@@ -29,6 +29,40 @@ teammate would notice.
   could take home 1,000,000 TSLA for 0 Coin, replay a +20,000 P&L night 100 times, store 15 KB of text in the
   ledger, and loop spend → refill into a 400,000-Coin portfolio. Play money only, but it fed the leaderboard.
 
+## 2026-10-10 · Payments survive the brutal tests (#38)
+
+- **The top-up scanner can't be wedged:** a stranger could stop it for good with a 0-value transfer from a player's
+  wallet padded to a > 4 MB receipt, or with ~10k zero-value transfers to the Agentic Wallet in one block (a > 4 MB
+  `eth_getLogs` answer). Zero-value transfers are skipped; a receipt, or one block's logs, that both RPCs refuse is
+  recorded for the back office (no credits) and the scan moves on, at most 5 blocks per pass. Those are read again
+  for about 4 hours (10 reads) and credited if they read; the Payments page lists what is still unread
+  ("Unread on chain") and shows each top-up's reason.
+- **Throttling stops the scanner instead of skipping:** both RPCs refusing a block or a receipt (rate limits,
+  upstream timeouts, no `eth_getLogs` on the plan) look like an oversized one. Before moving past one, the scanner now
+  asks both a question that can't be too big; if they refuse that too, it stops and reads the block when they answer.
+  Retries read under throttling don't count, players' receipts are read again for about 2 days (blocks about 4 h),
+  due retries go first (players' receipts before blocks), and the Payments page keeps open and given-up rows in
+  separate windows, receipts first, with a **Resolve** action (reason, audit log).
+- **Daily cap holds for late claims:** transfers seen before the player's wallet was stored, claimed a day later,
+  could credit $100 at once. The $20/day cap now counts by when a top-up is credited.
+- **Seed and top-up can't count the same dollars:** a tx booked as the team's seed or as a restock is skipped by the
+  scanner (nothing recorded, even if a team member's wallet later plays) and refused by `POST /api/topups`
+  (`not_a_topup`); before, a player's transfer in a restock's tx was credited, and a seed sent from a wallet that
+  played later was recorded against that player. A tx a player's wallet sent (stored now, or on any of the tx's
+  top-up rows) is never booked as the seed.
+- **Unread payouts are shown, not guessed:** when the Agentic Wallet's own payouts in a block range can't be read,
+  strangers' transfers there are still owed in full, but the range is now recorded ("Unread on chain", wallet
+  payouts) and read again like the rest; until it reads, those rows say so and can't be marked refunded (409
+  `payouts_unread`), so a swap's change isn't paid out by mistake. Once read, a swap's change is owed nothing.
+- **Pre-deploy check for migration 7 lists everything it will owe** (unknown, rejected and over-cap rows, with the
+  amount), tested against the migration itself; rows already refunded by hand get marked Refunded right after deploy.
+- **Pause is final:** a sale or top-up credit that was in flight when payments paused no longer commits.
+- **Shop prices stay within 3× wholesale at sale time:** after the market falls, an over-cap shop price doesn't sell
+  until the tenant reprices. Wholesale is rounded up exactly (integer math on the quote), so a unit never sells
+  below its cost.
+- **Cutover (migration 6) on fresh databases:** reserved units count against verified stock, and shelves without a
+  positive price buy nothing back.
+
 ## 2026-10-10 · Docs: public site with the engine as formulas
 
 - **Public docs for players and judges** in `docs/site` (Mintlify; `cd docs/site && npx mint dev`): what NYXERON is,
@@ -58,24 +92,6 @@ teammate would notice.
   (it also goes on any exit and on SIGHUP); the quote must be for exactly the budget into the locked token; the
   record is fsynced before the swap; wallet calls time out after 90 s and api requests after 30 s.
 
-## 2026-10-10 · Refunds owed count against the wallet
-
-- **Reconciliation no longer counts money owed back as backing:** USDC/USDT from unknown senders, rejected top-ups
-  and the part of a top-up over the caps now count as owed to their senders, next to players' credits. Before, it
-  counted as backing, so up to that much unbacked credit could pass the hourly check (issue #55, M1).
-- **Back office, Payments:** top-ups show what they owe back; once you have paid it back by hand, press
-  **Refunded** (with a reason: the audit log) so the check stops counting it. Until then a paid-out refund makes the
-  check come up short and pauses payments.
-- **A swap's change is not owed back:** stablecoin a router returns to the Agentic Wallet in a swap it paid for
-  (pay $5, get $2 back) is the platform's own money, netted in the restock. The top-up scanner now records it with
-  nothing to refund, and reconciliation never counts a transfer in a booked restock or seed tx as owed, so a restock
-  with change no longer pauses payments. The back office shows such a transfer with nothing owed and won't mark it
-  refunded (a booked restock zeroes it).
-- **A stranger can't hide a refund or stall the scanner:** a zero-value "payout" from the Agentic Wallet (anyone can
-  log one) no longer makes a stranger's transfer look like a swap's change, and the scanner reads no receipt for a
-  transfer from a non-player (one log read per range instead), so an oversized receipt can't stop it crediting later
-  top-ups.
-
 ## 2026-10-10 · Tougher sim: closed doors stay closed
 
 - **Cover you can't pay = you go home:** a guest whose budget is below the cover is turned away instead of handing
@@ -93,6 +109,24 @@ teammate would notice.
   field undefined keeps that rule, and an old save with a broken house rule loads with the default for that rule.
 - **Tests:** `pnpm test` runs a smoke-sized fuzz of the sim (a few seconds); `pnpm test:brutal` runs the full
   hostile fuzz (80 seeds × 350 steps + 30 hostile-id runs, about a minute) and CI runs both.
+
+## 2026-10-10 · Refunds owed count against the wallet
+
+- **Reconciliation no longer counts money owed back as backing:** USDC/USDT from unknown senders, rejected top-ups
+  and the part of a top-up over the caps now count as owed to their senders, next to players' credits. Before, it
+  counted as backing, so up to that much unbacked credit could pass the hourly check (issue #55, M1).
+- **Back office, Payments:** top-ups show what they owe back; once you have paid it back by hand, press
+  **Refunded** (with a reason: the audit log) so the check stops counting it. Until then a paid-out refund makes the
+  check come up short and pauses payments.
+- **A swap's change is not owed back:** stablecoin a router returns to the Agentic Wallet in a swap it paid for
+  (pay $5, get $2 back) is the platform's own money, netted in the restock. The top-up scanner now records it with
+  nothing to refund, and reconciliation never counts a transfer in a booked restock or seed tx as owed, so a restock
+  with change no longer pauses payments. The back office shows such a transfer with nothing owed and won't mark it
+  refunded (a booked restock zeroes it).
+- **A stranger can't hide a refund or stall the scanner:** a zero-value "payout" from the Agentic Wallet (anyone can
+  log one) no longer makes a stranger's transfer look like a swap's change, and the scanner reads no receipt for a
+  transfer from a non-player (one log read per range instead), so an oversized receipt can't stop it crediting later
+  top-ups.
 
 ## 2026-10-10 · Every real swap goes on the books
 

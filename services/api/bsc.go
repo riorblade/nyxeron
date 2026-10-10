@@ -30,6 +30,19 @@ var (
 	errTxFailed    = errors.New("bsc: transaction failed")
 	errUnconfirmed = errors.New("bsc: not enough confirmations yet")
 	errNotLocked   = errors.New("bsc: token is not locked in payments.json")
+	// errUnreadable: an answer too big to read (over rpcMaxBytes) or not valid JSON. Returned by both() only when
+	// both rpcs say so: then it is the transaction itself (e.g. a receipt padded with logs), not a provider that is
+	// down, and asking again won't help.
+	errUnreadable = errors.New("bsc: answer too big or malformed")
+	// errRefused: both rpcs answered the request with a JSON-RPC error, or one with that and the other unreadable
+	// (e.g. one block's logs: "response size exceeded" from one, over rpcMaxBytes from the other). Both are up and
+	// answering, but that is not proof the question is the problem: providers throttle (-32005 "limit exceeded") and
+	// time out upstream with the same kind of answer. Before moving past what got it, ask a question that can't be
+	// too big (LogsServed, ReceiptsServed). Returned by both() only when both rpcs say so.
+	errRefused = errors.New("bsc: both rpcs refused the request")
+	// errNotServing: both rpcs refused a question that can't be too big either: they are throttling, timing out
+	// upstream, or don't serve the method. Like a provider that is down: the scanner stops, it doesn't move on.
+	errNotServing = errors.New("bsc: both rpcs refuse even a probe (throttled, timing out, or not serving the method)")
 
 	hashRe  = regexp.MustCompile(`^0x[0-9a-fA-F]{64}$`)
 	addrRe  = regexp.MustCompile(`^0x[0-9a-fA-F]{40}$`)
@@ -115,7 +128,7 @@ func (b *bsc) Receipt(ctx context.Context, tx string) (Receipt, error) {
 			Logs            []rpcLog `json:"logs"`
 		}
 		if err := json.Unmarshal(raw, &r); err != nil {
-			return Receipt{}, err
+			return Receipt{}, fmt.Errorf("%w: %w", errUnreadable, err)
 		}
 		gas, _ := hexUint(r.GasUsed)
 		if !strings.EqualFold(r.TransactionHash, tx) {
@@ -239,6 +252,43 @@ func (b *bsc) transferLogs(ctx context.Context, token, addr string, from, to uin
 		}
 		return out, nil
 	})
+}
+
+// noLogs: an address no log can come from (no contract lives at the zero address): a filter on it matches nothing.
+const noLogs = "0x0000000000000000000000000000000000000000"
+
+// noTx: a hash no transaction has: its receipt is null on any working provider.
+const noTx = "0x0000000000000000000000000000000000000000000000000000000000000000"
+
+// LogsServed: both rpcs answer eth_getLogs over block with a filter that matches nothing (an answer that can't be
+// too big). nil when they do; else errNotServing. Tells "this block's logs are too many" from "eth_getLogs is
+// throttled or not served".
+func (b *bsc) LogsServed(ctx context.Context, block uint64) error {
+	n := "0x" + strconv.FormatUint(block, 16)
+	_, err := both(ctx, b, "eth_getLogs", []any{map[string]any{"address": noLogs, "fromBlock": n, "toBlock": n}},
+		func(raw json.RawMessage) (int, error) {
+			var logs []json.RawMessage
+			err := json.Unmarshal(raw, &logs)
+			return len(logs), err
+		})
+	return served(err)
+}
+
+// ReceiptsServed: both rpcs answer eth_getTransactionReceipt for a hash no transaction has (null). nil when they do;
+// else errNotServing. Tells "this receipt is too big or malformed" from "receipts are throttled or not served".
+func (b *bsc) ReceiptsServed(ctx context.Context) error {
+	_, err := b.Receipt(ctx, noTx)
+	if errors.Is(err, errNoTx) {
+		return nil
+	}
+	return served(err)
+}
+
+func served(err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%w: %s", errNotServing, strings.ReplaceAll(err.Error(), "\n", "; "))
 }
 
 // SafeHead: the newest block with payments.json's confirmations on both rpcs (0 when the chain is too short).
@@ -368,9 +418,19 @@ func both[T any](ctx context.Context, b *bsc, method string, params []any, parse
 	case (a && errs[1] == nil) || (b && errs[0] == nil): // one provider has it, the other doesn't (yet)
 		return zero, errMismatch
 	}
+	if errors.Is(errs[0], errUnreadable) && errors.Is(errs[1], errUnreadable) {
+		return zero, fmt.Errorf("%w: %w", errUnreadable, errors.Join(errs[0], errs[1]))
+	}
+	answered := func(err error) bool { return errors.Is(err, errUnreadable) || errors.Is(err, errRefused) }
+	if answered(errs[0]) && answered(errs[1]) {
+		return zero, fmt.Errorf("%w: %w", errRefused, errors.Join(errs[0], errs[1]))
+	}
 	var down []error
 	for _, err := range errs {
 		if err != nil && !errors.Is(err, errNoTx) {
+			if answered(err) { // one provider alone: maybe it is the broken one, not the request
+				err = errors.New(err.Error())
+			}
 			down = append(down, err)
 		}
 	}
@@ -424,11 +484,18 @@ func (b *bsc) post(ctx context.Context, i int, method string, params []any, out 
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	if err := json.NewDecoder(io.LimitReader(res.Body, 4<<20)).Decode(&reply); err != nil {
-		return fmt.Errorf("bsc rpc %d: %w", i+1, err)
+	data, err := io.ReadAll(io.LimitReader(res.Body, rpcMaxBytes+1))
+	if err != nil {
+		return fmt.Errorf("bsc rpc %d: %w", i+1, err) // the connection broke: try again later
+	}
+	if len(data) > rpcMaxBytes {
+		return fmt.Errorf("bsc rpc %d: over %d bytes: %w", i+1, rpcMaxBytes, errUnreadable)
+	}
+	if err := json.Unmarshal(data, &reply); err != nil {
+		return fmt.Errorf("bsc rpc %d: %w: %w", i+1, errUnreadable, err)
 	}
 	if reply.Error != nil {
-		return fmt.Errorf("bsc rpc %d: %s", i+1, reply.Error.Message)
+		return fmt.Errorf("bsc rpc %d: %w", i+1, rpcRefusal(reply.Error.Message))
 	}
 	if raw, ok := out.(*json.RawMessage); ok {
 		*raw = reply.Result
@@ -436,6 +503,15 @@ func (b *bsc) post(ctx context.Context, i int, method string, params []any, out 
 	}
 	return json.Unmarshal(reply.Result, out)
 }
+
+// rpcRefusal: a JSON-RPC error answer (its message); errors.Is(it, errRefused).
+type rpcRefusal string
+
+func (e rpcRefusal) Error() string        { return string(e) }
+func (e rpcRefusal) Is(target error) bool { return target == errRefused }
+
+// rpcMaxBytes: the largest rpc answer read (a receipt or a block range of logs).
+const rpcMaxBytes = 4 << 20
 
 func hexUint(s string) (uint64, error) { return strconv.ParseUint(strings.TrimPrefix(s, "0x"), 16, 64) }
 
