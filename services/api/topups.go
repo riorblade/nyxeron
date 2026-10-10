@@ -216,16 +216,18 @@ func (s *store) playerByWallet(ctx context.Context, wallet string) (string, erro
 var topupEvery = 2 * time.Second
 
 // The rpcs are paid and shared with the scanner and reconciliation, so what one player can make them spend on
-// hashes that aren't their top-ups is bounded. A "miss" is a report that turned out not to be one: no such
-// transaction (yet), a failed one, or one that isn't a top-up from the player's wallet. A player gets
-// topupMissBudget misses per topupMissWindow; past it they get 429 too_many_misses until old misses age out (the
-// scanner still credits a real transfer meanwhile). A transfer that exists but isn't final yet (202 while it
-// confirms) is never a miss, so its owner can re-report it for as long as it takes. A settled refusal (tx_failed,
-// not_a_topup) is remembered for the window and answered again without the rpcs. Not player-facing: constants.
+// hashes that aren't their top-ups is bounded. A "miss" is every report whose receipt the rpcs could not show to
+// hold a USDC/USDT transfer from the player's wallet to the Agentic Wallet: no such transaction (yet), a failed
+// one, someone else's (final or not), and any rpc error (a receipt too big to read, a mismatch, a provider down).
+// A player gets topupMissBudget misses per topupMissWindow; past it they get 429 too_many_misses until old misses
+// age out (the scanner still credits a real transfer meanwhile). The player's own transfer is in its receipt from
+// the block it lands in, before it is final, so re-reporting it while it confirms (202) is never a miss. A settled
+// refusal (tx_failed, not_a_topup) is remembered for the window and answered again without the rpcs. Stale entries
+// are swept once per window, and sooner when the maps double. Not player-facing: constants.
 const (
 	topupMissBudget = 20               // misses per player per window (a just-sent transfer misses only for a few seconds)
 	topupMissWindow = 10 * time.Minute // how long a miss, and a remembered refusal, counts
-	topupGuardSweep = 10_000           // entries kept before old ones are swept (never everyone's: only stale ones)
+	topupGuardSweep = 10_000           // entries that trigger an early sweep (never everyone's: only stale ones)
 )
 
 type topupRefusal struct {
@@ -241,12 +243,13 @@ type topupGuard struct {
 	misses  map[string][]time.Time  // player → their misses within the window
 	settled map[string]topupRefusal // player|tx → a settled refusal
 	sweepAt int                     // the size that triggers the next sweep
+	sweptAt time.Time               // the last sweep (one is due every topupMissWindow)
 	every   time.Duration           // the pace last asked for
 }
 
 func newTopupGuard() *topupGuard {
 	return &topupGuard{last: map[string]time.Time{}, misses: map[string][]time.Time{},
-		settled: map[string]topupRefusal{}, sweepAt: topupGuardSweep}
+		settled: map[string]topupRefusal{}, sweepAt: topupGuardSweep, sweptAt: time.Now()}
 }
 
 // tooSoon: whether id reported less than every ago; if not, this report is the new last one.
@@ -257,7 +260,7 @@ func (g *topupGuard) tooSoon(id string, now time.Time, every time.Duration) bool
 		return true
 	}
 	g.last[id], g.every = now, every
-	if len(g.last)+len(g.misses)+len(g.settled) > g.sweepAt {
+	if len(g.last)+len(g.misses)+len(g.settled) > g.sweepAt || now.Sub(g.sweptAt) >= topupMissWindow {
 		g.sweep(now)
 	}
 	return false
@@ -297,8 +300,10 @@ func (g *topupGuard) refuse(id, tx string, code int, err string, now time.Time) 
 	g.settled[id+"|"+strings.ToLower(tx)] = topupRefusal{code: code, err: err, at: now}
 }
 
-// sweep drops what no longer counts (g.mu held). Its cost is paid back by the doubling: sweeps stay rare.
+// sweep drops what no longer counts (g.mu held). Its cost is paid back by the doubling and the window: sweeps stay
+// rare.
 func (g *topupGuard) sweep(now time.Time) {
+	g.sweptAt = now
 	for id, t := range g.last {
 		if now.Sub(t) >= g.every {
 			delete(g.last, id)
@@ -399,36 +404,27 @@ func (pl *players) routeTopups(mux *http.ServeMux) {
 		_ = pl.db.SetIdentity(r.Context(), id, me.Email, me.Wallet, time.Now())
 		rc, err := pl.chain.Final(r.Context(), in.Tx)
 		switch {
-		case errors.Is(err, errUnconfirmed): // a real transaction, not final yet: ask again (never a miss)
-			writeJSON(w, http.StatusAccepted, map[string]string{"status": "pending"})
-			return
-		case errors.Is(err, errNoTx): // not seen yet (just sent), or no such transaction: a miss
-			guard.miss(id, now)
-			writeJSON(w, http.StatusAccepted, map[string]string{"status": "pending"})
-			return
 		case errors.Is(err, errTxFailed):
 			guard.refuse(id, in.Tx, http.StatusUnprocessableEntity, "tx_failed", now)
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "tx_failed"})
 			return
 		case err != nil:
-			slog.Warn("topup: bsc", "tx", in.Tx, "err", err)
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "chain_unavailable"})
+			// Not final, or not read. Final hands back the receipt both rpcs agreed on whenever there was one: the
+			// player's own transfer is in it before it is final, so only that is spared; anything else is a miss.
+			if !errors.Is(err, errUnconfirmed) && !errors.Is(err, errNoTx) {
+				slog.Warn("topup: bsc", "tx", in.Tx, "err", err)
+			}
+			if rc.Tx == "" || len(topupsFrom(rc, me.Wallet)) == 0 {
+				guard.miss(id, now)
+			}
+			if errors.Is(err, errUnconfirmed) || errors.Is(err, errNoTx) { // still confirming, or not seen yet
+				writeJSON(w, http.StatusAccepted, map[string]string{"status": "pending"})
+			} else {
+				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "chain_unavailable"})
+			}
 			return
 		}
-		var mine []Transfer
-		for _, token := range game.payments.Topup.Tokens {
-			trs, err := transfersIn(rc, token)
-			if err != nil {
-				guard.refuse(id, in.Tx, http.StatusUnprocessableEntity, "not_a_topup", now)
-				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "not_a_topup"})
-				return
-			}
-			for _, tr := range trs {
-				if strings.EqualFold(tr.To, game.payments.AgenticWallet) && strings.EqualFold(tr.From, me.Wallet) {
-					mine = append(mine, tr)
-				}
-			}
-		}
+		mine := topupsFrom(rc, me.Wallet)
 		if len(mine) == 0 { // no USDC/USDT from this player's wallet to the platform in that transaction
 			guard.refuse(id, in.Tx, http.StatusUnprocessableEntity, "not_a_topup", now)
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "not_a_topup"})
@@ -457,6 +453,24 @@ func (pl *players) routeTopups(mux *http.ServeMux) {
 			answer(w, r, id, map[string]any{"status": "credited"})
 		}
 	})
+}
+
+// topupsFrom: the USDC/USDT transfers in a receipt from wallet to the Agentic Wallet (none when a Transfer log is
+// malformed or the transaction failed).
+func topupsFrom(rc Receipt, wallet string) []Transfer {
+	var mine []Transfer
+	for _, token := range game.payments.Topup.Tokens {
+		trs, err := transfersIn(rc, token)
+		if err != nil {
+			return nil
+		}
+		for _, tr := range trs {
+			if strings.EqualFold(tr.To, game.payments.AgenticWallet) && strings.EqualFold(tr.From, wallet) {
+				mine = append(mine, tr)
+			}
+		}
+	}
+	return mine
 }
 
 // ---------- the scanner ----------

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -161,5 +162,81 @@ func TestTopupGuardForgetsOnlyOldEntries(t *testing.T) {
 	g.mu.Unlock()
 	if n != 2 {
 		t.Fatalf("%d entries after a sweep, want 2", n)
+	}
+}
+
+// Reports that never turn out to be the player's top-up are misses whatever the chain answers: a stranger's
+// transaction still confirming, a receipt too big to read (anyone can make one for cents), an rpc that is down.
+// Past the budget they get 429 without another receipt lookup.
+func TestTopupMissesCountWhateverTheChainAnswers(t *testing.T) {
+	stranger := "0x00000000000000000000000099999999999999999999999999999999999999aa"
+	cases := map[string]func(x *topupAPI){
+		"a stranger's pending transfer": func(x *topupAPI) {
+			x.receipt(topupReceipt(t, padded(player), stranger))
+			x.a.head, x.b.head = usdcAt+game.payments.Confirmations-2, usdcAt+game.payments.Confirmations-2
+		},
+		"a pending transaction with no transfer": func(x *topupAPI) {
+			x.receipt(fixture(t, "receipt-usdc-transfer")) // not to the platform
+			x.a.head, x.b.head = usdcAt+game.payments.Confirmations-2, usdcAt+game.payments.Confirmations-2
+		},
+		"an oversized receipt": func(x *topupAPI) {
+			rc := topupReceipt(t)
+			x.receipt(rc[:len(rc)-1] + `, "pad": "` + strings.Repeat("ab", 3<<20) + `"}`)
+		},
+		"an rpc that is down": func(x *topupAPI) { x.b.down = true },
+	}
+	for name, setup := range cases {
+		t.Run(name, func(t *testing.T) {
+			x := newTopupAPI(t, player, usdcAt+20)
+			setup(x)
+			for range 60 {
+				x.post(usdcTx)
+			}
+			if n := x.receiptCalls(); n > topupMissBudget {
+				t.Fatalf("60 reports cost %d receipt calls, budget %d", n, topupMissBudget)
+			}
+			if code, out := x.post(usdcTx); code != 429 || out["error"] != "too_many_misses" {
+				t.Fatalf("past the budget: %d %v", code, out)
+			}
+		})
+	}
+}
+
+// The player's own transfer, still confirming, is in its receipt from the first block: never a miss, even when the
+// player's budget is otherwise used up to its last miss.
+func TestTopupOwnPendingTransferIsNeverAMiss(t *testing.T) {
+	x := newTopupAPI(t, player, usdcAt+game.payments.Confirmations-2)
+	for i := range topupMissBudget - 1 {
+		x.post(fmt.Sprintf("0x%064x", 0xdead0000+i))
+	}
+	for i := range 3 * topupMissBudget {
+		if code, out := x.post(usdcTx); code != 202 {
+			t.Fatalf("report %d while confirming: %d %v", i, code, out)
+		}
+	}
+	x.a.mu.Lock()
+	x.a.head, x.b.head = usdcAt+20, usdcAt+20
+	x.a.mu.Unlock()
+	if code, out := x.post(usdcTx); code != 200 || out["status"] != "credited" {
+		t.Fatalf("once final: %d %v", code, out)
+	}
+}
+
+// The limiter forgets stale entries on a timer too, not only once its maps double: a few players leave nothing
+// behind once their window has passed.
+func TestTopupGuardPrunesOnATimer(t *testing.T) {
+	g := newTopupGuard()
+	now := time.Now()
+	for i := range 100 {
+		id := fmt.Sprint(i)
+		g.tooSoon(id, now, time.Second)
+		g.refuse(id, "0xabc", 422, "not_a_topup", now)
+	}
+	g.tooSoon("fresh", now.Add(topupMissWindow+time.Second), time.Second)
+	g.mu.Lock()
+	n := len(g.last) + len(g.misses) + len(g.settled)
+	g.mu.Unlock()
+	if n != 1 {
+		t.Fatalf("%d entries a window later, want 1", n)
 	}
 }
