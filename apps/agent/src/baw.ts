@@ -116,19 +116,46 @@ export type Order = {
   orderId: string;
   status: "PENDING" | "FINISHED" | "FAILED";
   txHash: string | null;
+  toToken?: string;
+  fromTokenQty?: string;
 };
 
-/** A submitted swap as the wallet sees it now. */
-export async function order(orderId: string): Promise<Order | undefined> {
-  const page = await baw<{ list: Order[] }>([
-    "market-order",
-    "list",
-    "--orderId",
-    orderId,
-  ]);
+const listOrders = async (args: string[]) => {
+  const page = await baw<{ list: Order[] }>(["market-order", "list", ...args]);
   if (!Array.isArray(page.list))
-    throw new Error(`baw: order list for ${orderId} has no list`);
-  return page.list.find((o) => o?.orderId === orderId);
+    throw new Error(`baw: order list (${args.join(" ")}) has no list`);
+  return page.list;
+};
+
+/**
+ * A submitted swap as the wallet sees it now. The swap's answer can carry its 20-digit order id rounded through a
+ * double (above 2^53: 26101000001955860851 came back as …860615), so the id the list knows is looked for among
+ * recent swaps into the same token: the same double, the same USDC amount. More than one such order: an error
+ * (a person checks), never a guess.
+ */
+export async function order(
+  orderId: string,
+  toToken?: string,
+  usd?: number,
+): Promise<Order | undefined> {
+  const exact = (await listOrders(["--orderId", orderId])).find(
+    (o) => o?.orderId === orderId,
+  );
+  if (exact || toToken === undefined || usd === undefined) return exact;
+  const near = (
+    await listOrders(["--toToken", toToken, "--pageSize", "50"])
+  ).filter(
+    (o) =>
+      typeof o?.orderId === "string" &&
+      Number(o.orderId) === Number(orderId) &&
+      o.toToken?.toLowerCase() === toToken.toLowerCase() &&
+      Number(o.fromTokenQty) === usd,
+  );
+  if (near.length > 1)
+    throw new Error(
+      `baw: ${near.length} orders match ${orderId} (${usd} USDC); check baw market-order list`,
+    );
+  return near[0];
 }
 
 /**

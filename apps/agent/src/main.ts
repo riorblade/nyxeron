@@ -93,10 +93,14 @@ async function report(
 }
 
 /** Follows a submitted order for up to FOLLOW_MS: its tx, "failed", or undefined while still pending. */
-async function follow(orderId: string): Promise<string | "failed" | undefined> {
+async function follow(
+  rec: Outstanding & { orderId: string },
+): Promise<string | "failed" | undefined> {
   const until = Date.now() + FOLLOW_MS;
   for (;;) {
-    const o = outcome(await order(orderId));
+    const o = outcome(
+      await order(rec.orderId, locked(rec.token)?.contract, rec.usd),
+    );
     if (o.state === "failed") return "failed";
     if (o.state === "done") return o.tx;
     if (Date.now() + 5000 > until) return undefined;
@@ -119,7 +123,7 @@ async function settle(
         `then remove ${statePath}`,
     );
   if (!o.tx) {
-    const got = await follow(o.orderId);
+    const got = await follow({ ...o, orderId: o.orderId });
     if (got === "failed") {
       clear(statePath, o);
       return "failed";

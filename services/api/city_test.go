@@ -491,3 +491,40 @@ func TestCityClosed(t *testing.T) {
 		t.Fatal("city should be closed")
 	}
 }
+
+// The warehouse floor: an empty warehouse sells nothing, so without it the agent would never see demand.
+func TestSupplyFloorForWhitelistedTokens(t *testing.T) {
+	s := testStore(t)
+	now := time.Now()
+	floor := game.payments.Agent.MinUnits
+	if floor <= 0 {
+		t.Fatalf("agent.minUnits = %d", floor)
+	}
+	suggested := func() map[string]int64 {
+		t.Helper()
+		sup, err := s.Supply(ctx, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]int64{}
+		for _, r := range sup.Tokens {
+			out[r.Token] = r.Suggested
+		}
+		return out
+	}
+	got := suggested()
+	for tok, n := range got {
+		_, white := game.payments.Tokens[tok]
+		if want := map[bool]int64{true: floor, false: 0}[white]; n != want {
+			t.Fatalf("empty warehouse: %s suggested %d, want %d", tok, n, want)
+		}
+	}
+	s.Restock(ctx, "boss", "tsla", floor-3, "restock", "first", "")
+	if n := suggested()["tsla"]; n != 3 {
+		t.Fatalf("3 under the floor: suggested %d", n)
+	}
+	s.Restock(ctx, "boss", "tsla", 3, "restock", "second", "")
+	if n := suggested()["tsla"]; n != 0 {
+		t.Fatalf("at the floor: suggested %d", n)
+	}
+}
