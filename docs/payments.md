@@ -102,7 +102,9 @@ from guest, units from the warehouse, wholesale to the platform, margin to the t
 1. Credits are backed: Σ player credits (including held) ÷ 100 + money owed back to senders ≤ USDC + USDT in the
    Agentic Wallet − platform funds. Money owed back = unknown senders' transfers, rejected top-ups and the part of a
    top-up over the caps, until the back office marks it refunded (`POST /api/admin/topups/refund`). It is in the
-   wallet but belongs to its senders, so it never backs credits.
+   wallet but belongs to its senders, so it never backs credits. Not owed: stablecoin coming back in a tx where the
+   Agentic Wallet itself paid stablecoin out (a swap's change; the scanner records it with nothing to refund), nor
+   anything in a tx booked as a restock or seed (already netted in platform funds).
 2. Units are backed, per token: (warehouse on hand + reserved + Σ players' real units) × 0.001 ≤ bStock held.
 
 Balances are read from BSC, never from the database.

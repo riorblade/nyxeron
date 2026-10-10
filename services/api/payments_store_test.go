@@ -326,3 +326,35 @@ INSERT INTO topups (tx, log_index, user_id, sender, token, amount, usd_cents, fe
 		}
 	}
 }
+
+// Migration 7 runs again on a database that already has it (a harness rewinds user_version to 5): it adds no column
+// twice and leaves what rows owe, or were refunded, as they were.
+func TestMigrationSevenRunsTwice(t *testing.T) {
+	s := testStore(t)
+	s.Get(ctx, "a")
+	if _, err := s.db.Exec(`INSERT INTO platform_ledger (delta, kind, ref, reason, at) VALUES (-300, 'restock', '0x6', '', 1);
+INSERT INTO topups (tx, log_index, user_id, sender, token, amount, usd_cents, fee, credits, status, reason, refund_cents, refunded_at, created_at, updated_at) VALUES
+	('0x4', 0, '', '0xb', 'usdc', '0', 4000, 0, 0, 'unknown', '', 4000, 0, 1, 1),
+	('0x5', 0, '', '0xc', 'usdc', '0', 700, 0, 0, 'rejected', '', 700, 9, 1, 1),
+	('0x6', 0, '', '0xd', 'usdc', '0', 200, 0, 0, 'unknown', '', 0, 0, 1, 1);`); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := s.db.Exec(`PRAGMA user_version = 5`); err != nil {
+			t.Fatal(err)
+		}
+		if err := migrate(s.db); err != nil {
+			t.Fatalf("run %d: %v", i+1, err)
+		}
+	}
+	if v := count(t, s, `PRAGMA user_version`); v != len(migrations) {
+		t.Fatalf("user_version %d", v)
+	}
+	want := map[string][2]int{"0x4": {4000, 0}, "0x5": {700, 9}, "0x6": {0, 0}} // 0x6: a swap's change
+	for tx, w := range want {
+		if got := [2]int{count(t, s, `SELECT refund_cents FROM topups WHERE tx = ?`, tx),
+			count(t, s, `SELECT refunded_at FROM topups WHERE tx = ?`, tx)}; got != w {
+			t.Errorf("%s: %v, want %v", tx, got, w)
+		}
+	}
+}

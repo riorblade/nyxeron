@@ -82,6 +82,13 @@ func topupToken(addr string) bool {
 // (recorded "unknown", no credits). A later call with the sender's player claims such a row and credits it then
 // (the scanner can see a transfer before the player's wallet is stored). fresh is false when nothing changed.
 func (s *store) recordTopup(ctx context.Context, tr Transfer, gasUsed uint64, user string, now time.Time) (tp Topup, fresh bool, err error) {
+	return s.recordTransfer(ctx, tr, gasUsed, user, false, now)
+}
+
+// recordTransfer is recordTopup; change: the Agentic Wallet itself paid stablecoin out in the same transaction (a
+// swap whose router sent back what it didn't use). Such a transfer from no player is the platform's own money,
+// netted in the restock's books (restock.go), so nothing is owed back on it.
+func (s *store) recordTransfer(ctx context.Context, tr Transfer, gasUsed uint64, user string, change bool, now time.Time) (tp Topup, fresh bool, err error) {
 	if !topupToken(tr.Token) || !strings.EqualFold(tr.To, game.payments.AgenticWallet) || tr.Amount == nil || tr.Amount.Sign() < 0 {
 		return tp, false, errBad
 	}
@@ -95,6 +102,9 @@ func (s *store) recordTopup(ctx context.Context, tr Transfer, gasUsed uint64, us
 	tp = Topup{Tx: strings.ToLower(tr.Tx), LogIndex: int64(tr.LogIndex), Token: tr.Token, USDCents: cents,
 		Status: "unknown", At: now.Unix()}
 	refund := cents // owed back to the sender: all of it until it is credited (reconcile.go counts it as owed)
+	if change && user == "" {
+		refund = 0
+	}
 	t, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return tp, false, err
@@ -411,18 +421,23 @@ func (s *store) scanRange(ctx context.Context, c *bsc, from, to uint64, now time
 			if err != nil {
 				return err
 			}
-			var gas uint64
-			if user != "" { // the receipt costs two rpc calls: only for a player's top-up (its gas is recorded)
-				rc, err := c.Receipt(ctx, tr.Tx)
-				if err != nil {
-					return err
-				}
-				if !rc.OK || rc.Block != tr.Block {
-					return fmt.Errorf("topup scan: %s does not match its receipt", tr.Tx)
-				}
-				gas = rc.GasUsed
+			// The receipt (two rpc calls): a player's top-up records its gas; from anyone else, it shows whether
+			// the Agentic Wallet paid stablecoin out in the same tx (a swap's change, nothing to refund).
+			rc, err := c.Receipt(ctx, tr.Tx)
+			if err != nil {
+				return err
 			}
-			if _, _, err := s.recordTopup(ctx, tr, gas, user, now); err != nil {
+			if !rc.OK || rc.Block != tr.Block {
+				return fmt.Errorf("topup scan: %s does not match its receipt", tr.Tx)
+			}
+			var gas uint64
+			change := false
+			if user != "" {
+				gas = rc.GasUsed
+			} else if change, err = walletPaidOut(rc); err != nil {
+				return err
+			}
+			if _, _, err := s.recordTransfer(ctx, tr, gas, user, change, now); err != nil {
 				return err
 			}
 		}
@@ -451,4 +466,20 @@ func (s *store) scanTopupsEvery(ctx context.Context, c *bsc, every time.Duration
 		case <-tick.C:
 		}
 	}
+}
+
+// walletPaidOut: the Agentic Wallet sent USDC/USDT to someone else in this transaction.
+func walletPaidOut(rc Receipt) (bool, error) {
+	for _, stable := range game.payments.Topup.Tokens {
+		trs, err := transfersIn(rc, stable)
+		if err != nil {
+			return false, err
+		}
+		for _, tr := range trs {
+			if strings.EqualFold(tr.From, game.payments.AgenticWallet) && !strings.EqualFold(tr.To, game.payments.AgenticWallet) {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }

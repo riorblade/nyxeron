@@ -75,11 +75,14 @@ func (s *store) Reconcile(ctx context.Context, c *bsc, actor, reason string, now
 		onChain[id] = bal
 	}
 	var owedCredits, platformCredits int64
+	// Owed back: not in a tx the platform booked (a restock's or seed's stablecoin coming back, e.g. a router's
+	// change, is already netted in platform_ledger).
 	if err := s.db.QueryRowContext(ctx, `SELECT
 		COALESCE((SELECT SUM(credits) FROM users), 0) +
 		COALESCE((SELECT SUM(price * qty) FROM sales WHERE status = 'held'), 0),
 		COALESCE((SELECT SUM(delta) FROM platform_ledger), 0),
-		COALESCE((SELECT SUM(refund_cents) FROM topups WHERE refunded_at = 0), 0)`).Scan(&owedCredits,
+		COALESCE((SELECT SUM(refund_cents) FROM topups WHERE refunded_at = 0 AND tx NOT IN
+			(SELECT ref FROM platform_ledger WHERE kind IN ('restock', 'seed'))), 0)`).Scan(&owedCredits,
 		&platformCredits, &r.RefundCents); err != nil {
 		return r, err
 	}

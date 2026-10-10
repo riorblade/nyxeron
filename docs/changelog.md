@@ -11,6 +11,10 @@ teammate would notice.
 - **Back office, Payments:** top-ups show what they owe back; once you have paid it back by hand, press
   **Refunded** (with a reason: the audit log) so the check stops counting it. Until then a paid-out refund makes the
   check come up short and pauses payments.
+- **A swap's change is not owed back:** stablecoin a router returns to the Agentic Wallet in a swap it paid for
+  (pay $5, get $2 back) is the platform's own money, netted in the restock. The top-up scanner now records it with
+  nothing to refund, and reconciliation never counts a transfer in a booked restock or seed tx as owed, so a restock
+  with change no longer pauses payments.
 
 ## 2026-10-10 · A paid band always plays
 

@@ -465,3 +465,77 @@ func TestRefundAdminEndpoint(t *testing.T) {
 		t.Fatalf("payments page: %+v", p.Topups)
 	}
 }
+
+// changeSwap: the Agentic Wallet's swap that pays paidCents of USDC to the pool and gets changeCents back from it
+// (a router returning what it didn't use), buying TSLAB. In usdcTx's block.
+func changeSwap(t *testing.T, paidCents, changeCents int64) string {
+	var rc map[string]any
+	if err := json.Unmarshal([]byte(swapReceipt(t, paidCents, bought, game.payments.AgenticWallet)), &rc); err != nil {
+		t.Fatal(err)
+	}
+	logs := rc["logs"].([]any)
+	change := map[string]any{}
+	for k, v := range logs[0].(map[string]any) {
+		change[k] = v
+	}
+	change["topics"] = []any{transferTopic, padded(pool), padded(game.payments.AgenticWallet)}
+	change["data"] = fmt.Sprintf("0x%064x", new(big.Int).Mul(big.NewInt(changeCents), big.NewInt(1e16)))
+	change["logIndex"] = "0x1a"
+	rc["logs"] = append(logs, change)
+	b, _ := json.Marshal(rc)
+	return string(b)
+}
+
+// A restock swap pays $5 and gets $2 back from the router: the scanner sees the $2 come in from a sender that is
+// nobody's wallet. That is the platform's own change (the restock books the net $3 out), not a stranger's money to
+// refund: counted as owed back, it would pause payments for everyone. Either order of scan and report.
+func TestReconcileSwapChangeIsNotOwedBack(t *testing.T) {
+	for _, scanFirst := range []bool{true, false} {
+		t.Run(fmt.Sprint("scanFirst=", scanFirst), func(t *testing.T) {
+			s := testStore(t)
+			s.Get(ctx, "a")
+			sendTopup(t, s, 1, 10, "a", player) // 990 credits, 10 fee
+			if err := s.inTx(ctx, func(tx *sql.Tx) error { return platformLedger(tx, 500, "seed", "0xseed", "team") }); err != nil {
+				t.Fatal(err)
+			}
+			ch, a, b := restockChain(t, changeSwap(t, 500, 200), usdcAt+20)
+			walletHolds(a, b, 1000+500-500+200, 8) // top-up + seed − paid + change; 8 units bought
+			scan := func() {
+				s.setScanned(ctx, usdcAt-1, time.Now())
+				if err := s.scanTopups(ctx, ch, time.Now()); err != nil {
+					t.Fatal(err)
+				}
+			}
+			restock := func() {
+				if got, err := s.VerifiedRestock(ctx, ch, "agent", "tsla", usdcTx, "", time.Now()); err != nil || got.USDCents != 300 {
+					t.Fatalf("restock %+v %v", got, err)
+				}
+			}
+			if scanFirst {
+				scan()
+				restock()
+			} else {
+				restock()
+				scan()
+			}
+			if n := count(t, s, `SELECT COUNT(*) FROM topups WHERE tx = ?`, usdcTx); n != 1 {
+				t.Fatalf("change rows %d", n)
+			}
+			if n := count(t, s, `SELECT refund_cents FROM topups WHERE tx = ?`, usdcTx); n != 0 {
+				t.Fatalf("the change is owed back: %d cents", n)
+			}
+			r, err := s.Reconcile(ctx, ch, "system", "test", time.Now())
+			if err != nil || !r.OK || r.RefundCents != 0 || r.OwedCents != 990 || r.PlatformCents != 210 {
+				t.Fatalf("%+v %v", r, err)
+			}
+			if _, err := s.MarkRefunded(ctx, "kiel@x", usdcTx, 0x1a, "x", time.Now()); !errors.Is(err, errRejected) {
+				t.Fatalf("change marked refundable: %v", err)
+			}
+			// A row recorded owing before the scanner knew (pre-fix data): the booked restock still rules it out.
+			s.db.Exec(`UPDATE topups SET refund_cents = 200 WHERE tx = ?`, usdcTx)
+			if r, err := s.Reconcile(ctx, ch, "system", "test", time.Now()); err != nil || !r.OK || r.RefundCents != 0 {
+				t.Fatalf("legacy row: %+v %v", r, err)
+			}
+		})
+	}
+}
