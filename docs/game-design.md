@@ -28,7 +28,7 @@ Each rule is a function in `packages/core/src/rules` with a unit test.
 | R7 | Over 150 guests without a crowd permit → may be shut down (revenue −50%, rep −10) | `engine.ts` |
 | R8 | Underage guest at the door is rejected if security is present (below Level 3 the owner checks IDs) | `security.ts` |
 | R9 | Tilt ≥ 80 and fewer than 1 guard per 40 guests → fight chance (safety −15, rep −5) | `security.ts` |
-| R10 | Capacity reached → door closes; forcing it open is a violation | `security.ts` |
+| R10 | Capacity reached → door closes; forcing it open (only while the night runs, before 04:00) is a violation | `security.ts` |
 | R11 | Night report: avg satisfaction ≥ 70 → rep +3..+8; < 40 → rep −5 | `reputation.ts` |
 | R12 | New day: CEO Energy back to 5, wages and rent paid | `economy.ts` |
 | R13 | Defeat: Coin < 0 for 3 days, or 3 violations, or reputation 0 | `economy.ts` |
@@ -36,8 +36,12 @@ Each rule is a function in `packages/core/src/rules` with a unit test.
 | R15 | Entertainment tax on night revenue: L3 20%, L4 30%, L5 40% (none for booth/shop) | `economy.ts` |
 | R16 | On-premise sales with only a takeaway liquor permit → violation, venue sealed | `legal.ts` |
 | R17 | Controversial promo (daytime, rep > 20): hype +30, 25% chance rep −20 and a guaranteed inspection | `marketing.ts` |
-| R18 | Move up a venue (daytime) if Coin ≥ cost and reputation ≥ requirement; stock moves at its value (count × old price scale ÷ new) | `progression.ts` |
+| R18 | Move up a venue (daytime) if Coin ≥ cost and reputation ≥ requirement; stock moves at its value (count × old price scale ÷ new), and what doesn't fit the new stock room (storage tiers stay behind) is left behind (logged per token as `stockTrimmed`); prices keep their markup, up to the new venue's ceiling | `progression.ts` |
 | R19 | *Retired:* paid speed-ups. Value never buys progress; the economy is Coin + tokens (see the PRD) | — |
+
+Once a career is over (victory, survived or defeat) nothing moves Coin or stock until the club plays on. An action
+with an id the game doesn't know (a typo, or an `Object.prototype` key like `constructor`) fails with
+`invalidTarget` and leaves the state untouched.
 
 Beyond the R-rules: crowd energy and crowd moves (`strategy.ts`), house rules and reservations, promoters,
 upgrades, the live token market and FOMO (`market.ts`), real spot prices (`quotes.ts`), guests as players
@@ -78,6 +82,11 @@ Every stat opens an explanation in the game (`hud/StatInfo.tsx`, history from `s
   rules × safety.
 - Each guest: segment, genre preference, gender, budget, satisfaction, tilt, state
   (`pending → queue → idle | bar | dance → left`).
+- At the door a guest pays the cover (guest list, and women on ladies' night, get in free). A guest whose budget is
+  below the cover goes home instead: a sky-high cover empties the club, not the wallets.
+- List prices: a whole number from 1 up to `maxPriceMultiple` (100, `economy.json`) × the venue's default price.
+- Guests who are players (`visitor.ts`) walk in and buy only while the club is open: during the night, before 04:00,
+  and not in a sealed venue (R16).
 - The live market moves each token every minute (volatility, crowd energy, pumps at the DJ start and the anthem);
   rising tokens raise the urge to buy (FOMO), and guests feel their P&L.
 

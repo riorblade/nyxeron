@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  defaultPrice,
+  economy,
+  maxPrice,
+  migrateState,
+  priceScale,
+  r18_upgradeLevel,
+  setPrice,
+  tokens,
   orderCost,
   platformFee,
   createGameState,
@@ -81,5 +89,46 @@ describe("R2 serveDrink", () => {
     expect(satisfactionDelta).toBe(-10);
     expect(outOfStock).toBe(true);
     expect(state).toBe(s0);
+  });
+});
+
+describe("price ceiling", () => {
+  it("is the venue's default price × maxPriceMultiple: up to it is fine, one more is refused", () => {
+    const s = createGameState(1);
+    const cap = maxPrice("tsla", 1);
+    expect(cap).toBe(
+      Math.round(
+        tokens.tsla.defaultPrice * priceScale(1) * economy.maxPriceMultiple,
+      ),
+    );
+    expect(setPrice(s, "tsla", cap).ok).toBe(true);
+    expect(setPrice(s, "tsla", cap + 1)).toEqual({
+      ok: false,
+      reason: "invalidPrice",
+    });
+  });
+  it("a capped price moving up a venue stays under the new venue's ceiling", () => {
+    let s = createGameState(1);
+    s = { ...s, coin: 1e9, reputation: 99 };
+    const r = setPrice(s, "tsla", maxPrice("tsla", 1));
+    if (!r.ok) throw new Error(r.reason);
+    for (let lv = 1; lv < 5; lv++) {
+      const up = r18_upgradeLevel(lv === 1 ? r.state : s);
+      if (!up.ok) throw new Error(up.reason);
+      s = up.state;
+      expect(s.prices.tsla).toBeLessThanOrEqual(maxPrice("tsla", s.level));
+    }
+  });
+  it("an old save with a null / huge / fractional price loads with a valid one", () => {
+    const s = createGameState(1);
+    const old = {
+      ...s,
+      prices: { ...s.prices, tsla: null, us500: 1e308, nvda: 33.4 },
+    } as unknown as GameState;
+    const loaded = migrateState(old);
+    expect(loaded.prices.tsla).toBe(defaultPrice("tsla", 1));
+    expect(loaded.prices.us500).toBe(maxPrice("us500", 1));
+    expect(loaded.prices.nvda).toBe(33);
+    expect(migrateState(s).prices).toBe(s.prices); // a valid save is left alone
   });
 });

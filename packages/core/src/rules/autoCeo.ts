@@ -35,6 +35,8 @@ const tryAct = (s: GameState, r: ActionResult) => (r.ok ? r.state : s);
  * Runs the clubs guest players visit, and drives the balance bot.
  */
 export function aiPrepare(s: GameState, grow = true): GameState {
+  // Prep is a day's work (hiring, upgrades are day-only): any other phase has nothing to prepare.
+  if (s.phase !== "day" || s.outcome) return s;
   const lv = levels[s.level];
 
   // Upgrade when it leaves room for the new level's permits and ~10 days of rent.
@@ -57,11 +59,17 @@ export function aiPrepare(s: GameState, grow = true): GameState {
 
   // Staff: security for the ID check and the 1:40 ratio, bartenders for bar throughput.
   if (s.level >= staffRoles.security.minLevel)
-    while (s.staff.security < Math.ceil(lv.capacity / 40) && s.coin > 20_000)
-      s = tryAct(s, hireStaff(s, "security"));
+    while (s.staff.security < Math.ceil(lv.capacity / 40) && s.coin > 20_000) {
+      const r = hireStaff(s, "security");
+      if (!r.ok) break; // never spin on a hire that can't happen
+      s = r.state;
+    }
   if (s.level >= staffRoles.bartender.minLevel)
-    while (s.staff.bartender < Math.ceil(lv.capacity / 60) && s.coin > 5_000)
-      s = tryAct(s, hireStaff(s, "bartender"));
+    while (s.staff.bartender < Math.ceil(lv.capacity / 60) && s.coin > 5_000) {
+      const r = hireStaff(s, "bartender");
+      if (!r.ok) break;
+      s = r.state;
+    }
 
   // Promo: cheapest-per-hype first, while hype is low.
   const promos = ids(channels).sort(

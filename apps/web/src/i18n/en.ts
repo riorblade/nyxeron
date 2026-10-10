@@ -1470,6 +1470,8 @@ export const en = {
         return `${names.permit(e.permit)} valid until Day ${e.expiresDay}`;
       case "levelUp":
         return `Upgraded to Level ${e.level}`;
+      case "stockTrimmed":
+        return `${e.qty} ${names.drink(e.drink)} didn't fit the new stock room and stayed behind`;
       case "bandBooked":
         return `${names.band(e.band)} booked for the stage: Hype +${e.hype}`;
       case "bandStarted":
