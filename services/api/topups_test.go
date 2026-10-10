@@ -46,6 +46,7 @@ type topupAPI struct {
 	tok    string
 	a, b   *fakeRPC
 	wallet string
+	key    *ecdsa.PrivateKey
 }
 
 // liftCaps: the recorded transfer is $906, over payments.json's caps; tests of the chain path lift them
@@ -70,7 +71,7 @@ func newTopupAPI(t *testing.T, wallet string, head uint64) *topupAPI {
 	srv := httptest.NewServer(routes(&quoter{}, nil, fakePrivyWallet(t, key, wallet), db, nil))
 	t.Cleanup(srv.Close)
 	tok := signJWT(t, key, map[string]any{"alg": "ES256", "kid": "k1"}, good(time.Now().Add(time.Hour)))
-	return &topupAPI{t: t, srv: srv, db: db, tok: tok, a: a, b: b, wallet: wallet}
+	return &topupAPI{t: t, srv: srv, db: db, tok: tok, a: a, b: b, wallet: wallet, key: key}
 }
 
 func (x *topupAPI) post(tx string) (int, map[string]any) {

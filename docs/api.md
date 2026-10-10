@@ -82,9 +82,9 @@ live wholesale price and `maxMarkup` × it; whitelisted tokens only.
 
 | Method | Path | Body | Notes |
 | --- | --- | --- | --- |
-| GET | `/api/events/prices/{id}` | — | `{prices, wholesale, maxMarkup}` of a city party (public) |
+| GET | `/api/events/prices/{id}` | — | `{prices, wholesale, maxMarkup}` of a city party (public party: anyone; private: its host and the players who opened its invite, else 404) |
 | PUT | `/api/events/{id}/prices` | `{prices: {token: credits}}` | host only, before it starts (`prices_locked` after) |
-| POST | `/api/events/{id}/buy` | `{token, qty, maxPrice}` | `maxPrice` (required): the price the buyer saw, refused 409 `price_changed` if higher now; while live: credits held, units reserved; settles at end + `settleGraceMinutes` → `{sale, credits}` |
+| POST | `/api/events/{id}/buy` | `{token, qty, maxPrice}` | `maxPrice` (required): the price the buyer saw, refused 409 `price_changed` if higher now; a private party sells only to its invited guests (else 404); while live: credits held, units reserved; settles at end + `settleGraceMinutes` → `{sale, credits}` |
 | PUT | `/api/city/shops/{lease}/prices` | `{prices}` | the tenant's shop prices in credits |
 | POST | `/api/city/shops/{lease}/buy-credit` | `{token, qty, maxPrice}` | settled at once: units to the buyer, margin to the tenant, wholesale to the platform |
 

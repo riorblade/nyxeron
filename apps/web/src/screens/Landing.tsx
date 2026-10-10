@@ -12,6 +12,7 @@ import { Cta } from "@/components/Cta";
 import { en } from "@/i18n/en";
 import { useGame } from "@/state/store";
 import "./landing.css";
+import { revealLoadAt } from "./landingMedia";
 
 /** Scroll windows, all in 0..1 of their section's progress. */
 const C = {
@@ -216,7 +217,8 @@ export function Landing() {
       smoothed = 0,
       raf = 0,
       title: "main" | "alt" | "crew" = "main",
-      revealOn = false;
+      revealOn = false,
+      revealLoaded = false;
     const timers: ReturnType<typeof setTimeout>[] = [];
 
     const scrubTime = (p: number) => {
@@ -261,6 +263,13 @@ export function Landing() {
       setVar("--s2", p2);
       setVar("--s3", p3);
       target = scrubTime(p);
+
+      // The reveal clip is off-screen until the split opens: fetch it only as the scroll approaches it.
+      if (!revealLoaded && p >= revealLoadAt(revealStart, span, innerHeight)) {
+        revealLoaded = true;
+        rv.preload = "auto";
+        rv.load();
+      }
 
       // Reveal clip plays (and loops) only while the split is open; rewinds on each fresh entry.
       if (!reduced) {
@@ -372,7 +381,7 @@ export function Landing() {
           muted
           loop
           playsInline
-          preload="auto"
+          preload="none"
         />
       </div>
       <div className="nx-grain" aria-hidden />
