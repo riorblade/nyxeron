@@ -26,7 +26,7 @@ a markup costs you by running or partying in a club, with friends, in real time.
 | **Guest** | Players who like social play and light trading | Join live parties, buy tokens at the club's price, keep them in a portfolio, shop at open stores |
 | **DJ** | Players who like music | Practise in the studio, play live sets in a CEO's club; the whole room hears the mix |
 | **Admin** | The platform team | Manage players, coins, access, venues, rent, the warehouse, announcements; audit everything |
-| **Stock agent** | An automated agent (BNB Agent Studio) | Watch demand, buy tokenized stock with the platform's agentic wallet, restock the warehouse |
+| **Stock agent** | An automated agent (`apps/agent`, Binance Agentic Wallet) | Watch demand, buy tokenized stock with the platform's agentic wallet, restock the warehouse |
 
 ## 3. Economy (the core loop)
 

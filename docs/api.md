@@ -123,7 +123,7 @@ Every change requires `reason` (except announcement/admin role changes) and is w
 
 ## Stock agent
 
-For the platform's restocking agent (e.g. built with BNB Agent Studio). Secret: `AGENT_KEY` on the api.
+For the platform's restocking agent (`apps/agent`, which trades through the Binance Agentic Wallet). Secret: `AGENT_KEY` on the api.
 
 | Method | Path | Body | Notes |
 | --- | --- | --- | --- |
