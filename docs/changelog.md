@@ -7,10 +7,15 @@ teammate would notice.
 
 - **No more pauses from a swap the api refused:** a swap of less than one unit (0.001 share), or one bought while
   units were already short on chain, used to be refused after the USDC had left the Agentic Wallet, so the next
-  hourly check paused payments for every player. Now any verified swap is booked once: the USDC always, whole units
-  up to what the wallet backs (a purchase made while short repairs the shortfall; the back office shows how many
-  units it covered as `short`). Fractions of a unit stay in the wallet as surplus.
+  hourly check paused payments for every player. Now any verified swap is booked once: the USDC always, and the
+  whole units it bought. Fractions of a unit are carried per token and booked once they add up to a unit.
+- **A missing unit still stops payments:** if the wallet holds fewer units than the books count when the agent
+  reports a swap, the swap is booked but payments pause at once and the reconciliation keeps flagging the missing
+  units until the team writes them off. An admin reporting the swap writes them off in the same step, as an
+  explicit `loss` stock move with its reason, audited.
 - **One tx, one booking:** a tx booked as a restock can't also be booked as the team's seed, or the other way round.
+  A tx in which the Agentic Wallet sent anything out is never accepted as the seed, and neither is a player's
+  transfer, even a rejected one (#38).
 - **Multi-token swaps:** a swap that bought two whitelisted bStocks adds both in one report.
 
 ## 2026-10-10 · A paid band always plays

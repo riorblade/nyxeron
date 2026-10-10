@@ -309,19 +309,23 @@ func TestRestockNeedsANetPurchase(t *testing.T) {
 	}
 }
 
-// Whatever a receipt says, the wallet's bStock balance on chain must cover all the units we count: a swap of 8
-// with only 7 on chain adds 7 (and books the whole spend).
+// Whatever a receipt says, the wallet's bStock balance on chain must cover all the units we count. A swap of 8
+// with only 7 on chain means a unit went missing: the agent's report books the whole spend and the 8 units it
+// bought, and pauses payments (review #56, 1) so the loss stays visible until the team writes it off.
 func TestRestockMustBeBackedOnChain(t *testing.T) {
 	s := testStore(t)
 	c, a, b := restockChain(t, swapReceipt(t, 300, bought, game.payments.AgenticWallet), usdcAt+20)
 	a.balance = fmt.Sprintf("0x%064x", big.NewInt(7e15)) // 7 units' worth: less than the 8 bought
 	b.balance = a.balance
-	if got, err := s.VerifiedRestock(ctx, c, "agent", "tsla", usdcTx, "", time.Now()); err != nil || got.Units != 7 ||
+	if got, err := s.VerifiedRestock(ctx, c, "agent", "tsla", usdcTx, "", time.Now()); err != nil || got.Units != 8 ||
 		got.Short != 1 || got.USDCents != 300 {
 		t.Fatalf("%+v %v", got, err)
 	}
-	if q, _ := onHand(t, s, "tsla"); q != 7 {
+	if q, _ := onHand(t, s, "tsla"); q != 8 {
 		t.Fatalf("on hand %d", q)
+	}
+	if why, _ := s.Paused(ctx); why == nil {
+		t.Fatal("a short restock by the agent left payments running")
 	}
 }
 
@@ -362,10 +366,14 @@ func holdsTSLA(a, b *fakeRPC, shares *big.Int) {
 	b.balance = a.balance
 }
 
-// Issue #55 (F1b): units already short on chain (books 10, chain 9) and a fresh purchase of 8 arrives. The swap
-// is booked, agent or back office: the whole $3 as platform money out, and only the units the chain backs (7), so
-// the purchase repairs the shortfall instead of being refused while its spend stays off the books.
-func TestRestockRepairsAShortfallInsteadOfRefusingIt(t *testing.T) {
+// Issue #55 (F1b) + review #56 (1): units already short on chain (books 10, chain 9) and a fresh purchase of 8
+// arrives. The spend is booked either way (the whole $3 as platform money out), but a missing unit is never
+// papered over silently:
+//   - the agent's report adds the 8 it bought and pauses payments: the books count 18 for 17 on chain, so every
+//     reconciliation keeps flagging it, exactly as before #56, until the team writes the unit off;
+//   - an admin's report adds the 8 and writes the missing unit off in the same step, as an explicit "loss" stock
+//     move with its reason, audited; payments keep running.
+func TestShortRestockPausesForTheAgentAndIsWrittenOffByAnAdmin(t *testing.T) {
 	for _, actor := range []string{"agent", "kiel@x"} {
 		t.Run(actor, func(t *testing.T) {
 			s := testStore(t)
@@ -373,32 +381,49 @@ func TestRestockRepairsAShortfallInsteadOfRefusingIt(t *testing.T) {
 			c, a, b := restockChain(t, swapReceipt(t, 300, bought, game.payments.AgenticWallet), usdcAt+20)
 			holdsTSLA(a, b, new(big.Int).Add(big.NewInt(9e15), bought)) // 9 left of 10, + 8.09 bought
 			got, err := s.VerifiedRestock(ctx, c, actor, "tsla", usdcTx, "repair", time.Now())
-			if err != nil || got.Units != 7 || got.Short != 1 || got.USDCents != 300 {
+			if err != nil || got.Short != 1 || got.USDCents != 300 {
 				t.Fatalf("%+v %v", got, err)
-			}
-			if q, _ := onHand(t, s, "tsla"); q != 17 {
-				t.Fatalf("on hand %d, want the 17 the chain holds", q)
 			}
 			if n := count(t, s, `SELECT COUNT(*) FROM platform_ledger WHERE kind = 'restock' AND delta = -300`); n != 1 {
 				t.Fatalf("spend rows %d", n)
+			}
+			why, _ := s.Paused(ctx)
+			loss := count(t, s, `SELECT COUNT(*) FROM stock_moves WHERE kind = 'loss' AND delta = -1 AND tx = '`+usdcTx+`'
+				AND reason LIKE '%repair%'`)
+			lossAudit := count(t, s, `SELECT COUNT(*) FROM audit WHERE action = 'stock-loss' AND target = 'tsla'`)
+			q, _ := onHand(t, s, "tsla")
+			if actor == "agent" {
+				if got.Units != 8 || q != 18 || why == nil || !strings.Contains(strings.Join(why, " "), usdcTx) {
+					t.Fatalf("agent: %+v, on hand %d, paused %v", got, q, why)
+				}
+				if loss != 0 || lossAudit != 0 {
+					t.Fatalf("the agent wrote a loss off by itself: %d %d", loss, lossAudit)
+				}
+				return
+			}
+			if got.Units != 7 || q != 17 || why != nil {
+				t.Fatalf("admin: %+v, on hand %d, paused %v", got, q, why)
+			}
+			if loss != 1 || lossAudit != 1 {
+				t.Fatalf("admin: loss moves %d, loss audits %d", loss, lossAudit)
 			}
 		})
 	}
 }
 
-// Units far short (books 10, chain 8 after buying 8): the spend is still booked, no unit is added, and the
-// reconciliation keeps flagging the missing units (the books never claim more than the chain holds).
+// Units far short (books 10, chain 8 after buying 8): the spend is still booked and the agent's report pauses
+// payments; the reconciliation keeps flagging the missing units.
 func TestRestockBooksTheSpendWhenNothingIsBacked(t *testing.T) {
 	s := testStore(t)
 	stockOf(t, s, "tsla", 10)
 	c, a, b := restockChain(t, swapReceipt(t, 300, bought, game.payments.AgenticWallet), usdcAt+20)
 	holdsTSLA(a, b, bought)
 	got, err := s.VerifiedRestock(ctx, c, "agent", "tsla", usdcTx, "", time.Now())
-	if err != nil || got.Units != 0 || got.Short != 8 || got.USDCents != 300 {
+	if err != nil || got.Units != 8 || got.Short != 8 || got.USDCents != 300 {
 		t.Fatalf("%+v %v", got, err)
 	}
-	if q, _ := onHand(t, s, "tsla"); q != 10 {
-		t.Fatalf("on hand %d", q)
+	if why, _ := s.Paused(ctx); why == nil {
+		t.Fatal("not paused")
 	}
 	if n := count(t, s, `SELECT COUNT(*) FROM platform_ledger WHERE kind = 'restock' AND delta = -300`); n != 1 {
 		t.Fatalf("spend rows %d", n)
@@ -456,24 +481,26 @@ func TestRestockAndSeedNeverShareATx(t *testing.T) {
 		if got, err := s.VerifiedRestock(ctx, c, "kiel@x", "tsla", usdcTx, "first stock", time.Now()); err != nil || got.USDCents != 300 {
 			t.Fatalf("%+v %v", got, err)
 		}
-		if _, err := s.RecordSeed(ctx, c, "kiel@x", "0x"+strings.ToUpper(usdcTx[2:]), "seed", time.Now()); !errors.Is(err, errTxUsed) {
+		if _, err := s.RecordSeed(ctx, c, "kiel@x", "0x"+strings.ToUpper(usdcTx[2:]), "seed", time.Now()); !errors.Is(err, errNotASeed) {
 			t.Fatalf("seed of a restock tx: %v", err)
 		}
 		if n := count(t, s, `SELECT COALESCE(SUM(delta), 0) FROM platform_ledger`); n != -300 {
 			t.Fatalf("platform net %d, want -300", n)
 		}
 	})
+	// Review #56 (2): booking the swap as the seed first is refused (the wallet paid out in it), so the swap is
+	// never locked out of the books.
 	t.Run("seed, then restock", func(t *testing.T) {
 		s := testStore(t)
 		c, _, _ := restockChain(t, rc(t), usdcAt+20)
-		if _, err := s.RecordSeed(ctx, c, "kiel@x", usdcTx, "seed", time.Now()); err != nil {
-			t.Fatal(err)
+		if _, err := s.RecordSeed(ctx, c, "kiel@x", usdcTx, "seed", time.Now()); !errors.Is(err, errNotASeed) {
+			t.Fatalf("a swap booked as the seed: %v", err)
 		}
-		if _, err := s.VerifiedRestock(ctx, c, "agent", "tsla", usdcTx, "", time.Now()); !errors.Is(err, errTxUsed) {
-			t.Fatalf("restock of a seed tx: %v", err)
+		if n := count(t, s, `SELECT COUNT(*) FROM platform_ledger WHERE kind = 'seed'`); n != 0 {
+			t.Fatalf("seed rows %d", n)
 		}
-		if q, _ := onHand(t, s, "tsla"); q != 0 {
-			t.Fatalf("on hand %d", q)
+		if got, err := s.VerifiedRestock(ctx, c, "agent", "tsla", usdcTx, "", time.Now()); err != nil || got.Units != 8 {
+			t.Fatalf("restock after a refused seed: %+v %v", got, err)
 		}
 	})
 }
@@ -519,4 +546,86 @@ func TestTwoTokenSwapBooksEveryToken(t *testing.T) {
 	if n := count(t, s, `SELECT COALESCE(SUM(delta), 0) FROM platform_ledger`); n != -600 {
 		t.Fatalf("platform net %d", n)
 	}
+}
+
+// Review #56 (2): the seed is money the team sent in. A tx in which the Agentic Wallet sent anything out, a
+// stablecoin or a bStock, is a swap or a payout, never the seed: refused, whatever came in with it.
+func TestSeedRefusesATxTheWalletPaidOutOf(t *testing.T) {
+	aw, tsla, usdc, usdt := game.payments.AgenticWallet, game.payments.Tokens["tsla"].Contract,
+		game.payments.Topup.Tokens["USDC"], game.payments.Topup.Tokens["USDT"]
+	cases := map[string][]move{
+		"usdc out, refund in":   {{usdc, aw, pool, big.NewInt(5e18)}, {usdc, pool, aw, big.NewInt(2e18)}},
+		"bStock out, usdc in":   {{tsla, aw, pool, bought}, {usdc, pool, aw, big.NewInt(3e18)}},
+		"usdt out, usdc in":     {{usdt, aw, pool, big.NewInt(1e18)}, {usdc, pool, aw, big.NewInt(3e18)}},
+		"seed in, dust out too": {{usdc, player, aw, big.NewInt(5e18)}, {usdc, aw, pool, big.NewInt(1)}},
+	}
+	for name, moves := range cases {
+		t.Run(name, func(t *testing.T) {
+			s := testStore(t)
+			c, _, _ := restockChain(t, customReceipt(t, moves...), usdcAt+20)
+			if cents, err := s.RecordSeed(ctx, c, "kiel@x", usdcTx, "seed", time.Now()); !errors.Is(err, errNotASeed) {
+				t.Fatalf("booked as the seed: %d cents, %v", cents, err)
+			}
+			if n := count(t, s, `SELECT COUNT(*) FROM platform_ledger`); n != 0 {
+				t.Fatalf("platform rows %d", n)
+			}
+		})
+	}
+	// A plain transfer in (and the wallet's transfers to itself) is still a seed.
+	s := testStore(t)
+	c, _, _ := restockChain(t, customReceipt(t, move{usdc, player, aw, big.NewInt(5e18)}, move{usdc, aw, aw, big.NewInt(1e18)}), usdcAt+20)
+	if cents, err := s.RecordSeed(ctx, c, "kiel@x", usdcTx, "seed", time.Now()); err != nil || cents != 500 {
+		t.Fatalf("plain seed: %d %v", cents, err)
+	}
+}
+
+// Review #56 (3): the fractions of sub-unit swaps add up. Two swaps of 0.6 unit each book 0, then 1 unit (the
+// remainder, 0.2, waits for the next swap), so what the wallet bought ends up in the warehouse.
+func TestSubUnitRemaindersAddUp(t *testing.T) {
+	s := testStore(t)
+	tx2 := "0x" + strings.Repeat("ab", 32)
+	six := big.NewInt(6e14) // 0.6 unit
+	rc := swapReceipt(t, 20, six, game.payments.AgenticWallet)
+	c, a, b := restockChain(t, rc, usdcAt+20)
+	a.receipts[tx2] = withHash(t, rc, tx2)
+	b.receipts[tx2] = a.receipts[tx2]
+	if got, err := s.VerifiedRestock(ctx, c, "agent", "tsla", usdcTx, "", time.Now()); err != nil || got.Units != 0 {
+		t.Fatalf("first 0.6: %+v %v", got, err)
+	}
+	if got, err := s.VerifiedRestock(ctx, c, "agent", "tsla", tx2, "", time.Now()); err != nil || got.Units != 1 || got.Short != 0 {
+		t.Fatalf("second 0.6: %+v %v", got, err)
+	}
+	if q, _ := onHand(t, s, "tsla"); q != 1 {
+		t.Fatalf("on hand %d, want 1 of the 1.2 bought", q)
+	}
+	// Whole swaps keep their own fraction too: 8.09 + the 0.2 left = 8 units, 0.29 left.
+	tx3 := "0x" + strings.Repeat("cd", 32)
+	a.receipts[tx3] = withHash(t, swapReceipt(t, 300, bought, game.payments.AgenticWallet), tx3)
+	b.receipts[tx3] = a.receipts[tx3]
+	if got, err := s.VerifiedRestock(ctx, c, "agent", "tsla", tx3, "", time.Now()); err != nil || got.Units != 8 {
+		t.Fatalf("8.09 after 0.2 left: %+v %v", got, err)
+	}
+	tx4 := "0x" + strings.Repeat("ef", 31) + "01"
+	a.receipts[tx4] = withHash(t, swapReceipt(t, 30, big.NewInt(71e13), game.payments.AgenticWallet), tx4) // 0.71: with 0.2909…, one unit
+	b.receipts[tx4] = a.receipts[tx4]
+	if got, err := s.VerifiedRestock(ctx, c, "agent", "tsla", tx4, "", time.Now()); err != nil || got.Units != 1 {
+		t.Fatalf("0.71 after 0.29 left: %+v %v", got, err)
+	}
+	if q, _ := onHand(t, s, "tsla"); q != 10 {
+		t.Fatalf("on hand %d, want 10 of the 10.0006… bought", q)
+	}
+}
+
+// withHash: the receipt as another tx's (its hash, and its logs').
+func withHash(t *testing.T, receipt, tx string) string {
+	var rc map[string]any
+	if err := json.Unmarshal([]byte(receipt), &rc); err != nil {
+		t.Fatal(err)
+	}
+	rc["transactionHash"] = tx
+	for _, l := range rc["logs"].([]any) {
+		l.(map[string]any)["transactionHash"] = tx
+	}
+	b, _ := json.Marshal(rc)
+	return string(b)
 }

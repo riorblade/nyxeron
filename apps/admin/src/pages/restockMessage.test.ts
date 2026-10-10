@@ -12,15 +12,15 @@ describe("restockMessage", () => {
   });
   it("a sub-unit swap is booked, not 'Added 0'", () => {
     expect(restockMessage({ units: 0 }, "tsla", ticker, fmt)).toBe(
-      "✓ Swap booked: under one unit of TSLA, the fraction stays in the wallet",
+      "✓ Swap booked: under one unit of TSLA, the fraction counts toward the next unit",
     );
   });
-  it("units that only covered a shortfall are explained", () => {
+  it("units missing on chain, written off with the swap, are explained", () => {
     expect(restockMessage({ units: 7, short: 1 }, "tsla", ticker, fmt)).toBe(
-      "✓ Added 7 TSLA from the swap; 1 more covered units the wallet was short on chain",
+      "✓ Added 7 TSLA from the swap; 1 more written off as lost on chain (see the audit log)",
     );
     expect(restockMessage({ units: 0, short: 3 }, "tsla", ticker, fmt)).toBe(
-      "✓ Swap booked: no TSLA added; 3 more covered units the wallet was short on chain",
+      "✓ Swap booked: no TSLA added; 3 more written off as lost on chain (see the audit log)",
     );
   });
   it("other tokens the same swap bought are listed", () => {

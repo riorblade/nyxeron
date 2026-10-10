@@ -243,6 +243,20 @@ func TestRecordSeed(t *testing.T) {
 	if _, err := s2.RecordSeed(ctx, ch, "kiel@x", usdcTx, "oops", time.Now()); !errors.Is(err, errRejected) {
 		t.Fatalf("a player's top-up booked as seed: %v", err)
 	}
+	// #38 (bug 3): nor a player's rejected top-up (under the minimum): it is theirs to refund, not the platform's.
+	s3 := testStore(t)
+	s3.Get(ctx, "p")
+	s3.SetIdentity(ctx, "p", "", player, time.Now())
+	tr.Amount = big.NewInt(2e18) // $2, under the $3 minimum
+	if tp, _, _ := s3.recordTopup(ctx, tr, 0, "p", time.Now()); tp.Status != "rejected" {
+		t.Fatalf("setup: %+v", tp)
+	}
+	if _, err := s3.RecordSeed(ctx, ch, "kiel@x", usdcTx, "oops", time.Now()); !errors.Is(err, errRejected) {
+		t.Fatalf("a player's rejected top-up booked as seed: %v", err)
+	}
+	if n := count(t, s3, `SELECT COUNT(*) FROM platform_ledger`); n != 0 {
+		t.Fatalf("platform rows %d", n)
+	}
 }
 
 // Over HTTP: a top-up report while paused answers 503 paused (the web keeps asking; the credit lands later).
@@ -287,5 +301,43 @@ func TestSubUnitSwapKeepsTheBooksInLine(t *testing.T) {
 	}
 	if u := r.Units["tsla"]; u.Counted != 10 || u.OnChain != 10 {
 		t.Fatalf("units %+v: the fraction is surplus, not stock", u)
+	}
+}
+
+// Review #56 (1): a unit goes missing between hourly checks, then the agent's routine buy arrives. The spend is
+// booked, payments pause at once, and every reconciliation keeps flagging the missing unit (as before #56) until
+// the team writes it off; then the next one matches and payments resume.
+func TestAgentShortRestockKeepsTheLossVisible(t *testing.T) {
+	c, ch, a, b := reconCity(t)
+	c.run(func(tx *sql.Tx) error { return platformLedger(tx, 300, "seed", "0xseed", "test") })
+	walletHolds(a, b, 1300, 10)
+	if r, _ := c.s.Reconcile(ctx, ch, "system", "test", c.now); !r.OK {
+		t.Fatalf("baseline: %+v", r)
+	}
+	walletHolds(a, b, 1000, 9) // one unit gone; then the agent pays $3 for 8.09 units
+	tsla := fmt.Sprintf("0x%064x", new(big.Int).Add(big.NewInt(9e15), bought))
+	for _, f := range []*fakeRPC{a, b} {
+		f.mu.Lock()
+		f.balances[strings.ToLower(game.payments.Tokens["tsla"].Contract)] = tsla
+		f.mu.Unlock()
+	}
+	if got, err := c.s.VerifiedRestock(ctx, ch, "agent", "tsla", usdcTx, "", c.now); err != nil || got.USDCents != 300 {
+		t.Fatalf("restock: %+v %v", got, err)
+	}
+	if why, _ := c.s.Paused(ctx); why == nil {
+		t.Fatal("payments still run after a short restock")
+	}
+	r, err := c.s.Reconcile(ctx, ch, "system", "hourly", c.now)
+	if err != nil || r.OK {
+		t.Fatalf("the missing unit vanished from the books: %+v %v", r, err)
+	}
+	if err := c.s.Restock(ctx, "kiel@x", "tsla", -1, "adjust", "unit lost on chain", ""); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := c.s.Reconcile(ctx, ch, "system", "hourly", c.now); err != nil || !r.OK {
+		t.Fatalf("after the write-off: %+v %v", r, err)
+	}
+	if why, _ := c.s.Paused(ctx); why != nil {
+		t.Fatalf("still paused: %v", why)
 	}
 }
