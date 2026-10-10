@@ -29,9 +29,11 @@ type fakeRPC struct {
 	balances  map[string]string // per token contract (lower case), else balance
 	staleOnce string            // if set, the next eth_call answers this (an older block), then it is cleared
 	down      bool              // answers HTTP 503, like a provider having an outage
-	mu        sync.Mutex
-	methods   []string
-	callTags  []string // the block tag of each eth_call
+	// failLogsFrom: eth_getLogs filtered on this "from" topic answers an rpc error (like a response over the cap)
+	failLogsFrom string
+	mu           sync.Mutex
+	methods      []string
+	callTags     []string // the block tag of each eth_call
 }
 
 func fixture(t *testing.T, name string) string {
@@ -82,6 +84,10 @@ func (f *fakeRPC) serve(t *testing.T) string {
 				Topics    []*string `json:"topics"`
 			}
 			_ = json.Unmarshal(req.Params[0], &q)
+			if f.failLogsFrom != "" && len(q.Topics) >= 2 && q.Topics[1] != nil && strings.EqualFold(*q.Topics[1], f.failLogsFrom) {
+				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32005,"message":"response size exceeded"}}`))
+				return
+			}
 			lo, _ := hexUint(q.FromBlock)
 			hi, _ := hexUint(q.ToBlock)
 			var out []json.RawMessage

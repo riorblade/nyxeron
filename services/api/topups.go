@@ -570,7 +570,12 @@ func (s *store) scanRange(ctx context.Context, c *bsc, from, to uint64, now time
 			} else {
 				if paidOut == nil {
 					if paidOut, err = walletPaidOut(ctx, c, from, to); err != nil {
-						return err
+						// Anyone can make this answer huge (transferFrom(agenticWallet, x, 0) needs no allowance), so it
+						// must not stop the scan: strangers' transfers here are owed in full. Safe: a swap's change is
+						// zeroed when the swap is booked as a restock (VerifiedRestock).
+						slog.Warn("topup scan: the wallet's payouts can't be read; strangers' transfers owed in full",
+							"from", from, "to", to, "err", err)
+						paidOut = map[string]bool{}
 					}
 				}
 				change = paidOut[strings.ToLower(tr.Tx)]
