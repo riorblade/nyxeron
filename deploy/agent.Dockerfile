@@ -4,6 +4,7 @@ FROM node:22-slim
 RUN npm install --global @binance/agentic-wallet@1.10.0 && corepack enable
 WORKDIR /repo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY scripts/only-pnpm.cjs scripts/
 COPY packages/core/package.json packages/core/
 COPY apps/agent/package.json apps/agent/
 RUN pnpm install --frozen-lockfile
