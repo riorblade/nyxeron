@@ -3,6 +3,11 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-10 · Lighter landing page
+
+- **Half the landing download:** the second landing video (the reveal clip) now loads only as you scroll towards it
+  instead of with the page, so the first visit fetches about 1.1 MB of media instead of 2.1 MB.
+
 ## 2026-10-10 · The office comes alive (neon UI)
 
 - **A real game look:** the office is now a neon nightclub instead of black and white: violet glass panels, magenta
