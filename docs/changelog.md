@@ -3,6 +3,14 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-10 · The office comes alive (neon UI)
+
+- **A real game look:** the office is now a neon nightclub instead of black and white: violet glass panels, magenta
+  and gold light, coloured icons for every tab and stat, a gold Open Club button over the club's entrance at night,
+  illustrated supplier cards (Corner Store, City Wholesale, Harbor Imports), a supply crate for Fill to forecast, a
+  reward chest on the objectives, the CEO's portrait on her tips, the booked DJ on Tonight, and new full-colour art
+  for all five venues. All art is generated for NYXERON.
+
 ## 2026-10-10 · Sign-in that doesn't stall
 
 - **Signing in no longer waits on Privy:** a key refresh runs in the background, one at a time, so a slow Privy (or

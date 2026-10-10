@@ -7,4 +7,13 @@ export const art = {
   staff: (role: string) => `/art/staff-${role}.webp`,
   venue: (level: number) => `/art/venue-${level}.webp`,
   door: "/landing-hero.webp",
+  /** The neon office (generated art, art/ui): hero banner, cards, characters. */
+  ui: {
+    hero: "/art/ui/hero.webp",
+    openClub: "/art/ui/open-club.webp",
+    supplier: (id: string) => `/art/ui/supplier-${id}.webp`,
+    crate: "/art/ui/crate.webp",
+    chest: "/art/ui/chest.webp",
+    ceo: "/art/ui/ceo.webp",
+  },
 };

@@ -26,7 +26,7 @@ import {
   Store,
   Truck,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { art } from "@/lib/art";
 import { Img } from "@/components/Img";
 import { LivePrice, TokenLink } from "@/hud/TokenDetail";
@@ -41,7 +41,7 @@ function Thumb({ id, size = "size-11" }: { id: TokenId; size?: string }) {
   return (
     <span
       className={cn(
-        "flex shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-white/[0.04]",
+        "border-violet/40 flex shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-gradient-to-br from-violet/25 to-night shadow-[0_0_12px_oklch(0.6_0.25_300/0.25)]",
         size,
       )}
     >
@@ -60,7 +60,7 @@ function Thumb({ id, size = "size-11" }: { id: TokenId; size?: string }) {
 }
 
 const orderBtn =
-  "h-8 rounded-md border border-white/15 bg-white/[0.04] px-2.5 font-mono text-xs hover:bg-white/12 disabled:opacity-40";
+  "h-9 rounded-lg border border-violet/45 bg-violet/15 px-3 font-mono text-xs font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,.08)] hover:border-gold/70 hover:bg-gold/15 hover:text-gold disabled:opacity-40";
 
 export function StockTab({ s, compact }: { s: GameState; compact?: boolean }) {
   const act = useGame((x) => x.act);
@@ -128,31 +128,40 @@ export function StockTab({ s, compact }: { s: GameState; compact?: boolean }) {
               disabled={locked}
               onClick={() => setSupplier(id)}
               className={cn(
-                "flex items-center gap-3 rounded-xl border p-3 text-left transition-colors",
+                "group relative flex min-h-24 flex-col justify-end overflow-hidden rounded-xl border text-left transition @xl:min-h-36",
                 on
-                  ? "border-white bg-white/[0.09] shadow-[0_0_24px_rgba(255,255,255,.1)]"
-                  : "border-white/12 bg-white/[0.03] hover:bg-white/[0.06]",
+                  ? "border-gold shadow-[0_0_24px_oklch(0.8_0.16_75/0.45)]"
+                  : "border-violet/35 hover:border-violet/70",
                 locked && "opacity-40",
               )}
             >
-              <span
-                className={cn(
-                  "flex size-10 items-center justify-center rounded-lg",
-                  on ? "bg-white text-black" : "bg-white/8",
-                )}
-              >
-                {locked ? (
-                  <Lock className="size-4" />
-                ) : (
-                  <Icon className="size-5" strokeWidth={1.75} />
-                )}
-              </span>
-              <span className="leading-tight">
-                <span className="block text-sm font-medium">{sp.name}</span>
-                <span className="block text-[11px] text-white/50">
-                  {locked
-                    ? en.office.lockedTab(sp.minLevel)
-                    : `${en.stock.lead(sp.leadDays)} · ×${sp.costMultiplier}`}
+              <Img
+                src={art.ui.supplier(id)}
+                alt=""
+                className="absolute inset-0 size-full object-cover transition-transform duration-500 group-hover:scale-105"
+              />
+              <span className="from-night via-night/60 absolute inset-0 bg-gradient-to-t to-transparent" />
+              <span className="relative flex items-center gap-2.5 p-2.5">
+                <span
+                  className={cn(
+                    "flex size-9 shrink-0 items-center justify-center rounded-lg",
+                    on ? "gold" : "chip",
+                  )}
+                  style={{ "--hue": 300 } as CSSProperties}
+                >
+                  {locked ? (
+                    <Lock className="size-4" />
+                  ) : (
+                    <Icon className="size-[18px]" strokeWidth={1.75} />
+                  )}
+                </span>
+                <span className="leading-tight">
+                  <span className="block text-sm font-semibold">{sp.name}</span>
+                  <span className="text-gold/90 block text-[11px]">
+                    {locked
+                      ? en.office.lockedTab(sp.minLevel)
+                      : `${en.stock.lead(sp.leadDays)} · ×${sp.costMultiplier}`}
+                  </span>
                 </span>
               </span>
             </button>
@@ -163,10 +172,18 @@ export function StockTab({ s, compact }: { s: GameState; compact?: boolean }) {
           disabled={
             !menu.some((d) => tokens[d].minLevel <= s.level && shortfall(d) > 0)
           }
-          className="flex h-11 items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-medium @xl:h-auto text-black shadow-[0_0_24px_rgba(255,255,255,.18)] disabled:bg-white/10 disabled:text-white/60 disabled:shadow-none"
+          className="group relative flex h-14 items-center justify-center gap-2 overflow-hidden rounded-xl border border-violet/60 bg-gradient-to-br from-violet/45 via-neon/25 to-night px-4 text-sm font-semibold shadow-[0_0_24px_oklch(0.6_0.25_300/0.4)] @xl:h-auto @xl:min-w-40 @xl:flex-col disabled:opacity-50"
         >
-          <RefreshCw className="size-4" />
-          {en.stock.fill}
+          <Img
+            src={art.ui.crate}
+            alt=""
+            className="pointer-events-none hidden w-24 drop-shadow-[0_0_18px_oklch(0.7_0.2_300/0.7)] transition-transform group-hover:scale-110 @xl:block"
+            fallback={<RefreshCw className="size-6" />}
+          />
+          <span className="flex items-center gap-2">
+            <RefreshCw className="size-4 @xl:hidden" />
+            {en.stock.fill}
+          </span>
         </button>
       </div>
 
@@ -190,7 +207,7 @@ export function StockTab({ s, compact }: { s: GameState; compact?: boolean }) {
             <li
               key={d}
               className={cn(
-                "grid grid-cols-[minmax(0,1fr)_auto] gap-y-2 @xl:gap-y-0 @xl:grid-cols-[minmax(8rem,1.2fr)_minmax(4rem,1fr)_7.5rem_auto] @2xl:grid-cols-[minmax(10rem,1.4fr)_minmax(0,1fr)_5rem_7.5rem_auto] @3xl:grid-cols-[minmax(12rem,1.4fr)_1fr_6rem_5.5rem_8rem_auto] items-center gap-x-4 rounded-xl border border-white/8 bg-white/[0.025] px-3 py-2 transition-colors hover:bg-white/[0.05]",
+                "tile grid grid-cols-[minmax(0,1fr)_auto] gap-y-2 @xl:gap-y-0 @xl:grid-cols-[minmax(8rem,1.2fr)_minmax(4rem,1fr)_7.5rem_auto] @2xl:grid-cols-[minmax(10rem,1.4fr)_minmax(0,1fr)_5rem_7.5rem_auto] @3xl:grid-cols-[minmax(12rem,1.4fr)_1fr_6rem_5.5rem_8rem_auto] items-center gap-x-4 rounded-xl px-3 py-2.5 transition hover:border-violet/60 hover:shadow-[0_0_18px_oklch(0.6_0.25_300/0.25)]",
                 locked && "opacity-40",
               )}
             >
@@ -213,8 +230,8 @@ export function StockTab({ s, compact }: { s: GameState; compact?: boolean }) {
               </span>
               <span
                 className={cn(
-                  "hidden items-center gap-1 font-mono text-sm @2xl:flex",
-                  short ? "text-white" : "text-white/55",
+                  "hidden items-center gap-1 font-mono text-sm font-semibold @2xl:flex",
+                  short ? "text-gold" : "text-cyan/80",
                 )}
               >
                 {!locked &&
@@ -289,13 +306,13 @@ function StorageMeter({ s }: { s: GameState }) {
   const pct = Math.min(100, (used / max) * 100);
   return (
     <div className="flex items-center gap-3" title={en.storage.hint}>
-      <span className="text-[10px] tracking-[0.2em] whitespace-nowrap text-white/60 uppercase">
+      <span className="text-gold text-[10px] font-semibold tracking-[0.2em] whitespace-nowrap uppercase">
         {en.storage.label}
       </span>
-      <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
+      <span className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
         <span
           className={cn(
-            "block h-full rounded-full bg-white",
+            "from-gold-deep to-gold block h-full rounded-full bg-gradient-to-r shadow-[0_0_10px_oklch(0.8_0.16_75/0.7)]",
             pct > 90 && "animate-pulse",
           )}
           style={{ width: `${pct}%` }}
@@ -334,7 +351,7 @@ function PriceSlider({ s, d }: { s: GameState; d: TokenId }) {
     <span className="flex w-full flex-col gap-1">
       <span className="flex items-baseline justify-between font-mono text-xs tabular-nums">
         <span>{fmt(price)}</span>
-        <span className="text-white/50" title={en.spot.markupHint}>
+        <span className="text-emerald-300/90" title={en.spot.markupHint}>
           {en.spot.markup(markup)}
         </span>
       </span>
@@ -346,7 +363,7 @@ function PriceSlider({ s, d }: { s: GameState; d: TokenId }) {
         value={Math.min(max, Math.max(min, price))}
         onChange={(e) => act((g) => setPrice(g, d, Number(e.target.value)))}
         aria-label={`${tokens[d].name} price`}
-        className="w-full accent-white"
+        className="accent-cyan w-full"
       />
     </span>
   );
@@ -356,12 +373,14 @@ function PriceSlider({ s, d }: { s: GameState; d: TokenId }) {
 function SpotSource() {
   const { live, at } = useQuotes();
   return (
-    <p className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/65">
+    <p className="tile flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg px-3 py-2 text-xs text-white/75">
       <span className="flex items-center gap-1.5">
         <span
           className={cn(
             "size-1.5 rounded-full",
-            live ? "animate-pulse bg-white" : "bg-white/30",
+            live
+              ? "animate-pulse bg-emerald-400 shadow-[0_0_8px_#34d399]"
+              : "bg-gold/70",
           )}
         />
         {live ? en.spot.live(new Date(at)) : en.spot.offline}

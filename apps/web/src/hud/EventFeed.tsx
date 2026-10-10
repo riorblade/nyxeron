@@ -1,8 +1,16 @@
 import type { GameState } from "@nyxeron/core";
+import type { CSSProperties } from "react";
 import { clock, en } from "@/i18n/en";
 import { cn } from "@/lib/utils";
 import { eventText, isAlert } from "./eventText";
 import { eventIcon } from "./icons";
+
+/** A neon colour per kind of event (alerts are always red-orange), so the feed reads at a glance. */
+const hues = [75, 300, 210, 150, 330];
+const hueOf = (kind: string, alert: boolean) =>
+  alert
+    ? 25
+    : hues[[...kind].reduce((a, c) => a + c.charCodeAt(0), 0) % hues.length]!;
 
 /** Today's events. `cards` = roomy rows with icon tiles (Office); default = dense one-liners (night HUD). */
 export function EventFeed({
@@ -20,7 +28,7 @@ export function EventFeed({
     .reverse();
   return (
     <section className="min-w-0">
-      <h3 className="mb-2 text-[10px] tracking-[0.2em] text-white/60">
+      <h3 className="mb-2 text-[11px] font-semibold tracking-[0.22em] text-white/85">
         {en.night.feed}
       </h3>
       {events.length === 0 && (
@@ -35,16 +43,20 @@ export function EventFeed({
               key={s.log.length - i}
               className={cn(
                 "enter flex items-start gap-2.5",
-                cards && "rounded-lg border border-white/8 bg-white/[0.03] p-2",
-                alert ? "text-white" : "text-white/60",
+                cards && "tile items-center rounded-xl p-2",
+                alert
+                  ? "text-white"
+                  : cards
+                    ? "text-white/85"
+                    : "text-white/65",
               )}
             >
               <span
                 className={cn(
-                  "flex shrink-0 items-center justify-center rounded-md border",
-                  cards ? "size-7" : "size-5",
-                  alert ? "border-white/50 bg-white/10" : "border-white/10",
+                  "chip flex shrink-0 items-center justify-center rounded-full",
+                  cards ? "size-8" : "size-5",
                 )}
+                style={{ "--hue": hueOf(e.kind, alert) } as CSSProperties}
               >
                 <Icon
                   className={cards ? "size-3.5" : "size-3"}
