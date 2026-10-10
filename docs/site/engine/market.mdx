@@ -96,7 +96,7 @@ The spot factor does **not** rewrite the player's price list. It moves costs and
 
 **Why:** pricing is the CEO's main lever. A higher price earns more per sale but sells less often.
 
-The player sets an integer list price $\ell_k \ge 1$ per token. A new career starts with $\ell_k = \textit{defaultPrice}_k$, and moving up a level rescales it (see [Economy & progression](/engine/economy)). During happy hour the list price is halved:
+The player sets an integer list price per token, $1 \le \ell_k \le \operatorname{round}(100 \cdot \textit{defaultPrice}_k \cdot s_L)$: at most 100 times the default at the current venue, so an absurd price can never break the books. A new career starts with $\ell_k = \textit{defaultPrice}_k$, and moving up a level rescales it (see [Economy & progression](/engine/economy)). During happy hour the list price is halved:
 
 $$
 \ell^{\text{eff}}_{k,t} =

@@ -28,7 +28,7 @@ $$
 | Line | What adds to it |
 | --- | --- |
 | $R^{\text{bar}}$ | every token sale at the price the guest paid (see [Market & pricing](/engine/market)) |
-| $R^{\text{cover}}$ | each admitted guest pays $\min(\text{cover}_g, \text{budget}_g)$ at the door |
+| $R^{\text{cover}}$ | each admitted guest pays $\text{cover}_g$ at the door; a guest whose budget is below it goes home (the door never takes a whole wallet) |
 | $R^{\text{table}}$ | at minute 90 every booked seat pays its minimum spend; sparkler-parade bottles also land here |
 
 ### The night's coin change
@@ -197,6 +197,8 @@ $$
 | $s_L$ | price scale of the current venue |
 | $\text{stock}_k$, $q_o$ | lots on the shelf, lots in pending order $o$ |
 | $\ell_k$ | the player's list price; the markup over standard carries over |
+
+The new venue's stock room starts without the old storage tiers. If the rescaled stock (shelves plus orders on the way) $H$ exceeds its base storage $\Sigma_{L+1}$, every amount is scaled once more by $\Sigma_{L+1} / H$ and rounded down; what stays behind is logged per token in the event feed, so nothing vanishes silently.
 
 All upgrades (sound, lighting, VIP lounge, capacity, storage) reset to zero, because the new venue comes with its own house rig. Coin is not rescaled, and reputation, staff and permits carry over. Every coin price that is defined in base units (supplier costs, standard prices, upgrade and sparkler costs, guest budgets, the cover reference, seat minimum spends) is multiplied by the new $s_{L+1}$ from then on.
 

@@ -133,7 +133,7 @@ Each minute, guests whose arrival minute has come join the queue. The door then 
 1. **Capacity.** If the number inside has reached $C = \operatorname{round}\big(\text{capacity}_L \cdot (1 + 0.15\, u_{\text{cap}})\big)$, the door closes for this minute, unless the player forced it open (a violation under R10). Here $u_{\text{cap}} \in \lbrace 0, 1, 2, 3 \rbrace$ is the capacity upgrade tier.
 2. **ID check.** An underage guest is turned away if the club has security, or if it is below Level 3 (the owner checks IDs at the counter). Otherwise the guest gets in, and an inspector who visits that night will find them.
 3. **Dress code.** Turned away with probability 0.1 / 0.25 (men) or 0.03 / 0.08 (women) under a smart / strict code.
-4. **Cover.** The guest pays $\min(c_g,\, b)$ and their budget drops by the same amount, where $c_g = 0$ for guest-list guests and for women on ladies' night, and $c_g = c$ otherwise.
+4. **Cover.** If the guest's budget $b$ is below the cover $c_g$, they go home: the door never takes a whole wallet. Otherwise they pay $c_g$ and their budget drops by it. Here $c_g = 0$ for guest-list guests and for women on ladies' night, and $c_g = c$ otherwise.
 
 Turned-away guests still use up one of the 3 door slots that minute.
 
@@ -214,7 +214,7 @@ where $f_t$ is the share of women among guests inside. The round adds +2 satisfa
 There is no fixed spend-per-guest constant. A guest's spend is whatever the per-minute rule produces until the night ends or they leave, bounded by their budget:
 
 $$
-\text{spend}_g = \min(c_g, b_0) + \sum_{\text{purchases}} \pi_{k,t} \;\le\; b_0
+\text{spend}_g = c_g + \sum_{\text{purchases}} \pi_{k,t} \;\le\; b_0 \qquad (c_g \le b_0 \text{ for every guest let in})
 $$
 
 The one exception is the sparkler parade (see [Crowd, DJ & security](/engine/crowd)). A guest whose remaining budget covers a bottle at $\operatorname{round}(0.35\, m_{\text{table}})$ may copy the parade and buy one; the club books the full bottle price as table revenue, but only 40% of it comes out of the guest's budget (the other 60% is an impulse splurge). Sparkler bottles therefore let a guest's total spend exceed $b_0$.
@@ -285,7 +285,7 @@ where $m_s$ is the player's minimum spend, $\bar m_s = \operatorname{round}(m^0_
 
 ## Players as guests
 
-In multiplayer, a human visitor walks in by paying the club's cover from their own wallet and buys at the list price times the live market multiplier, $\max(1, \operatorname{round}(p_k\, \mu_{k,t}))$, decreasing the club's stock exactly like a simulated guest. Player visitors always pay full price: the happy-hour discount and free entry (guest lists, women on ladies' night) apply only to simulated guests. What they buy goes home with them; the club never buys back.
+In multiplayer, a human visitor walks in while the club is open (the night, before 04:00, not sealed after a failed inspection) by paying the club's cover from their own wallet (no entry if it can't cover it) and buys at the list price times the live market multiplier, $\max(1, \operatorname{round}(p_k\, \mu_{k,t}))$, decreasing the club's stock exactly like a simulated guest. Player visitors always pay full price: the happy-hour discount and free entry (guest lists, women on ladies' night) apply only to simulated guests. What they buy goes home with them; the club never buys back.
 
 <Accordion title="Worked example: a Saturday at the Nightclub (Level 4)">
 
