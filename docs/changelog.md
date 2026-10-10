@@ -14,7 +14,12 @@ teammate would notice.
 - **A swap's change is not owed back:** stablecoin a router returns to the Agentic Wallet in a swap it paid for
   (pay $5, get $2 back) is the platform's own money, netted in the restock. The top-up scanner now records it with
   nothing to refund, and reconciliation never counts a transfer in a booked restock or seed tx as owed, so a restock
-  with change no longer pauses payments.
+  with change no longer pauses payments. The back office shows such a transfer with nothing owed and won't mark it
+  refunded (a booked restock zeroes it).
+- **A stranger can't hide a refund or stall the scanner:** a zero-value "payout" from the Agentic Wallet (anyone can
+  log one) no longer makes a stranger's transfer look like a swap's change, and the scanner reads no receipt for a
+  transfer from a non-player (one log read per range instead), so an oversized receipt can't stop it crediting later
+  top-ups.
 
 ## 2026-10-10 · Every real swap goes on the books
 

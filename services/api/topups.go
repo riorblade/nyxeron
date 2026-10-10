@@ -531,8 +531,13 @@ func (s *store) scanTopups(ctx context.Context, c *bsc, now time.Time) error {
 	return nil
 }
 
-// scanRange records every transfer to the Agentic Wallet in blocks [from, to].
+// scanRange records every transfer to the Agentic Wallet in blocks [from, to]. Only a player's top-up costs its
+// receipt (its gas). A transfer from anyone else is never read further than its log: it is owed back in full, unless
+// the Agentic Wallet itself paid stablecoin out in the same tx (a swap's change: the platform's own money). Whether
+// it did is one eth_getLogs per token for the whole range, read once, and only when such a transfer shows up, so a
+// stranger's transfer can't make the scanner fetch, or choke on, a receipt of any size.
 func (s *store) scanRange(ctx context.Context, c *bsc, from, to uint64, now time.Time) error {
+	var paidOut map[string]bool // txs in the range in which the Agentic Wallet sent stablecoin out; nil until read
 	for _, token := range game.payments.Topup.Tokens {
 		trs, err := c.TransfersTo(ctx, token, game.payments.AgenticWallet, from, to)
 		if err != nil {
@@ -551,21 +556,24 @@ func (s *store) scanRange(ctx context.Context, c *bsc, from, to uint64, now time
 			if err != nil {
 				return err
 			}
-			// The receipt (two rpc calls): a player's top-up records its gas; from anyone else, it shows whether
-			// the Agentic Wallet paid stablecoin out in the same tx (a swap's change, nothing to refund).
-			rc, err := c.Receipt(ctx, tr.Tx)
-			if err != nil {
-				return err
-			}
-			if !rc.OK || rc.Block != tr.Block {
-				return fmt.Errorf("topup scan: %s does not match its receipt", tr.Tx)
-			}
 			var gas uint64
 			change := false
 			if user != "" {
+				rc, err := c.Receipt(ctx, tr.Tx) // two rpc calls: the gas the player paid
+				if err != nil {
+					return err
+				}
+				if !rc.OK || rc.Block != tr.Block {
+					return fmt.Errorf("topup scan: %s does not match its receipt", tr.Tx)
+				}
 				gas = rc.GasUsed
-			} else if change, err = walletPaidOut(rc); err != nil {
-				return err
+			} else {
+				if paidOut == nil {
+					if paidOut, err = walletPaidOut(ctx, c, from, to); err != nil {
+						return err
+					}
+				}
+				change = paidOut[strings.ToLower(tr.Tx)]
 			}
 			if _, _, err := s.recordTransfer(ctx, tr, gas, user, change, now); err != nil {
 				return err
@@ -598,18 +606,21 @@ func (s *store) scanTopupsEvery(ctx context.Context, c *bsc, every time.Duration
 	}
 }
 
-// walletPaidOut: the Agentic Wallet sent USDC/USDT to someone else in this transaction.
-func walletPaidOut(rc Receipt) (bool, error) {
+// walletPaidOut: the txs in blocks [from, to] in which the Agentic Wallet sent a positive amount of USDC/USDT to
+// someone else. A zero amount doesn't count: anyone can call transferFrom(agenticWallet, x, 0) without an
+// allowance (BEP20), which logs a "payout" the wallet never made.
+func walletPaidOut(ctx context.Context, c *bsc, from, to uint64) (map[string]bool, error) {
+	out := map[string]bool{}
 	for _, stable := range game.payments.Topup.Tokens {
-		trs, err := transfersIn(rc, stable)
+		trs, err := c.TransfersFrom(ctx, stable, game.payments.AgenticWallet, from, to)
 		if err != nil {
-			return false, err
+			return nil, err
 		}
 		for _, tr := range trs {
-			if strings.EqualFold(tr.From, game.payments.AgenticWallet) && !strings.EqualFold(tr.To, game.payments.AgenticWallet) {
-				return true, nil
+			if tr.Amount != nil && tr.Amount.Sign() > 0 && !strings.EqualFold(tr.To, game.payments.AgenticWallet) {
+				out[strings.ToLower(tr.Tx)] = true
 			}
 		}
 	}
-	return false, nil
+	return out, nil
 }

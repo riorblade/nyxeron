@@ -74,7 +74,7 @@ func (f *fakeRPC) serve(t *testing.T) string {
 			if rc, ok := f.receipts[tx]; ok {
 				result = rc
 			}
-		case "eth_getLogs": // the logs of the known receipts that match the filter (address, recipient, blocks)
+		case "eth_getLogs": // the logs of the known receipts that match the filter (address, topics, blocks)
 			var q struct {
 				Address   string    `json:"address"`
 				FromBlock string    `json:"fromBlock"`
@@ -93,8 +93,11 @@ func (f *fakeRPC) serve(t *testing.T) string {
 					_ = json.Unmarshal(raw, &l)
 					lower(&l)
 					b, _ := hexUint(l.BlockNumber)
-					if l.Address == q.Address && len(l.Topics) == 3 && len(q.Topics) == 3 && q.Topics[2] != nil &&
-						l.Topics[2] == *q.Topics[2] && b >= lo && b <= hi {
+					match := l.Address == q.Address && len(l.Topics) == 3 && len(q.Topics) >= 2 && b >= lo && b <= hi
+					for i, want := range q.Topics {
+						match = match && (want == nil || l.Topics[i] == *want)
+					}
+					if match {
 						out = append(out, raw)
 					}
 				}

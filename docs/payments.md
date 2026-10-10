@@ -127,9 +127,25 @@ open, not ended) is checked inside that same transaction; a banned tenant's shop
    Agentic Wallet − platform funds. Money owed back = unknown senders' transfers, rejected top-ups and the part of a
    top-up over the caps, until the back office marks it refunded (`POST /api/admin/topups/refund`). It is in the
    wallet but belongs to its senders, so it never backs credits. Not owed: stablecoin coming back in a tx where the
-   Agentic Wallet itself paid stablecoin out (a swap's change; the scanner records it with nothing to refund), nor
-   anything in a tx booked as a restock or seed (already netted in platform funds).
+   Agentic Wallet itself paid a positive amount of stablecoin out (a swap's change; the scanner records it with
+   nothing to refund), nor anything in a tx booked as a restock or seed (already netted in platform funds; the back
+   office shows it with nothing owed and won't mark it refunded). The scanner reads no receipt for a transfer from a
+   non-player: whether the wallet paid out in its tx comes from one `eth_getLogs` per token for the whole range, and
+   a zero-value "payout" (anyone can log `transferFrom(agenticWallet, x, 0)`) doesn't count.
 2. Units are backed, per token: (warehouse on hand + reserved + Σ players' real units) × 0.001 ≤ bStock held.
+
+**Before deploying migration 7** (money owed back), list the transfers its backfill will count as owed in full: an
+unknown sender's transfer outside any booked restock or seed. A swap's change from a swap that was never booked shows
+up here and would pause payments at the first reconciliation; book that swap (report it as a restock) first. Anything
+else listed is a stranger's money, owed back.
+
+```sql
+SELECT tx, log_index, sender, token, usd_cents, datetime(created_at, 'unixepoch') AS at
+FROM topups
+WHERE status = 'unknown'
+  AND lower(tx) NOT IN (SELECT lower(ref) FROM platform_ledger WHERE kind IN ('restock', 'seed'))
+ORDER BY created_at;
+```
 
 Balances are read from BSC, never from the database.
 

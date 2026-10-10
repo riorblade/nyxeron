@@ -81,8 +81,7 @@ func (s *store) Reconcile(ctx context.Context, c *bsc, actor, reason string, now
 		COALESCE((SELECT SUM(credits) FROM users), 0) +
 		COALESCE((SELECT SUM(price * qty) FROM sales WHERE status = 'held'), 0),
 		COALESCE((SELECT SUM(delta) FROM platform_ledger), 0),
-		COALESCE((SELECT SUM(refund_cents) FROM topups WHERE refunded_at = 0 AND tx NOT IN
-			(SELECT ref FROM platform_ledger WHERE kind IN ('restock', 'seed'))), 0)`).Scan(&owedCredits,
+		COALESCE((SELECT SUM(refund_cents) FROM topups WHERE refunded_at = 0 AND tx NOT IN `+bookedTxs+`), 0)`).Scan(&owedCredits,
 		&platformCredits, &r.RefundCents); err != nil {
 		return r, err
 	}
@@ -266,6 +265,11 @@ type Payments struct {
 	Sales           []AdminSale      `json:"sales"`
 }
 
+// bookedTxs: the txs the platform booked as a restock or as the team's seed. Stablecoin coming back to the Agentic
+// Wallet in one (a router's change) is already netted in platform_ledger, so it is never owed back: not in
+// reconciliation, not in the back office, not markable refunded.
+const bookedTxs = `(SELECT lower(ref) FROM platform_ledger WHERE kind IN ('restock', 'seed'))`
+
 func (s *store) Payments(ctx context.Context) (Payments, error) {
 	var p Payments
 	var err error
@@ -276,7 +280,9 @@ func (s *store) Payments(ctx context.Context) (Payments, error) {
 		return p, err
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT t.tx, t.log_index, t.token, t.usd_cents, t.fee, t.credits, t.status,
-		t.created_at, t.user_id, COALESCE(u.email, ''), t.sender, t.refund_cents, t.refunded_at FROM topups t LEFT JOIN users u ON u.id = t.user_id
+		t.created_at, t.user_id, COALESCE(u.email, ''), t.sender,
+		CASE WHEN t.refunded_at = 0 AND t.tx IN `+bookedTxs+` THEN 0 ELSE t.refund_cents END, t.refunded_at
+		FROM topups t LEFT JOIN users u ON u.id = t.user_id
 		ORDER BY t.id DESC LIMIT 200`)
 	if err != nil {
 		return p, err
@@ -401,8 +407,8 @@ func (s *store) MarkRefunded(ctx context.Context, actor, tx string, logIndex int
 	return cents, s.inTx(ctx, func(t *sql.Tx) error {
 		var refundedAt int64
 		var sender string
-		err := t.QueryRow(`SELECT refund_cents, refunded_at, sender FROM topups WHERE tx = ? AND log_index = ?`,
-			tx, logIndex).Scan(&cents, &refundedAt, &sender)
+		err := t.QueryRow(`SELECT CASE WHEN tx IN `+bookedTxs+` THEN 0 ELSE refund_cents END, refunded_at, sender
+			FROM topups WHERE tx = ? AND log_index = ?`, tx, logIndex).Scan(&cents, &refundedAt, &sender)
 		if errors.Is(err, sql.ErrNoRows) {
 			return errNoTopup
 		}
@@ -413,7 +419,7 @@ func (s *store) MarkRefunded(ctx context.Context, actor, tx string, logIndex int
 			return errConflict // already refunded
 		}
 		if cents <= 0 {
-			return errRejected // nothing is owed back on it
+			return errRejected // nothing is owed back on it (or it is a booked restock's or seed's change)
 		}
 		res, err := t.Exec(`UPDATE topups SET refunded_at = ?1, updated_at = ?1,
 			status = CASE WHEN status = 'unknown' THEN 'rejected' ELSE status END

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"regexp"
+	"strings"
 )
 
 // Schema changes after the first release, applied once each, in order, inside a transaction. PRAGMA user_version
@@ -221,10 +222,12 @@ var migrations = []string{
 	// credited one over the caps. It sits in the Agentic Wallet but backs nobody's credits, so reconciliation counts
 	// it as owed until the back office marks it refunded (refunded_at). Existing rows: what their reason says
 	// ("N cents …"; a seed's reason is "seed", so 0), or the whole amount while the sender is unknown, except in a
-	// tx the platform booked as a restock or seed (a swap's change: the platform's own money). Re-runnable: rows
-	// already owing or refunded keep what they have.
+	// tx the platform booked as a restock or seed (a swap's change: the platform's own money). Re-runnable: on a
+	// database that has the columns already, the backfill is skipped (onceMark), so what the scanner recorded since,
+	// a swap's change at 0 included, stays as it is.
 	`ALTER TABLE topups ADD COLUMN refund_cents INTEGER NOT NULL DEFAULT 0 CHECK (refund_cents >= 0);
 	ALTER TABLE topups ADD COLUMN refunded_at INTEGER NOT NULL DEFAULT 0;
+	` + onceMark + `
 	UPDATE topups SET refund_cents = CASE
 		WHEN tx IN (SELECT ref FROM platform_ledger WHERE kind IN ('restock', 'seed')) THEN 0
 		WHEN status = 'unknown' THEN usd_cents
@@ -265,21 +268,32 @@ func migrate(db *sql.DB) error {
 
 var addColumnRe = regexp.MustCompile(`(?i)ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN\s+(\w+)[^;]*;`)
 
+// onceMark: what follows it in a migration is a backfill of the columns the migration adds, run only by the run that
+// adds them.
+const onceMark = "-- once: backfill of the new columns"
+
 // withoutColumnsPresent drops a migration's ADD COLUMN statements for columns the table already has, so a
 // migration runs again on a database that has it (SQLite has no ADD COLUMN IF NOT EXISTS; a test harness may
-// rewind user_version).
+// rewind user_version). If it had them all, it ran before: its backfill after onceMark is dropped too (columns are
+// added in the same transaction as the backfill, so having them means it was done).
 func withoutColumnsPresent(t *sql.Tx, m string) (string, error) {
 	var err error
+	added, present := 0, 0
 	out := addColumnRe.ReplaceAllStringFunc(m, func(stmt string) string {
+		added++
 		g := addColumnRe.FindStringSubmatch(stmt)
 		var n int
 		if e := t.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`, g[1], g[2]).Scan(&n); e != nil {
 			err = e
 		}
 		if n > 0 {
+			present++
 			return ""
 		}
 		return stmt
 	})
+	if i := strings.Index(out, onceMark); i >= 0 && added > 0 && present == added {
+		out = out[:i]
+	}
 	return out, err
 }
