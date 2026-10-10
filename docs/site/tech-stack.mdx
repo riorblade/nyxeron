@@ -1,0 +1,86 @@
+---
+title: "Tech stack & quality"
+description: "The tools NYXERON is built with and how the simulation, economy and relay are tested."
+---
+
+NYXERON is a pnpm monorepo: one pure TypeScript simulation shared by every client, a React game client and two small
+Go services. Everything is checked on every push and pull request.
+
+## Stack
+
+| Layer | Technology |
+| --- | --- |
+| Simulation | TypeScript (strict), pure functions, seeded PRNG, tunables in JSON |
+| Game client | React 19, Vite 8, Tailwind CSS v4, zustand 5, three.js (3D club), Web Audio (DJ engine), Privy, viem |
+| Multiplayer relay | Go 1.26, WebSockets, no database |
+| api | Go 1.26 standard library (`net/http` routing), SQLite |
+| Chain | BNB Smart Chain: USDC/USDT deposits, tokenized stocks (bStock) |
+| Hosting | Game client on Vercel; Go services behind `api.nyxeron.xyz` |
+| Tooling | pnpm 10, Node 22, Vitest, ESLint (flat config), Prettier, GitHub Actions |
+
+## How it is tested
+
+### A simulation you can test without a browser
+
+Because the core has no DOM, no network, no clock and no `Math.random()`, every rule can be exercised headless in
+Node. The PRNG state lives inside `GameState`, so the same seed gives the same career, every time.
+
+The core test suite plays real games, not just units:
+
+- **Determinism:** a full week played from seed 42 twice gives identical reports, and seed 43 gives different ones.
+- **Rules:** capacity is never exceeded unless the door is forced, underage guests are stopped by security, permits
+  and inspections have the documented consequences, a night runs 22:00 to 04:00 and ends with everyone gone.
+- **Long careers:** a 60-day career is played day by day and every visible number is checked to be a valid number.
+- **Saves:** save then load gives back exactly the same game, by day and mid-night, and older save formats still load
+  and play on.
+
+### A bot that plays thousands of careers
+
+Tuning a management game by hand is guesswork, so a bot plays it. The bot is a sensible, not optimal, player: each
+day it runs the AI CEO's preparation, plays the night, and moves to the next day. `pnpm balance` plays one career per
+seed and reports how careers end.
+
+$$
+\hat{P}(o) = \frac{1}{n} \sum_{s=1}^{n} \mathbf{1}\left[\, o_s = o \,\right]
+$$
+
+where
+
+| Symbol | Meaning |
+| --- | --- |
+| $n$ | Number of careers, one per seed $s = 1, \dots, n$ (default 1000) |
+| $o_s$ | Outcome of the career with seed $s$, played until it ends or day 60 passes |
+| $o$ | An outcome: `victory`, `defeat`, `survived`, or none if day 60 passes first |
+| $\mathbf{1}[\cdot]$ | 1 if the condition holds, else 0 |
+
+Defeats are further split by cause (bankruptcy after 3 days of negative cash, 3 violations, or reputation), and the
+report shows the average day each venue level is reached. A second script, `pnpm balance:levels`, breaks careers down
+per venue level: fights per night, tax as a share of revenue, and profit per night.
+
+| Parameter | Value |
+| --- | --- |
+| Career length cap | 60 days |
+| Night length | 360 minutes from 22:00 |
+
+A fast version of the bot also runs as a regular test: across 10 seeds it must survive the first 30 days and reach
+venue level 2, so a bad change to the tuning fails CI before it reaches players.
+
+### Go services under the race detector
+
+Both Go services are tested with `go test -race`, after `go vet` and a `gofmt` check. The api suite covers the parts
+that touch value: JWT verification, reading deposits from the chain, deposits credited exactly once, concurrent caps,
+sales held and settled once, reconciliation, migrations on a live database. A test also guarantees the
+api's copy of the game data is identical to the simulation's JSON. The relay suite covers routing and sender
+stamping, join errors, host resume, kick and close, plus adversarial tests that attack it on purpose and must stay green.
+
+### Checks on every change
+
+| Workflow | Runs |
+| --- | --- |
+| CI: TypeScript | `pnpm lint` (typecheck + ESLint + Prettier) → `pnpm test` (Vitest) → build |
+| CI: Go | `go vet` → `gofmt` → `go test -race` |
+| PR checks | Title must match `type(scope): summary` within 72 characters; the description template must be filled in (summary, why, what changed, how to test, risk and rollback, deploy notes, a complete checklist); labels are applied automatically by area |
+
+The PR checker is itself tested, so the rules the team writes are the rules CI enforces.
+
+Related: [Architecture](/architecture) · [Live multiplayer](/multiplayer-live)
