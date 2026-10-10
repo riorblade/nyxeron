@@ -3,6 +3,12 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-11 · The stock agent runs on the server
+
+- **Agent container:** `deploy/agent.Dockerfile` and a profiled `agent` service run the stock agent and the Binance
+  Agentic Wallet CLI on the VPS. The wallet owner signs it in once by scanning a QR; the session and the swap record
+  live on a volume (`deploy/README.md` → Stock agent, #69).
+
 ## 2026-10-11 · A guest's night out is checked by the api
 
 - **`POST /api/nights` no longer takes the client's word** (#67): every token unit must have cost at least 1 Coin
