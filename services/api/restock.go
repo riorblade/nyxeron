@@ -333,6 +333,12 @@ func (s *store) bookRestock(ctx context.Context, actor, token, reason string, ou
 	if err := platformLedger(t, -toCredits(cents), "restock", out.Tx, strings.Join(what, ", ")); err != nil {
 		return out, false, err
 	}
+	// A stranger's transfer the scanner recorded in this tx is the router's change, booked in the restock: nothing
+	// is owed back on it (as RecordSeed does for a seed's tx).
+	if _, err := t.ExecContext(ctx, `UPDATE topups SET refund_cents = 0, updated_at = ? WHERE tx = ? AND user_id = ''
+		AND status = 'unknown' AND refunded_at = 0`, now.Unix(), out.Tx); err != nil {
+		return out, false, err
+	}
 	if err := audit(t, actor, "stock-restock", token, detail, reason); err != nil {
 		return out, false, err
 	}

@@ -66,6 +66,12 @@ suggested) and buys bStock in bulk with **platform funds** (fees, or a seed the 
 credits. `POST /api/agent/restock {token, tx}` adds units **only after the api verifies the swap on BSC**
 (bStock received by the Agentic Wallet, amount from the logs, tx unused, 15 confirmations, two RPCs agree). Manual
 restock in the back office becomes "report a tx" (same verification); typing a number no longer creates stock.
+The agent places one swap at a time and records it until the api has counted its tx (a run that times out
+finishes it next time instead of buying again), holds a run lock so only one `--buy`/`--report` run touches that
+record (both at `AGENT_STATE`, required for `--buy`/`--report`), retries reports on 5xx/network errors, refuses a quote more than `agent.maxPriceOverSpotPercent` above or
+`agent.maxPriceUnderSpotPercent` below the api's spot price, re-reads the daily spend just before the swap, and
+buys nothing when the api's `paused`/spend fields are missing (`apps/agent/README.md`).
+
 Every verified swap is booked exactly once, as a restock or as the team's seed, never both: the USDC/USDT it paid
 always goes on the books as platform money out (otherwise the next reconciliation would pause payments). Whole units
 go to the warehouse; fractions of a unit are carried per token and booked once they add up to a whole unit (until
@@ -104,7 +110,7 @@ open, not ended) is checked inside that same transaction; a banned tenant's shop
 - Before credits: Privy token verified; tx hash + log index unused; chain 56, success, ≥ 15 confirmations; Transfer
   log from the locked USDC/USDT contract; recipient = Agentic Wallet; sender = the player's stored wallet; amount
   from the log ≥ $3 and within the player's caps (credited up to the room left; what isn't credited is recorded as
-  `rejected`, or in the row's reason, for the back office to refund); two RPCs agree.
+  `rejected`, or as the row's `refund_cents`, for the back office to refund and then mark refunded); two RPCs agree.
 - Top-up reports can't burn the shared paid RPC quota: one report per player per 2 s (`429 too_soon`); at most
   20 *misses* per player per 10 minutes, then `429 too_many_misses` until they age out, while the scanner still
   credits a real transfer. A miss is any report whose receipt the RPCs couldn't show to hold a USDC/USDT transfer
@@ -123,8 +129,29 @@ open, not ended) is checked inside that same transaction; a banned tenant's shop
 
 ## Reconciliation (hourly; a mismatch pauses top-ups, sales and restocks and alerts the back office)
 
-1. Credits are backed: Σ player credits (including held) ÷ 100 ≤ USDC + USDT in the Agentic Wallet − platform funds.
+1. Credits are backed: Σ player credits (including held) ÷ 100 + money owed back to senders ≤ USDC + USDT in the
+   Agentic Wallet − platform funds. Money owed back = unknown senders' transfers, rejected top-ups and the part of a
+   top-up over the caps, until the back office marks it refunded (`POST /api/admin/topups/refund`). It is in the
+   wallet but belongs to its senders, so it never backs credits. Not owed: stablecoin coming back in a tx where the
+   Agentic Wallet itself paid a positive amount of stablecoin out (a swap's change; the scanner records it with
+   nothing to refund), nor anything in a tx booked as a restock or seed (already netted in platform funds; the back
+   office shows it with nothing owed and won't mark it refunded). The scanner reads no receipt for a transfer from a
+   non-player: whether the wallet paid out in its tx comes from one `eth_getLogs` per token for the whole range, and
+   a zero-value "payout" (anyone can log `transferFrom(agenticWallet, x, 0)`) doesn't count.
 2. Units are backed, per token: (warehouse on hand + reserved + Σ players' real units) × 0.001 ≤ bStock held.
+
+**Before deploying migration 7** (money owed back), list the transfers its backfill will count as owed in full: an
+unknown sender's transfer outside any booked restock or seed. A swap's change from a swap that was never booked shows
+up here and would pause payments at the first reconciliation; book that swap (report it as a restock) first. Anything
+else listed is a stranger's money, owed back.
+
+```sql
+SELECT tx, log_index, sender, token, usd_cents, datetime(created_at, 'unixepoch') AS at
+FROM topups
+WHERE status = 'unknown'
+  AND lower(tx) NOT IN (SELECT lower(ref) FROM platform_ledger WHERE kind IN ('restock', 'seed'))
+ORDER BY created_at;
+```
 
 Balances are read from BSC, never from the database.
 

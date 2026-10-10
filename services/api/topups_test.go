@@ -473,3 +473,27 @@ func TestTopupScannerSkipsBannedPlayers(t *testing.T) {
 		t.Fatalf("banned player matched: %q", id)
 	}
 }
+
+// Review of #57: walletPaidOut reads the Agentic Wallet's outgoing transfers with eth_getLogs, and anyone can make
+// that answer huge (transferFrom(agenticWallet, x, 0) needs no allowance). If it can't be read, the scan must not
+// stop there: strangers' transfers in the range are recorded owed in full (safe: a swap's change is zeroed once the
+// swap is booked as a restock), and the cursor moves on so later deposits are still credited.
+func TestScanGoesOnWhenTheWalletsOutgoingLogsCantBeRead(t *testing.T) {
+	s := testStore(t)
+	s.Get(ctx, "a")
+	s.SetIdentity(ctx, "a", "", player, time.Now())
+	deposit := rvReceipt(rvTx(1), usdcAt, []rvLog{{rvUSDC(), stranger, rvW(), 4000}}, 0)
+	honest := rvReceipt(rvTx(2), usdcAt+10, []rvLog{{rvUSDC(), player, rvW(), 1000}}, 0)
+	c := rvNewChainAt(t, usdcAt+40, map[string]string{rvTx(1): deposit, rvTx(2): honest})
+	wallet := "0x000000000000000000000000" + strings.TrimPrefix(strings.ToLower(game.payments.AgenticWallet), "0x")
+	c.a.failLogsFrom, c.b.failLogsFrom = wallet, wallet
+	if err := rvScan(t, s, c); err != nil {
+		t.Fatalf("the scan stopped on an unreadable outgoing-logs query: %v", err)
+	}
+	if n := count(t, s, `SELECT refund_cents FROM topups WHERE tx = ?`, rvTx(1)); n != 4000 {
+		t.Errorf("stranger's $40: refund_cents = %d, want 4000 (owed in full when the payouts can't be read)", n)
+	}
+	if n := count(t, s, `SELECT COUNT(*) FROM topups WHERE tx = ? AND status = 'credited'`, rvTx(2)); n != 1 {
+		t.Errorf("the player's top-up after it was not credited")
+	}
+}

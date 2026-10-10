@@ -164,6 +164,8 @@ export interface Reconciliation {
   owedCents: number;
   walletCents: number;
   platformCents: number;
+  /** Owed back to senders (unknown, rejected, over the caps), not refunded yet. Absent on checks before it. */
+  refundCents?: number;
   units: Record<string, { counted: number; onChain: number }>;
   problems: string[];
 }
@@ -184,6 +186,10 @@ export interface Payments {
     userId: string;
     email?: string;
     sender: string;
+    /** Owed back to the sender: an unknown sender's transfer, a rejected top-up, or the part over the caps. */
+    refundCents: number;
+    /** When it was marked refunded (then it no longer counts as owed). */
+    refundedAt?: number;
   }[];
   sales: {
     id: number;
