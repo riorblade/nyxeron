@@ -19,6 +19,10 @@ teammate would notice.
   dated more than a minute ahead are refused; so are quotes more than 20 % under spot
   (`agent.maxPriceUnderSpotPercent`) or for a non-finite amount. In production, `AGENT_STATE` goes outside the repo
   (`deploy/README.md`).
+- **Second review:** `--buy` and `--report` refuse to run without `AGENT_STATE` (a run on another path saw no
+  record and no lock, and could buy again); a malformed wallet answer is an error that releases the run lock
+  (it also goes on any exit and on SIGHUP); the quote must be for exactly the budget into the locked token; the
+  record is fsynced before the swap; wallet calls time out after 90 s and api requests after 30 s.
 
 ## 2026-10-10 · A clear message when the 3D club can't start
 

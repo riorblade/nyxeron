@@ -3,15 +3,22 @@
 // a record the next run resolves before it may buy again. Nothing secret is in it.
 import { randomUUID } from "node:crypto";
 import {
+  closeSync,
+  fsyncSync,
   linkSync,
+  openSync,
   readFileSync,
   renameSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** Default: apps/agent/agent-state.json (gitignored), whatever the working directory. */
+/**
+ * apps/agent/agent-state.json (gitignored), whatever the working directory: only for a quote-only run without
+ * AGENT_STATE. --buy and --report refuse to run without AGENT_STATE (main.ts).
+ */
 export const DEFAULT_STATE = fileURLToPath(
   new URL("../agent-state.json", import.meta.url),
 );
@@ -49,6 +56,30 @@ export function load(path: string): Outstanding | undefined {
 const tmp = (path: string) => `${path}.${process.pid}.${randomUUID()}.tmp`;
 
 /**
+ * Writes a new file (failing if it exists) and fsyncs it: the record must be on disk before the swap goes out,
+ * or a power cut right after could lose it.
+ */
+function writeDurable(path: string, text: string) {
+  const fd = openSync(path, "wx");
+  try {
+    writeFileSync(fd, text);
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** Fsyncs the directory, so a link, rename or unlink in it survives a power cut too. */
+function syncDir(path: string) {
+  const fd = openSync(dirname(path), "r");
+  try {
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
  * Takes the slot for a new swap: the record is written in full to a temporary file, then linked into place,
  * which fails if a record is already there (another run's, or one not resolved yet).
  */
@@ -58,7 +89,7 @@ export function claim(
 ): Outstanding {
   const o: Outstanding = { id: randomUUID(), at: Date.now(), ...s };
   const t = tmp(path);
-  writeFileSync(t, JSON.stringify(o, null, 2) + "\n", { flag: "wx" });
+  writeDurable(t, JSON.stringify(o, null, 2) + "\n");
   try {
     linkSync(t, path);
   } catch (e) {
@@ -71,6 +102,7 @@ export function claim(
   } finally {
     unlinkSync(t);
   }
+  syncDir(path);
   return o;
 }
 
@@ -85,8 +117,9 @@ export function save(path: string, o: Outstanding) {
       `${path} is not the record this run holds (${o.id}; found ${current?.id ?? "none"}): not overwriting it`,
     );
   const t = tmp(path);
-  writeFileSync(t, JSON.stringify(o, null, 2) + "\n", { flag: "wx" });
+  writeDurable(t, JSON.stringify(o, null, 2) + "\n");
   renameSync(t, path);
+  syncDir(path);
 }
 
 /** Removes the record once resolved, unless it has been replaced by another run's meanwhile. */

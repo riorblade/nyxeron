@@ -69,6 +69,29 @@ export function checkSpend(supply: Supply, usd: number) {
     );
 }
 
+/** The wallet's quote, as far as the checks read it. */
+export type QuoteFor = {
+  fromCoinSymbol?: string;
+  fromCoinAmount: string;
+  toCoinSymbol: string;
+};
+
+/**
+ * The quote must be for what was asked: `usd` of USDC (to the cent) into the locked token. A quote for another
+ * amount would make the price per share wrong (500 USDC → 0.125 TSLAB read as $400 a share instead of $4000).
+ */
+export function checkQuoteFor(q: QuoteFor, usd: number, lock: Locked) {
+  const paid = Number(q.fromCoinAmount);
+  if (!(Math.abs(paid - usd) < 0.005))
+    throw new Error(
+      `quote is for ${q.fromCoinAmount} ${q.fromCoinSymbol ?? "?"}, not the budget $${usd}: not buying`,
+    );
+  if (q.toCoinSymbol !== lock.symbol)
+    throw new Error(
+      `quote is for ${q.toCoinSymbol}, not ${lock.symbol}: not buying`,
+    );
+}
+
 export type PriceCheck = {
   /** USD per share the quote implies (1 bStock token = 1 share). */
   price: number;

@@ -81,8 +81,9 @@ AGENT_STATE=/var/lib/nyxeron-agent/state.json AGENT_KEY=… NYXERON_API=https://
   pnpm agent --token tsla --buy
 ```
 
-Every `--buy`/`--report` run also holds `/var/lib/nyxeron-agent/state.json.lock`; a run killed with SIGKILL leaves
-it behind and later runs stop until a person removes it.
+`--buy` and `--report` refuse to start without `AGENT_STATE`: set the same path for cron and for every manual run
+(`apps/agent/.env.example` has it). Every `--buy`/`--report` run also holds `/var/lib/nyxeron-agent/state.json.lock`;
+a run killed with SIGKILL leaves it behind and later runs stop until a person removes it.
 
 ## Update
 

@@ -68,7 +68,7 @@ credits. `POST /api/agent/restock {token, tx}` adds units **only after the api v
 restock in the back office becomes "report a tx" (same verification); typing a number no longer creates stock.
 The agent places one swap at a time and records it until the api has counted its tx (a run that times out
 finishes it next time instead of buying again), holds a run lock so only one `--buy`/`--report` run touches that
-record, retries reports on 5xx/network errors, refuses a quote more than `agent.maxPriceOverSpotPercent` above or
+record (both at `AGENT_STATE`, required for `--buy`/`--report`), retries reports on 5xx/network errors, refuses a quote more than `agent.maxPriceOverSpotPercent` above or
 `agent.maxPriceUnderSpotPercent` below the api's spot price, re-reads the daily spend just before the swap, and
 buys nothing when the api's `paused`/spend fields are missing (`apps/agent/README.md`).
 

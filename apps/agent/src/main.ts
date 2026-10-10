@@ -7,8 +7,9 @@
 //
 //   AGENT_KEY=… pnpm agent                               the whitelisted token the warehouse needs most: a quote
 //   AGENT_KEY=… pnpm agent --token tsla                   this whitelisted token, whatever the demand: a quote
-//   AGENT_KEY=… pnpm agent --token tsla --buy             buy it for AGENT_BUY_USD and restock the warehouse
-//   AGENT_KEY=… pnpm agent --token tsla --report 0x…      report a done swap's tx again; trades nothing
+//   AGENT_KEY=… AGENT_STATE=… pnpm agent --token tsla --buy         buy for AGENT_BUY_USD, restock the warehouse
+//   AGENT_KEY=… AGENT_STATE=… pnpm agent --token tsla --report 0x…  report a done swap's tx again; no trade
+// --buy and --report require AGENT_STATE (the same path on every run): the record and the run lock live there.
 import { payments, tokens, type TokenId } from "@nyxeron/core";
 import { BawRefused, order, outcome, quote, swap } from "./baw";
 import {
@@ -23,6 +24,7 @@ import {
   apiBase,
   checkContract,
   checkPrice,
+  checkQuoteFor,
   checkSpend,
   locked,
   pick,
@@ -41,6 +43,7 @@ import {
 const rawApi = process.env.NYXERON_API ?? "http://localhost:8788";
 const key = process.env.AGENT_KEY ?? "";
 const usd = Number(process.env.AGENT_BUY_USD ?? 3);
+const stateSet = Boolean(process.env.AGENT_STATE);
 const statePath = process.env.AGENT_STATE || DEFAULT_STATE;
 
 const arg = (name: string) => {
@@ -162,29 +165,49 @@ async function settle(
 async function main() {
   if (!key) throw new Error("AGENT_KEY is not set");
   const base = apiBase(rawApi);
-  if (statePath === DEFAULT_STATE)
-    console.warn(
-      `warning: AGENT_STATE is not set; the outstanding-swap record is ${statePath}, inside the checkout, where a ` +
-        "fresh clone or `git clean -fdX` deletes it (and a missing record means no swap is outstanding). In " +
-        "production set AGENT_STATE outside the repo, e.g. /var/lib/nyxeron-agent/state.json",
+  if (reportTx === undefined && !buy) {
+    if (!stateSet)
+      console.warn(
+        `warning: AGENT_STATE is not set: an outstanding swap recorded elsewhere isn't shown (--buy and --report ` +
+          "refuse to run without it)",
+      );
+    return run(base);
+  }
+
+  // The record and the run lock both live at AGENT_STATE: a run that falls back to another path sees no record
+  // and no lock while another run's swap is still outstanding, and buys again (that swap isn't in the api's spend
+  // yet, so the daily cap doesn't stop it). No fallback for a run that trades or clears a record, not even locally.
+  if (!stateSet)
+    throw new Error(
+      "AGENT_STATE is not set: --buy and --report need the outstanding-swap record every run shares, e.g. " +
+        "AGENT_STATE=/var/lib/nyxeron-agent/state.json (locally any path outside the repo, the same on every run)",
     );
-  if (reportTx === undefined && !buy) return run(base);
 
   // A --buy or --report run holds the run lock throughout: no other run may touch the record meanwhile.
   const release = lockRun(statePath);
-  const stop = (code: number) => () => {
-    release();
-    process.exit(code);
+  // Also on any exit (process.exit, an uncaught exception): the record, not the lock, guards the money.
+  const onExit = () => {
+    try {
+      release();
+    } catch {
+      // a lock that isn't ours stays for a person
+    }
   };
-  const onInt = stop(130);
-  const onTerm = stop(143);
-  process.once("SIGINT", onInt);
-  process.once("SIGTERM", onTerm);
+  process.on("exit", onExit);
+  const signals = { SIGINT: 130, SIGTERM: 143, SIGHUP: 129 } as const;
+  const handlers = Object.entries(signals).map(([sig, code]) => {
+    const h = () => {
+      onExit();
+      process.exit(code);
+    };
+    process.once(sig, h);
+    return [sig, h] as const;
+  });
   try {
     await run(base);
   } finally {
-    process.off("SIGINT", onInt);
-    process.off("SIGTERM", onTerm);
+    for (const [sig, h] of handlers) process.off(sig, h);
+    process.off("exit", onExit);
     release();
   }
 }
@@ -242,6 +265,7 @@ async function run(base: string) {
   const ticker = tokens[row.token as TokenId].ticker;
   checkContract(lock, (await bstocks()).get(ticker)?.address);
   const q = await quote(usd, lock.contract);
+  checkQuoteFor(q, usd, lock);
   const spot: Partial<Quotes> = await fetchQuotes(base).catch((e: Error) => ({
     error: e.message,
   }));

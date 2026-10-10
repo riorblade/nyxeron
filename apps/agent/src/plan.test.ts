@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { Supply, SupplyRow } from "./demand";
-import { checkContract, locked, pick } from "./plan";
+import { checkContract, checkQuoteFor, locked, pick } from "./plan";
 
 const row = (
   token: string,
@@ -47,4 +47,19 @@ test("checkContract: the locked address must match Binance's list", () => {
     checkContract(tsla, "0x0000000000000000000000000000000000000001"),
   ).toThrow(/not Binance's/);
   expect(() => checkContract(tsla, undefined)).toThrow(/not listed/);
+});
+
+// Review round 3 of #58, nit: the price per share is only right for a quote of the budget into the locked token.
+test("checkQuoteFor: the quote must be for the budget (to the cent) and the locked token", () => {
+  const tsla = locked("tsla")!;
+  const q = (fromCoinAmount: string, toCoinSymbol = "TSLAB") => ({
+    fromCoinSymbol: "USDC",
+    fromCoinAmount,
+    toCoinSymbol,
+  });
+  for (const ok of ["50", "50.000000", "50.004", "49.996"])
+    expect(() => checkQuoteFor(q(ok), 50, tsla)).not.toThrow();
+  for (const bad of ["500", "5", "50.01", "", "NaN", "Infinity"])
+    expect(() => checkQuoteFor(q(bad), 50, tsla)).toThrow(/not the budget/);
+  expect(() => checkQuoteFor(q("50", "AAPLB"), 50, tsla)).toThrow(/not TSLAB/);
 });

@@ -559,3 +559,27 @@ test("a quote far below the spot price, or for a non-finite or huge amount, is r
   expect((await run()).code).toBe(0);
   expect(swaps.length).toBe(1);
 });
+
+// Review round 3 of #58, item 1: the record and the run lock live at AGENT_STATE; a run on another path would
+// buy again while another run's swap is outstanding. No fallback for --buy or --report, not even locally.
+test("--buy and --report refuse without AGENT_STATE, even against a local api; a quote-only run still works", async () => {
+  api = { demand: demand(), restock: restocked };
+  for (const unset of [undefined, ""]) {
+    if (unset === undefined) delete process.env.AGENT_STATE;
+    else process.env.AGENT_STATE = unset;
+    for (const url of ["https://api.test", "http://127.0.0.1:8788"]) {
+      process.env.NYXERON_API = url;
+      for (const args of [
+        ["--token", "tsla", "--buy"],
+        ["--token", "tsla", "--report", TX],
+      ]) {
+        const r = await run(...args);
+        expect(r.code).toBe(1);
+        expect(r.err).toMatch(/AGENT_STATE is not set/);
+      }
+    }
+  }
+  expect(calls).toEqual([]);
+  expect(swaps).toEqual([]);
+  expect((await run("--token", "tsla")).code).toBe(0);
+});

@@ -20,10 +20,17 @@ export type Supply = {
   paused?: boolean;
 };
 
+/**
+ * How long one api request may take before it is aborted: a hung request would hold the run lock indefinitely.
+ * An aborted report is retried like a network error (main.ts); the record stays until the api counts the tx.
+ */
+export const FETCH_TIMEOUT_MS = 30_000;
+
 /** What the warehouse holds and what CEOs are buying. */
 export async function fetchDemand(base: string, key: string): Promise<Supply> {
   const res = await fetch(`${base}/api/agent/demand`, {
     headers: { Authorization: `Bearer ${key}` },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
@@ -68,6 +75,7 @@ export async function reportRestock(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ token, tx, note: "agent swap" }),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   const body = ((await res.json().catch(() => ({}))) ?? {}) as Partial<
     Restocked & { error: string }
@@ -103,7 +111,9 @@ export type Quotes = {
 };
 
 export async function fetchQuotes(base: string): Promise<Quotes> {
-  const res = await fetch(`${base}/api/quotes`);
+  const res = await fetch(`${base}/api/quotes`, {
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
   if (!res.ok) throw new Error(`quotes ${res.status}`);
   return (await res.json()) as Quotes;
 }
