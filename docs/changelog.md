@@ -3,6 +3,22 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-10 · A paid band always plays
+
+- **Booking a DJ at night no longer cancels the band:** a band booked by day plays its slot even if the CEO books a DJ
+  during the night. Before, the late DJ moved the band to the opener slot (22:00), which had already passed, so the
+  band's fee was spent and it never went on stage. The band's slot is now fixed when the night starts.
+
+## 2026-10-10 · Esc closes the Leave dialog
+
+- **Esc works both ways on guest and gig nights:** Esc opens Leave and Esc again closes it (Stay); on a gig the
+  decks' own keys pause while the dialog is up, and Esc with the decks collapsed now opens Leave too.
+
+## 2026-10-10 · Lighter landing page
+
+- **Half the landing download:** the second landing video (the reveal clip) now loads only as you scroll towards it
+  instead of with the page, so the first visit fetches about 1.1 MB of media instead of 2.1 MB.
+
 ## 2026-10-10 · Private parties stay private; sales check inside the sale
 
 - **A private party sells only to its guests:** buying at a private party, or reading its price list, now needs its
