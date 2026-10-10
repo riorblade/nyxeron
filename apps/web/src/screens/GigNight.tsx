@@ -17,6 +17,7 @@ import { useProfile } from "@/state/profile";
 import { player } from "@/api/player";
 import { useGame } from "@/state/store";
 import { VenueView } from "@/venue/VenueView";
+import { escLeaving } from "@/screens/leaveKey";
 
 const t = en.gig;
 /** Real milliseconds per in-game minute during a set: 01:00–04:00 plays out in about six minutes. */
@@ -49,6 +50,18 @@ export function GigNight({ s }: { s: GameState }) {
   const n = s.night!;
   const inside = n.guests.filter(isInside).length;
   const minimize = useCallback(() => setOpen(false), []);
+  const modal = over || leaving;
+
+  // Esc opens the Leave dialog and closes it again (like the guest night). With the decks open and no dialog,
+  // the studio takes Esc first and collapses itself.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.target instanceof HTMLInputElement) return;
+      setLeaving((l) => escLeaving(l, over));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [over]);
 
   // The decks stay live for the whole gig, even with the studio panel collapsed.
   useEffect(() => {
@@ -110,7 +123,7 @@ export function GigNight({ s }: { s: GameState }) {
 
       {open ? (
         <div className="fixed inset-x-0 bottom-0 z-20 flex max-h-[74dvh] flex-col">
-          <DjStudio live onClose={minimize} />
+          <DjStudio live hotkeys={!modal} onClose={minimize} />
         </div>
       ) : (
         <button
@@ -123,7 +136,7 @@ export function GigNight({ s }: { s: GameState }) {
         </button>
       )}
 
-      {(over || leaving) && (
+      {modal && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div
             role="alertdialog"
