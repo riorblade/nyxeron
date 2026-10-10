@@ -12,6 +12,9 @@ type Reply<T> =
   | { success: true; data: T }
   | { success: false; error: { name: string; message: string } };
 
+/** The wallet answered and said no: nothing was done (unlike a crash or unreadable output, where it may have). */
+export class BawRefused extends Error {}
+
 /** Runs `baw <args> --json`. A refusal comes back as JSON on a non-zero exit, so stdout is read either way. */
 function baw<T>(args: string[]): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -23,7 +26,8 @@ function baw<T>(args: string[]): Promise<T> {
         return reject(err ?? new Error(`baw: unreadable output: ${stdout}`));
       }
       if (reply.success) resolve(reply.data);
-      else reject(new Error(`${reply.error.name}: ${reply.error.message}`));
+      else
+        reject(new BawRefused(`${reply.error.name}: ${reply.error.message}`));
     });
   });
 }

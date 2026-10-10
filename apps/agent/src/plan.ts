@@ -26,3 +26,102 @@ export function checkContract(lock: Locked, listed: string | undefined) {
       `${lock.symbol}: locked contract ${lock.contract} is not Binance's (${listed ?? "not listed"})`,
     );
 }
+
+/**
+ * The api's base URL, only over https: AGENT_KEY goes out in its Authorization header. Plain http is allowed for
+ * this machine (localhost, 127.0.0.1, ::1), where `pnpm dev:api` runs.
+ */
+export function apiBase(raw: string): string {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error(`NYXERON_API is not a URL: must be https://…`);
+  }
+  const local = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && local))
+    throw new Error(
+      `NYXERON_API must be https (plain http only for localhost): ${url.origin}`,
+    );
+  return raw.replace(/\/+$/, "");
+}
+
+/**
+ * The api's spend guards, failing closed: `paused` must be false and today's spend a known, non-negative number,
+ * else nothing is bought. Then the swap must fit the daily limit.
+ */
+export function checkSpend(supply: Supply, usd: number) {
+  const { paused, agentSpentTodayCents: spent } = supply;
+  if (paused !== false)
+    throw new Error(
+      paused === true
+        ? "payments are paused (reconciliation mismatch): not buying; see the back office's Payments page"
+        : "the api didn't say whether payments are paused: not buying",
+    );
+  if (typeof spent !== "number" || !Number.isFinite(spent) || spent < 0)
+    throw new Error(
+      `the api's agentSpentTodayCents is not a usable number (${String(spent)}): not buying`,
+    );
+  // The daily limit binds the swap itself: the api would refuse to count one over it.
+  if (spent + usd * 100 > payments.agent.maxUsdPerDay * 100)
+    throw new Error(
+      `over the agent's daily limit: $${spent / 100} spent today of $${payments.agent.maxUsdPerDay}`,
+    );
+}
+
+export type PriceCheck = {
+  /** USD per share the quote implies (1 bStock token = 1 share). */
+  price: number;
+  /** The api's spot price for the ticker, or undefined when it has none usable. */
+  reference?: number;
+  /** How far the quote is above the reference, in percent (negative: cheaper). */
+  overPercent?: number;
+  ok: boolean;
+  reason?: string;
+};
+
+/**
+ * The quote against the api's spot price (GET /api/quotes): refused when it costs more than
+ * agent.maxPriceOverSpotPercent above it, or when there is no fresh reference to compare with.
+ */
+export function checkPrice(
+  usd: number,
+  received: string,
+  ticker: string,
+  spot: { quotes?: Record<string, number>; at?: number; error?: string },
+  now: number,
+): PriceCheck {
+  const shares = Number(received);
+  const price = shares > 0 ? usd / shares : Infinity;
+  if (!(price < Infinity))
+    return {
+      price,
+      ok: false,
+      reason: `quote: ${received} ${ticker} for $${usd}`,
+    };
+  const reference = spot.quotes?.[ticker];
+  const age = now - (spot.at ?? 0);
+  if (
+    spot.error ||
+    typeof reference !== "number" ||
+    !(reference > 0) ||
+    !Number.isFinite(reference) ||
+    !(age <= payments.agent.spotMaxAgeMinutes * 60_000)
+  )
+    return {
+      price,
+      ok: false,
+      reason: `no fresh reference price for ${ticker} from the api${spot.error ? ` (${spot.error})` : ""}: not buying`,
+    };
+  const overPercent = (price / reference - 1) * 100;
+  const ok = overPercent <= payments.agent.maxPriceOverSpotPercent;
+  return {
+    price,
+    reference,
+    overPercent,
+    ok,
+    reason: ok
+      ? undefined
+      : `quote: $${price.toFixed(2)} a share is ${overPercent.toFixed(1)}% over the reference $${reference} (max ${payments.agent.maxPriceOverSpotPercent}%)`,
+  };
+}

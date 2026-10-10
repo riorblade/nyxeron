@@ -1,37 +1,204 @@
 // The platform's stock agent: reads what the warehouse is short of, takes the whitelisted token (payments.json),
-// checks its locked bStock contract against Binance's list and asks the Agentic Wallet what the budget buys.
-// Only with --buy does it trade: it swaps with platform funds, follows the order to its tx, and reports the tx to
-// the api, which reads the swap on BSC and adds the units it really bought.
+// checks its locked bStock contract against Binance's list and asks the Agentic Wallet what the budget buys, and
+// checks that quote against the api's spot price. Only with --buy does it trade: it swaps with platform funds,
+// follows the order to its tx, and reports the tx to the api, which reads the swap on BSC and adds the units it
+// really bought. The swap it placed is recorded (AGENT_STATE) until the api has counted it: a run that ends early
+// leaves it for the next run to finish, and no new swap is placed while one is outstanding.
 //
-//   AGENT_KEY=… pnpm agent                    the whitelisted token the warehouse needs most: a quote
-//   AGENT_KEY=… pnpm agent --token tsla        this whitelisted token, whatever the demand: a quote
-//   AGENT_KEY=… pnpm agent --token tsla --buy  buy it for AGENT_BUY_USD and restock the warehouse
+//   AGENT_KEY=… pnpm agent                               the whitelisted token the warehouse needs most: a quote
+//   AGENT_KEY=… pnpm agent --token tsla                   this whitelisted token, whatever the demand: a quote
+//   AGENT_KEY=… pnpm agent --token tsla --buy             buy it for AGENT_BUY_USD and restock the warehouse
+//   AGENT_KEY=… pnpm agent --token tsla --report 0x…      report a done swap's tx again; trades nothing
 import { payments, tokens, type TokenId } from "@nyxeron/core";
-import { order, outcome, quote, swap } from "./baw";
-import { fetchDemand, reportRestock } from "./demand";
-import { checkContract, locked, pick } from "./plan";
+import { BawRefused, order, outcome, quote, swap } from "./baw";
+import {
+  fetchDemand,
+  fetchQuotes,
+  ReportError,
+  reportRestock,
+  type Quotes,
+  type Restocked,
+} from "./demand";
+import {
+  apiBase,
+  checkContract,
+  checkPrice,
+  checkSpend,
+  locked,
+  pick,
+} from "./plan";
 import { bstocks } from "./rwa";
+import {
+  claim,
+  clear,
+  DEFAULT_STATE,
+  load,
+  save,
+  type Outstanding,
+} from "./state";
 
-const api = process.env.NYXERON_API ?? "http://localhost:8788";
+const rawApi = process.env.NYXERON_API ?? "http://localhost:8788";
 const key = process.env.AGENT_KEY ?? "";
 const usd = Number(process.env.AGENT_BUY_USD ?? 3);
+const statePath = process.env.AGENT_STATE || DEFAULT_STATE;
 
-const flag = process.argv.indexOf("--token");
-const wanted = flag < 0 ? undefined : (process.argv[flag + 1] ?? "");
+const arg = (name: string) => {
+  const i = process.argv.indexOf(name);
+  return i < 0 ? undefined : (process.argv[i + 1] ?? "");
+};
+const wanted = arg("--token");
+const reportTx = arg("--report");
 const buy = process.argv.includes("--buy");
+
+/** How long a run keeps following a submitted order, and keeps reporting a done swap to the api. */
+const FOLLOW_MS = 3 * 60_000;
+const REPORT_MS = 10 * 60_000;
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const log = (v: unknown) => console.log(JSON.stringify(v, null, 2));
 
+/**
+ * Reports a tx until the api counts it, for up to REPORT_MS: again every 10 s while it isn't final (202), and with
+ * backoff (5 s doubling to 60 s) on a 5xx or a network error. A 4xx is final and thrown at once.
+ */
+async function report(
+  base: string,
+  token: string,
+  tx: string,
+): Promise<Restocked | "counted"> {
+  const until = Date.now() + REPORT_MS;
+  let last: string;
+  for (let backoff = 5000; ;) {
+    let delay = 10_000;
+    try {
+      const got = await reportRestock(base, key, token, tx);
+      if (got !== "pending") return got;
+      last = "still pending (not final on BSC yet)";
+    } catch (e) {
+      if (e instanceof ReportError && !e.retry) throw e;
+      last = (e as Error).message;
+      delay = backoff;
+      backoff = Math.min(backoff * 2, 60_000);
+    }
+    if (Date.now() + delay > until)
+      throw new Error(
+        `${last}: restock for ${tx} not counted yet; the swap is done. Report it with --token ${token} --report ${tx}`,
+      );
+    await wait(delay);
+  }
+}
+
+/** Follows a submitted order for up to FOLLOW_MS: its tx, "failed", or undefined while still pending. */
+async function follow(orderId: string): Promise<string | "failed" | undefined> {
+  const until = Date.now() + FOLLOW_MS;
+  for (;;) {
+    const o = outcome(await order(orderId));
+    if (o.state === "failed") return "failed";
+    if (o.state === "done") return o.tx;
+    if (Date.now() + 5000 > until) return undefined;
+    await wait(5000);
+  }
+}
+
+/**
+ * Takes a recorded swap as far as it goes: its order to a tx, the tx to the api. Clears the record once the api
+ * has counted it ("done") or the wallet says it failed ("failed", nothing spent); throws while it can't finish.
+ */
+async function settle(
+  base: string,
+  o: Outstanding,
+): Promise<"done" | "failed"> {
+  if (!o.orderId)
+    throw new Error(
+      `a $${o.usd} swap for ${o.token} was being submitted at ${new Date(o.at).toISOString()} and no order id was ` +
+        `recorded: check \`baw market-order list\`; if it swapped, report its tx with --token ${o.token} --report <tx>; ` +
+        `then remove ${statePath}`,
+    );
+  if (!o.tx) {
+    const got = await follow(o.orderId);
+    if (got === "failed") {
+      clear(statePath, o);
+      return "failed";
+    }
+    if (!got)
+      throw new Error(
+        `swap ${o.orderId} still pending: the next run follows it (recorded in ${statePath}); ` +
+          `check it with baw market-order list`,
+      );
+    o.tx = got;
+    save(statePath, o);
+    log({
+      action: "swapped",
+      orderId: o.orderId,
+      tx: o.tx,
+      bscscan: `https://bscscan.com/tx/${o.tx}`,
+    });
+  }
+  let got: Restocked | "counted";
+  try {
+    got = await report(base, o.token, o.tx);
+  } catch (e) {
+    if (e instanceof ReportError) {
+      o.error = e.message;
+      save(statePath, o);
+      throw new Error(
+        `${e.message}: the swap ${o.tx} is done but the api won't count it; check it in the back office, then ` +
+          `remove ${statePath}`,
+        { cause: e },
+      );
+    }
+    throw e;
+  }
+  clear(statePath, o);
+  log(
+    got === "counted"
+      ? { action: "counted", tx: o.tx }
+      : { action: "restocked", ...got },
+  );
+  return "done";
+}
+
 async function main() {
   if (!key) throw new Error("AGENT_KEY is not set");
+  const base = apiBase(rawApi);
+
+  if (reportTx !== undefined) {
+    if (wanted === undefined || !locked(wanted))
+      throw new Error(
+        `--report needs --token of the payments.json whitelist: ${wanted ?? ""}`,
+      );
+    if (!/^0x[0-9a-fA-F]{64}$/.test(reportTx))
+      throw new Error(
+        `--report needs the swap's tx hash (0x + 64 hex): ${reportTx}`,
+      );
+    const got = await report(base, wanted, reportTx);
+    const o = load(statePath);
+    if (o?.tx?.toLowerCase() === reportTx.toLowerCase()) clear(statePath, o);
+    log(
+      got === "counted"
+        ? { action: "counted", tx: reportTx }
+        : { action: "restocked", ...got },
+    );
+    return;
+  }
+
   if (!(usd > 0)) throw new Error("AGENT_BUY_USD must be a positive number");
   if (usd > payments.agent.maxUsdPerSwap)
     throw new Error(`AGENT_BUY_USD is over $${payments.agent.maxUsdPerSwap}`);
   if (wanted !== undefined && !locked(wanted))
     throw new Error(`not in the payments.json whitelist: ${wanted}`);
 
-  const supply = await fetchDemand(api, key);
+  // A swap from an earlier run comes first: finish it (or learn it failed) before anything new is bought.
+  const earlier = load(statePath);
+  if (earlier && buy) {
+    if ((await settle(base, earlier)) === "failed")
+      log({
+        action: "cleared",
+        reason: `earlier swap ${earlier.orderId} failed: nothing was bought`,
+      });
+  } else if (earlier) log({ outstanding: earlier });
+
+  const supply = await fetchDemand(base, key);
   const row =
     wanted === undefined
       ? pick(supply)
@@ -47,6 +214,10 @@ async function main() {
   const ticker = tokens[row.token as TokenId].ticker;
   checkContract(lock, (await bstocks()).get(ticker)?.address);
   const q = await quote(usd, lock.contract);
+  const spot: Partial<Quotes> = await fetchQuotes(base).catch((e: Error) => ({
+    error: e.message,
+  }));
+  const price = checkPrice(usd, q.toCoinAmount, ticker, spot, Date.now());
   log({
     action: buy ? "buy" : "quote",
     demand: row,
@@ -55,52 +226,30 @@ async function main() {
     contract: lock.contract,
     receive: q.toCoinAmount,
     slippage: q.slippage,
+    pricePerShare: price.price,
+    spot: price.reference,
+    overSpotPercent: price.overPercent,
+    priceOk: price.ok,
   });
   if (!buy) return;
-  if (supply.paused)
-    throw new Error(
-      "payments are paused (reconciliation mismatch): not buying; see the back office's Payments page",
-    );
-  // The daily limit binds the swap itself: the api would refuse to count one over it.
-  const spent = supply.agentSpentTodayCents ?? 0;
-  if (spent + usd * 100 > payments.agent.maxUsdPerDay * 100)
-    throw new Error(
-      `over the agent's daily limit: $${spent / 100} spent today of $${payments.agent.maxUsdPerDay}`,
-    );
+  checkSpend(supply, usd);
+  if (!price.ok) throw new Error(price.reason);
 
-  // Submitted is not done: follow the order until the wallet says FINISHED (with its tx) or FAILED.
-  const { orderId } = await swap(usd, lock.contract);
-  let tx = "";
-  for (let i = 0; i < 36 && !tx; i++) {
-    const o = outcome(await order(orderId));
-    if (o.state === "failed")
-      throw new Error(`swap ${orderId} failed: nothing bought`);
-    if (o.state === "done") tx = o.tx;
-    else await wait(5000);
+  // Recorded before it is submitted: if this run dies anywhere after, the next one knows a swap may be out.
+  const o = claim(statePath, { token: row.token, usd });
+  try {
+    o.orderId = (await swap(usd, lock.contract)).orderId;
+  } catch (e) {
+    if (e instanceof BawRefused)
+      clear(statePath, o); // the wallet said no: nothing was placed
+    else
+      (e as Error).message +=
+        ` (the swap may have been placed: recorded in ${statePath}; no new swap until someone checks)`;
+    throw e;
   }
-  if (!tx)
-    throw new Error(
-      `swap ${orderId} still pending: check it with baw market-order list`,
-    );
-  log({
-    action: "swapped",
-    orderId,
-    tx,
-    bscscan: `https://bscscan.com/tx/${tx}`,
-  });
-
-  // The api adds units only once the swap is final on BSC (15 confirmations): report until it counts.
-  for (let i = 0; i < 30; i++) {
-    const got = await reportRestock(api, key, row.token, tx);
-    if (got !== "pending") {
-      log({ action: "restocked", ...got });
-      return;
-    }
-    await wait(10_000);
-  }
-  throw new Error(
-    `restock for ${tx} still pending: report it again later (the swap is done)`,
-  );
+  save(statePath, o);
+  if ((await settle(base, o)) === "failed")
+    throw new Error(`swap ${o.orderId} failed: nothing bought`);
 }
 
 main().catch((e: Error) => {

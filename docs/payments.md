@@ -66,6 +66,10 @@ suggested) and buys bStock in bulk with **platform funds** (fees, or a seed the 
 credits. `POST /api/agent/restock {token, tx}` adds units **only after the api verifies the swap on BSC**
 (bStock received by the Agentic Wallet, amount from the logs, tx unused, 15 confirmations, two RPCs agree). Manual
 restock in the back office becomes "report a tx" (same verification); typing a number no longer creates stock.
+The agent places one swap at a time and records it until the api has counted its tx (a run that times out
+finishes it next time instead of buying again), retries reports on 5xx/network errors, refuses a quote more than
+`agent.maxPriceOverSpotPercent` above the api's spot price, and buys nothing when the api's `paused`/spend fields
+are missing (`apps/agent/README.md`).
 
 ### 4. Party sales (dropship, settled at the end)
 

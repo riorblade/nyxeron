@@ -40,16 +40,27 @@ export type Restocked = {
   tx: string;
 };
 
+/** The api answered no to a report. `retry`: worth asking again (5xx); a 4xx won't change by itself. */
+export class ReportError extends Error {
+  constructor(
+    message: string,
+    readonly retry: boolean,
+  ) {
+    super(message);
+  }
+}
+
 /**
  * Reports a swap to the api, which reads it on BSC and adds the units it bought. "pending": not final yet
- * (15 confirmations), report it again later.
+ * (15 confirmations), report it again later. "counted": the api already counted this tx (409 tx_used). A network
+ * error is thrown as is (worth retrying).
  */
 export async function reportRestock(
   base: string,
   key: string,
   token: string,
   tx: string,
-): Promise<Restocked | "pending"> {
+): Promise<Restocked | "pending" | "counted"> {
   const res = await fetch(`${base}/api/agent/restock`, {
     method: "POST",
     headers: {
@@ -62,7 +73,25 @@ export async function reportRestock(
     error?: string;
   };
   if (res.status === 202) return "pending";
+  if (res.status === 409 && body.error === "tx_used") return "counted";
   if (!res.ok)
-    throw new Error(`restock ${res.status} ${body.error ?? ""}`.trim());
+    throw new ReportError(
+      `restock ${res.status} ${body.error ?? ""}`.trim(),
+      res.status >= 500,
+    );
   return body;
+}
+
+/** GET /api/quotes: spot USD prices per underlying ticker (services/api/quotes.go). */
+export type Quotes = {
+  quotes: Record<string, number>;
+  source: string;
+  at: number;
+  error?: string;
+};
+
+export async function fetchQuotes(base: string): Promise<Quotes> {
+  const res = await fetch(`${base}/api/quotes`);
+  if (!res.ok) throw new Error(`quotes ${res.status}`);
+  return (await res.json()) as Quotes;
 }

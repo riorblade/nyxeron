@@ -3,6 +3,17 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-10 · Stock agent: no double buys, reports that survive, a price floor
+
+- **One swap at a time:** the agent records the swap it placed (`AGENT_STATE`) until the api has counted it; a run
+  that ends early (order still pending, api down) is finished by the next run instead of a second purchase.
+- **Reports retry** 5xx/network errors with backoff for up to 10 minutes; `pnpm agent --token tsla --report <tx>`
+  counts a done swap without trading.
+- **Price floor:** a quote more than 5 % per share above the api's spot price (`GET /api/quotes`), or with no fresh
+  spot price, is refused (`payments.json` → `agent.maxPriceOverSpotPercent`, `agent.spotMaxAgeMinutes`).
+- **Fails closed:** a missing `paused` flag or a missing/negative daily spend from the api stops the buy;
+  `NYXERON_API` must be https (http only for localhost). Part of #55.
+
 ## 2026-10-10 · A paid band always plays
 
 - **Booking a DJ at night no longer cancels the band:** a band booked by day plays its slot even if the CEO books a DJ
