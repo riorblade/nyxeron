@@ -207,10 +207,11 @@ export interface Payments {
     createdAt: number;
     settledAt?: number;
   }[];
-  /** What the top-up scanner moved past unread: a block's logs for one token ("logs", ref = token) or a player's
-   * receipt ("receipt", ref = tx). "open" is read again for a while; "given_up" is for the back office. */
+  /** What the top-up scanner moved past unread: a block's logs for one token ("logs", ref = token), a player's
+   * receipt ("receipt", ref = tx), or the Agentic Wallet's payouts in blocks block…ref ("payouts", ref = the last
+   * block). "open" is read again for a while; "given_up" is for the back office. */
   scanRetries: {
-    kind: "logs" | "receipt";
+    kind: "logs" | "receipt" | "payouts";
     ref: string;
     block: number;
     reason: string;

@@ -532,18 +532,23 @@ func TestReconcileSwapChangeIsNotOwedBack(t *testing.T) {
 				restock()
 				scan()
 			}
-			if n := count(t, s, `SELECT COUNT(*) FROM topups WHERE tx = ?`, usdcTx); n != 1 {
-				t.Fatalf("change rows %d", n)
+			// Scanned after the restock is booked, the tx is skipped: nothing is recorded (the platform's money).
+			if n, want := count(t, s, `SELECT COUNT(*) FROM topups WHERE tx = ?`, usdcTx), map[bool]int{true: 1, false: 0}[scanFirst]; n != want {
+				t.Fatalf("change rows %d, want %d", n, want)
 			}
-			if n := count(t, s, `SELECT refund_cents FROM topups WHERE tx = ?`, usdcTx); n != 0 {
+			if n := count(t, s, `SELECT COALESCE(SUM(refund_cents), 0) FROM topups WHERE tx = ?`, usdcTx); n != 0 {
 				t.Fatalf("the change is owed back: %d cents", n)
 			}
 			r, err := s.Reconcile(ctx, ch, "system", "test", time.Now())
 			if err != nil || !r.OK || r.RefundCents != 0 || r.OwedCents != 990 || r.PlatformCents != 210 {
 				t.Fatalf("%+v %v", r, err)
 			}
-			if _, err := s.MarkRefunded(ctx, "kiel@x", usdcTx, 0x1a, "x", time.Now()); !errors.Is(err, errRejected) {
+			if _, err := s.MarkRefunded(ctx, "kiel@x", usdcTx, 0x1a, "x", time.Now()); !errors.Is(err, errRejected) &&
+				(scanFirst || !errors.Is(err, errNoTopup)) {
 				t.Fatalf("change marked refundable: %v", err)
+			}
+			if !scanFirst {
+				return
 			}
 			// A row recorded owing before the scanner knew (pre-fix data): the booked restock still rules it out.
 			s.db.Exec(`UPDATE topups SET refund_cents = 200 WHERE tx = ?`, usdcTx)

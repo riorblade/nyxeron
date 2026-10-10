@@ -71,9 +71,10 @@ Both are recorded in `scan_retries` and read again on later passes: right away, 
 office's Payments page lists the open and given-up ones ("Unread on chain") and each top-up's reason; a player's own
 report (`POST /api/topups`) still credits such a deposit meanwhile. One RPC failing alone still stops the scan, so an
 outage never skips a transfer. A transfer recorded `unknown` and claimed later counts against the daily cap when it is
-credited (`credited_at`; `created_at` stays when it was first seen). A tx booked as the team's seed is never credited
-to a player (recorded `rejected`, reason `seed`), and a tx a player's wallet sent is never booked as the seed: neither
-the wallet stored now nor any of the tx's own top-up rows with a player (credited or rejected, so owed back).
+credited (`credited_at`; `created_at` stays when it was first seen). A tx booked as the team's seed or as a restock
+is the platform's money: the scanner skips it (records nothing, whoever sent it) and `POST /api/topups` refuses it
+(`not_a_topup`). A tx a player's wallet sent is never booked as the seed: neither the wallet stored now nor any of the
+tx's own top-up rows with a player (credited or rejected, so owed back).
 
 ### 3. Warehouse restock (platform; replaces "CEO orders")
 
@@ -156,19 +157,35 @@ open, not ended) is checked inside that same transaction; a banned tenant's shop
    nothing to refund), nor anything in a tx booked as a restock or seed (already netted in platform funds; the back
    office shows it with nothing owed and won't mark it refunded). The scanner reads no receipt for a transfer from a
    non-player: whether the wallet paid out in its tx comes from one `eth_getLogs` per token for the whole range, and
-   a zero-value "payout" (anyone can log `transferFrom(agenticWallet, x, 0)`) doesn't count.
+   a zero-value "payout" (anyone can log `transferFrom(agenticWallet, x, 0)`) doesn't count. If those payouts can't
+   be read (anyone can make that answer huge), the strangers' transfers in the range are owed in full, the range goes
+   into `scan_retries` (`payouts`) and is read again like the rest, and until it reads (or is given up) those rows
+   say so and can't be marked refunded (409 `payouts_unread`): one of them may be a swap's change.
 2. Units are backed, per token: (warehouse on hand + reserved + Σ players' real units) × 0.001 ≤ bStock held.
 
-**Before deploying migration 7** (money owed back), list the transfers its backfill will count as owed in full: an
-unknown sender's transfer outside any booked restock or seed. A swap's change from a swap that was never booked shows
-up here and would pause payments at the first reconciliation; book that swap (report it as a restock) first. Anything
-else listed is a stranger's money, owed back.
+**Before deploying migration 7** (money owed back), list every row its backfill will count as owed, with the amount:
+an unknown sender's transfer (all of it), a rejected top-up and the part of a credited one over the caps (the cents
+its reason starts with), outside any tx booked as a restock or seed. A swap's change from a swap that was never booked
+shows up here and would pause payments at the first reconciliation; book that swap (report it as a restock) first.
+Anything else listed is owed back to its sender. The database has no record of refunds yet (`refunded_at` comes with
+migration 7), so rows already paid back by hand are listed too: **right after deploying, mark each of them Refunded in
+the back office (Payments) before the next hourly reconciliation**, or it counts them as owed and may pause payments.
+This query uses migration 7's own rule (a test runs it on a v6 database and compares it with what the migration
+writes).
 
 ```sql
-SELECT tx, log_index, sender, token, usd_cents, datetime(created_at, 'unixepoch') AS at
-FROM topups
-WHERE status = 'unknown'
-  AND lower(tx) NOT IN (SELECT lower(ref) FROM platform_ledger WHERE kind IN ('restock', 'seed'))
+-- owed by migration 7: one row per transfer it will owe, total_owed_cents = their sum
+SELECT tx, log_index, status, sender, token, usd_cents, reason, owed_cents,
+  SUM(owed_cents) OVER () AS total_owed_cents, datetime(created_at, 'unixepoch') AS at
+FROM (
+  SELECT *, CASE
+    WHEN lower(tx) IN (SELECT lower(ref) FROM platform_ledger WHERE kind IN ('restock', 'seed')) THEN 0
+    WHEN status = 'unknown' THEN usd_cents
+    WHEN status IN ('rejected', 'credited') THEN MAX(0, CAST(reason AS INTEGER))
+    ELSE 0 END AS owed_cents
+  FROM topups
+)
+WHERE owed_cents > 0
 ORDER BY created_at;
 ```
 

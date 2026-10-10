@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"math/big"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -271,7 +272,8 @@ type AdminSale struct {
 }
 
 // ScanRetry: something the top-up scanner moved past unread (scan_retries): a block's Transfer logs for one token
-// ("logs", ref = the token) or a player's receipt ("receipt", ref = the tx). "open" is read again on later passes;
+// ("logs", ref = the token), a player's receipt ("receipt", ref = the tx), or the Agentic Wallet's payouts in blocks
+// Block..Ref ("payouts", ref = the last block; strangers' transfers there can't be marked refunded while it is open). "open" is read again on later passes;
 // "given_up" is the back office's: check the block on an explorer and credit or refund by hand.
 type ScanRetry struct {
 	Kind      string `json:"kind"`
@@ -462,9 +464,9 @@ func (s *store) MarkRefunded(ctx context.Context, actor, tx string, logIndex int
 	var cents int64
 	return cents, s.inTx(ctx, func(t *sql.Tx) error {
 		var refundedAt int64
-		var sender string
-		err := t.QueryRow(`SELECT CASE WHEN tx IN `+bookedTxs+` THEN 0 ELSE refund_cents END, refunded_at, sender
-			FROM topups WHERE tx = ? AND log_index = ?`, tx, logIndex).Scan(&cents, &refundedAt, &sender)
+		var sender, why string
+		err := t.QueryRow(`SELECT CASE WHEN tx IN `+bookedTxs+` THEN 0 ELSE refund_cents END, refunded_at, sender, reason
+			FROM topups WHERE tx = ? AND log_index = ?`, tx, logIndex).Scan(&cents, &refundedAt, &sender, &why)
 		if errors.Is(err, sql.ErrNoRows) {
 			return errNoTopup
 		}
@@ -476,6 +478,19 @@ func (s *store) MarkRefunded(ctx context.Context, actor, tx string, logIndex int
 		}
 		if cents <= 0 {
 			return errRejected // nothing is owed back on it (or it is a booked restock's or seed's change)
+		}
+		// Recorded while the wallet's payouts in its blocks couldn't be read: maybe a swap's change. Not while they're
+		// still read again; once given up, the back office checks the tx by hand.
+		var from, to uint64
+		if n, _ := fmt.Sscanf(why, payoutsNoteFmt, &from, &to); n == 2 {
+			var open int
+			if err := t.QueryRow(`SELECT COUNT(*) FROM scan_retries WHERE kind = 'payouts' AND ref = ? AND block = ?
+				AND status = 'open'`, strconv.FormatUint(to, 10), int64(from)).Scan(&open); err != nil {
+				return err
+			}
+			if open > 0 {
+				return errPayoutsUnread
+			}
 		}
 		res, err := t.Exec(`UPDATE topups SET refunded_at = ?1, updated_at = ?1,
 			status = CASE WHEN status = 'unknown' THEN 'rejected' ELSE status END
@@ -490,3 +505,7 @@ func (s *store) MarkRefunded(ctx context.Context, actor, tx string, logIndex int
 			map[string]any{"refundCents": cents, "sender": sender}, reason)
 	})
 }
+
+// errPayoutsUnread: the transfer sits in a block range whose Agentic Wallet payouts the scanner couldn't read yet
+// (scan_retries "payouts", open): it may be a swap's change, owed to nobody. Refundable once they read or are given up.
+var errPayoutsUnread = errors.New("refund: the wallet's payouts in this transfer's blocks aren't read yet")

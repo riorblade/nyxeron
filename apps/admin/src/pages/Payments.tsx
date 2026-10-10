@@ -242,7 +242,9 @@ export function Payments({ canEdit }: { canEdit: boolean }) {
               providers refused them) and moved past. Open ones are read again
               for about 4 hours; players&apos; own reports still credit their
               deposits. Given up: check the block on BscScan and credit or
-              refund by hand.
+              refund by hand. Wallet payouts: until they read, unknown
+              senders&apos; transfers in those blocks may be a swap&apos;s
+              change and can&apos;t be marked refunded.
             </p>
             <Table
               head={["Block", "What", "Status", "Reads", "Last read", "Why"]}
@@ -262,6 +264,8 @@ export function Payments({ canEdit }: { canEdit: boolean }) {
                   <td className="font-mono text-xs">
                     {r.kind === "logs" ? (
                       `${stable(r.ref)} transfers`
+                    ) : r.kind === "payouts" ? (
+                      `wallet payouts, blocks ${r.block}–${r.ref}`
                     ) : (
                       <a
                         className="hover:underline"

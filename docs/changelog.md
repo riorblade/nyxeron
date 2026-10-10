@@ -13,8 +13,17 @@ teammate would notice.
   ("Unread on chain") and shows each top-up's reason.
 - **Daily cap holds for late claims:** transfers seen before the player's wallet was stored, claimed a day later,
   could credit $100 at once. The $20/day cap now counts by when a top-up is credited.
-- **Seed and top-up can't count the same dollars:** a tx booked as the team's seed is never credited to a player,
-  and a tx a player's wallet sent (stored now, or on any of the tx's top-up rows) is never booked as the seed.
+- **Seed and top-up can't count the same dollars:** a tx booked as the team's seed or as a restock is skipped by the
+  scanner (nothing recorded, even if a team member's wallet later plays) and refused by `POST /api/topups`
+  (`not_a_topup`); before, a player's transfer in a restock's tx was credited, and a seed sent from a wallet that
+  played later was recorded against that player. A tx a player's wallet sent (stored now, or on any of the tx's
+  top-up rows) is never booked as the seed.
+- **Unread payouts are shown, not guessed:** when the Agentic Wallet's own payouts in a block range can't be read,
+  strangers' transfers there are still owed in full, but the range is now recorded ("Unread on chain", wallet
+  payouts) and read again like the rest; until it reads, those rows say so and can't be marked refunded (409
+  `payouts_unread`), so a swap's change isn't paid out by mistake. Once read, a swap's change is owed nothing.
+- **Pre-deploy check for migration 7 lists everything it will owe** (unknown, rejected and over-cap rows, with the
+  amount), tested against the migration itself; rows already refunded by hand get marked Refunded right after deploy.
 - **Pause is final:** a sale or top-up credit that was in flight when payments paused no longer commits.
 - **Shop prices stay within 3× wholesale at sale time:** after the market falls, an over-cap shop price doesn't sell
   until the tenant reprices. Wholesale is rounded up exactly (integer math on the quote), so a unit never sells

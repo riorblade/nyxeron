@@ -240,8 +240,9 @@ var migrations = []string{
 	// 8 — when a top-up was credited. The 24 h cap counts credits by this, not by created_at (when the transfer was
 	// first recorded): a transfer recorded "unknown" and claimed days later counts on the day it is credited (#38).
 	// Existing credited rows were credited when last updated.
-	// scan_retries: what the top-up scanner couldn't read and moved past (a block's Transfer logs for one token, or a
-	// player's receipt: both rpcs answered too big, malformed or refused). Read again on later passes, a bounded
+	// scan_retries: what the top-up scanner couldn't read and moved past (a block's Transfer logs for one token, a
+	// player's receipt, or the Agentic Wallet's payouts in a block range: both rpcs answered too big, malformed or
+	// refused). Read again on later passes, a bounded
 	// number of times; the back office sees what is still open (Payments). Players' own reports credit those
 	// deposits meanwhile.
 	// platform_ledger_ref: the "booked already?" lookups (seed, restock) match lower(ref); one row per credited
@@ -250,8 +251,8 @@ var migrations = []string{
 	UPDATE topups SET credited_at = updated_at WHERE status = 'credited' AND credited_at = 0;
 	CREATE INDEX IF NOT EXISTS topups_credited ON topups(user_id, credited_at);
 	CREATE TABLE IF NOT EXISTS scan_retries (
-		kind TEXT NOT NULL CHECK (kind IN ('logs', 'receipt')),
-		ref TEXT NOT NULL,                  -- logs: the token contract; receipt: the tx
+		kind TEXT NOT NULL CHECK (kind IN ('logs', 'receipt', 'payouts')),
+		ref TEXT NOT NULL,                  -- logs: the token contract; receipt: the tx; payouts: the range's last block
 		block INTEGER NOT NULL,
 		reason TEXT NOT NULL,
 		attempts INTEGER NOT NULL DEFAULT 1,

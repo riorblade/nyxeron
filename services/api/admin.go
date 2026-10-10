@@ -819,6 +819,8 @@ func (a *admin) route(mux *http.ServeMux) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found"})
 		case errors.Is(err, errRejected):
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "nothing_owed"})
+		case errors.Is(err, errPayoutsUnread):
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "payouts_unread"})
 		case err != nil:
 			fail(w, err) // bad_request, conflict (already refunded)
 		default:
