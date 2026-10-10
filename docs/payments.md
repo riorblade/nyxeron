@@ -35,10 +35,10 @@ never count as real stock.
 | --- | --- | --- |
 | Credit | 1 USD = 100 credits | integers only |
 | Unit | 1 unit = 0.001 share | integers only |
-| Wholesale price of a unit | live bStock price × 0.001 × 100, rounded up | quoted server-side |
-| CEO's price | up to 3× wholesale (`city.json → shop.maxMarkup`) | set per party, before it starts |
+| Wholesale price of a unit | live bStock price × 0.001 × 100, rounded up (never below cost) | quoted server-side |
+| CEO's price | up to 3× wholesale (`city.json → shop.maxMarkup`) | set per party, before it starts; checked again at each sale |
 | Top-up fee | 1% (min top-up $3) | covers gas sponsorship; the rest is revenue |
-| Per-player top-up cap | $20 a day, $100 in total during the hackathon | there's no withdrawal yet |
+| Per-player top-up cap | $20 a day, $100 in total during the hackathon | there's no withdrawal yet; the day counts by when a top-up is credited |
 | Agent limits | $50 per swap, $500 a day | in code; Binance App limit is a backstop |
 | Top-up tokens | USDC, USDT on BSC (18 decimals) | contract addresses locked in config |
 | Tokens | TSLA (bStock) | whitelist with contract addresses |
@@ -57,7 +57,12 @@ Fund the embedded wallet (Privy `useFundWallet`, card via MoonPay) → send USDC
 sponsorship → the browser posts **only the tx hash** to `POST /api/topups` → the api verifies on BSC (checks below)
 → in one database transaction: record the top-up (tx hash + log index unique), add `credits` (amount − 1% fee) ×
 100, write the ledger. A scanner picks up top-ups whose browser closed. Unknown senders get no credits (flagged in
-the back office).
+the back office). The scanner skips zero-value transfers, and a transfer whose receipt neither RPC can read (too big,
+malformed) is recorded `unknown` with the reason, without credits, for the back office, and the scan moves on; one
+RPC failing alone still stops it, so an outage never skips a transfer. A transfer recorded `unknown` and claimed
+later counts against the daily cap when it is credited (`credited_at`; `created_at` stays when it was first seen).
+A tx booked as the team's seed is never credited to a player (recorded `rejected`, reason `seed`), and a tx a
+player's stored wallet sent is never booked as the seed.
 
 ### 3. Warehouse restock (platform; replaces "CEO orders")
 
@@ -104,7 +109,10 @@ open, not ended) is checked inside that same transaction; a banned tenant's shop
   minutes. Constants in `services/api/topups.go`.
 - Before restock units: as above for the bStock transfer into the Agentic Wallet; USDC spent ≤ the agent's limits.
 - Before a sale: credits and warehouse checked and held in the same transaction; prices from the server, never from
-  the browser.
+  the browser; the price must still be within wholesale … 3× wholesale at today's quote (a shop priced before the
+  market fell doesn't sell until its tenant reprices).
+- The pause is read inside the transaction that moves the money (sale or top-up credit), so a reconciliation that
+  pauses meanwhile stops it.
 - Always: every credit change goes through the ledger in the same transaction as its cause; secrets and addresses
   live in server config.
 

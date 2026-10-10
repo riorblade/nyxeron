@@ -3,6 +3,22 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-10 · Payments survive the brutal tests (#38)
+
+- **The top-up scanner can't be wedged:** a stranger could send a 0-value transfer from a player's wallet in a tx
+  padded to a > 4 MB receipt and stop the scanner for good. Zero-value transfers are now skipped before any receipt
+  is read, and a transfer whose receipt both RPCs fail to read is recorded for the back office (no credits) while
+  the scan moves on.
+- **Daily cap holds for late claims:** transfers seen before the player's wallet was stored, claimed a day later,
+  could credit $100 at once. The $20/day cap now counts by when a top-up is credited.
+- **Seed and top-up can't count the same dollars:** a tx booked as the team's seed is never credited to a player,
+  and a tx a player's wallet sent is never booked as the seed.
+- **Pause is final:** a sale or top-up credit that was in flight when payments paused no longer commits.
+- **Shop prices stay within 3× wholesale at sale time:** after the market falls, an over-cap shop price doesn't sell
+  until the tenant reprices. Wholesale is rounded up per share, so a unit never sells below its cost.
+- **Cutover (migration 6) on fresh databases:** reserved units count against verified stock, and shelves without a
+  positive price buy nothing back.
+
 ## 2026-10-10 · Top-up reports can't drain the chain quota
 
 - **Bounded RPC cost per player:** reporting made-up transaction hashes to the top-up endpoint used to cost two paid

@@ -6,6 +6,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"net/http"
@@ -471,5 +472,95 @@ func TestTopupScannerSkipsBannedPlayers(t *testing.T) {
 	s.db.Exec(`UPDATE users SET banned = 1 WHERE id = 'a'`)
 	if id, _ := s.playerByWallet(ctx, player); id != "" {
 		t.Fatalf("banned player matched: %q", id)
+	}
+}
+
+// #38: a transfer whose receipt neither rpc can read (here > 4 MB of padding logs) is recorded for the back office,
+// without credits, and the scanner moves past it. One provider alone failing to read it still stops the scan
+// (that provider may be the broken one), so an outage never skips a transfer.
+func TestTopupScannerRecordsAnUnreadableTransferAndMovesOn(t *testing.T) {
+	x := newTopupAPI(t, player, usdcAt+40)
+	x.db.Get(ctx, brutalMe)
+	x.db.SetIdentity(ctx, brutalMe, "kiel@x", player, time.Now())
+	big := bTx(0xb16)
+	logs := []bLog{{from: player, amount: centsAmt(500), idx: 0}}
+	for i := 1; i <= 20_000; i++ {
+		logs = append(logs, bLog{addr: "0x000000000000000000000000000000000000dead", idx: uint64(i)})
+	}
+	rc := bReceipt(big, usdcAt, logs...)
+	delete(x.a.receipts, usdcTx)
+	delete(x.b.receipts, usdcTx)
+	x.a.receipts[big] = rc
+	x.b.receipts[big] = bReceipt(big, usdcAt, logs[0]) // only rpc 1 is unreadable
+	c := newBSC(x.a.serve(t), x.b.serve(t))
+	now := time.Now()
+	x.db.setScanned(ctx, usdcAt-1, now)
+	if err := x.db.scanTopups(ctx, c, now); err == nil {
+		t.Fatal("one provider's unreadable answer was taken as the tx's")
+	}
+	cursor := func() string {
+		var v string
+		x.db.db.QueryRow(`SELECT value FROM settings WHERE key = ?`, scanKey).Scan(&v)
+		return v
+	}
+	if cursor() != fmt.Sprint(usdcAt-1) {
+		t.Fatalf("cursor moved past an unread transfer: %s", cursor())
+	}
+	x.b.receipts[big] = rc // both rpcs: the tx itself is unreadable
+	if err := x.db.scanTopups(ctx, c, now); err != nil {
+		t.Fatal(err)
+	}
+	if want := fmt.Sprint(usdcAt + 40 - game.payments.Confirmations + 1); cursor() != want {
+		t.Fatalf("cursor %s, want %s", cursor(), want)
+	}
+	if n := count(t, x.db, `SELECT COUNT(*) FROM topups WHERE tx = ? AND status = 'unknown' AND user_id = ''
+		AND credits = 0 AND usd_cents = 500 AND reason LIKE 'unreadable%'`, big); n != 1 {
+		t.Fatalf("unreadable rows %d", n)
+	}
+	if got := credits(t, x.db, brutalMe); got != 0 {
+		t.Fatalf("credited %d from an unread receipt", got)
+	}
+}
+
+// #38: the 24 h cap counts a top-up from when it is credited. A transfer that arrived 25 h ago and is claimed now
+// counts today (no more room today); one credited 25 h ago doesn't (full room again).
+func TestTopupDailyCapCountsByCreditTime(t *testing.T) {
+	s := testStore(t)
+	realCaps(t)
+	s.Get(ctx, "a")
+	now := time.Now()
+	if tp := rec(t, s, bTx(1), 0, centsAmt(2000), "", now.Add(-25*time.Hour)); tp.Status != "unknown" {
+		t.Fatalf("unknown: %+v", tp)
+	}
+	if tp := rec(t, s, bTx(1), 0, centsAmt(2000), "a", now); tp.Status != "credited" || tp.USDCents != 2000 {
+		t.Fatalf("claim: %+v", tp)
+	}
+	if tp := rec(t, s, bTx(2), 0, centsAmt(500), "a", now.Add(time.Hour)); tp.Status != "rejected" {
+		t.Fatalf("the claim didn't count today: %+v", tp)
+	}
+	var created, credited int64
+	s.db.QueryRow(`SELECT created_at, credited_at FROM topups WHERE tx = ?`, bTx(1)).Scan(&created, &credited)
+	if created != now.Add(-25*time.Hour).Unix() || credited != now.Unix() {
+		t.Fatalf("history: created %d credited %d", created, credited)
+	}
+	if tp := rec(t, s, bTx(3), 0, centsAmt(2000), "a", now.Add(25*time.Hour)); tp.Status != "credited" || tp.USDCents != 2000 {
+		t.Fatalf("a day after the credit: %+v", tp)
+	}
+	_, sums, _, err := s.Topups(ctx, "a", now.Add(25*time.Hour))
+	if err != nil || sums.Day != 2000 || sums.Total != 4000 {
+		t.Fatalf("sums %+v %v", sums, err)
+	}
+}
+
+// #38: a reconciliation that pauses payments while a top-up is being recorded stops it (read in its transaction).
+func TestTopupPauseReadInsideTheCredit(t *testing.T) {
+	s := testStore(t)
+	s.Get(ctx, "a")
+	pause := `INSERT INTO settings (key, value, updated_at) VALUES ('` + pauseKey + `', '["credits short"]', 1)`
+	h := hooked(t, s, "FROM settings WHERE key", pause)
+	_, _, err := h.recordTopup(ctx, Transfer{Tx: bTx(9), Token: usdcAddr(), From: player,
+		To: game.payments.AgenticWallet, Amount: centsAmt(500)}, 0, "a", time.Now())
+	if !errors.Is(err, errPaused) || count(t, s, `SELECT COUNT(*) FROM topups`) != 0 || credits(t, s, "a") != 0 {
+		t.Fatalf("credited after the pause: %v", err)
 	}
 }

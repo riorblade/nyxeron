@@ -98,7 +98,17 @@ func (s *store) recordTopup(ctx context.Context, tr Transfer, gasUsed uint64, us
 		return tp, false, err
 	}
 	defer t.Rollback()
-	if user != "" {
+	if err := pausedIn(t); err != nil { // read again inside: a reconciliation that paused meanwhile stops this
+		return tp, false, err
+	}
+	var seed int // booked as the team's seed already: these dollars are the platform's, never also a player's
+	if err := t.QueryRow(`SELECT COUNT(*) FROM platform_ledger WHERE kind = 'seed' AND lower(ref) = ?`, tp.Tx).Scan(&seed); err != nil {
+		return tp, false, err
+	}
+	switch {
+	case seed > 0:
+		tp.Status, tp.Reason = "rejected", "seed: booked as the platform's own money, for the back office to check"
+	case user != "":
 		// Inside the transaction: the api's single connection serializes top-ups, so two claims can't share room.
 		ok, err := topupRoom(t, user, now)
 		if err != nil {
@@ -117,10 +127,10 @@ func (s *store) recordTopup(ctx context.Context, tr Transfer, gasUsed uint64, us
 		}
 	}
 	res, err := t.Exec(`INSERT INTO topups (tx, log_index, user_id, sender, token, amount, usd_cents, fee, gas_used, credits,
-		status, reason, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		status, reason, created_at, updated_at, credited_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (tx, log_index) DO NOTHING`,
 		tp.Tx, tp.LogIndex, user, tr.From, tp.Token, tr.Amount.String(), tp.USDCents, tp.Fee, int64(gasUsed), tp.Credits,
-		tp.Status, tp.Reason, tp.At, tp.At)
+		tp.Status, tp.Reason, tp.At, tp.At, creditedAt(tp))
 	if err != nil {
 		return tp, false, err
 	}
@@ -128,10 +138,11 @@ func (s *store) recordTopup(ctx context.Context, tr Transfer, gasUsed uint64, us
 		if user == "" {
 			return tp, false, nil
 		}
-		// Recorded before the sender was known: this player's wallet sent it, so it is theirs now.
+		// Recorded before the sender was known: this player's wallet sent it, so it is theirs now. It counts against
+		// the daily cap from now (credited_at), whenever it arrived (created_at stays when it was first recorded).
 		claim, err := t.Exec(`UPDATE topups SET user_id = ?, status = ?, usd_cents = ?, fee = ?, credits = ?, reason = ?,
-			updated_at = ? WHERE tx = ? AND log_index = ? AND user_id = '' AND status = 'unknown' AND lower(sender) = lower(?)`,
-			user, tp.Status, tp.USDCents, tp.Fee, tp.Credits, tp.Reason, tp.At, tp.Tx, tp.LogIndex, tr.From)
+			updated_at = ?, credited_at = ? WHERE tx = ? AND log_index = ? AND user_id = '' AND status = 'unknown' AND lower(sender) = lower(?)`,
+			user, tp.Status, tp.USDCents, tp.Fee, tp.Credits, tp.Reason, tp.At, creditedAt(tp), tp.Tx, tp.LogIndex, tr.From)
 		if err != nil {
 			return tp, false, err
 		}
@@ -150,10 +161,19 @@ func (s *store) recordTopup(ctx context.Context, tr Transfer, gasUsed uint64, us
 	return tp, true, t.Commit()
 }
 
-// topupRoom: how many cents this player may still be credited: payments.json's caps over 24 h and in total.
+// creditedAt: when a row is credited (now), 0 while it isn't.
+func creditedAt(tp Topup) int64 {
+	if tp.Status == "credited" {
+		return tp.At
+	}
+	return 0
+}
+
+// topupRoom: how many cents this player may still be credited: payments.json's caps over 24 h (by when each
+// top-up was credited, not when it arrived) and in total.
 func topupRoom(t *sql.Tx, user string, now time.Time) (int64, error) {
 	var day, total int64
-	if err := t.QueryRow(`SELECT COALESCE(SUM(CASE WHEN created_at > ? THEN usd_cents END), 0), COALESCE(SUM(usd_cents), 0)
+	if err := t.QueryRow(`SELECT COALESCE(SUM(CASE WHEN credited_at > ? THEN usd_cents END), 0), COALESCE(SUM(usd_cents), 0)
 		FROM topups WHERE user_id = ? AND status = 'credited'`, now.Unix()-86400, user).Scan(&day, &total); err != nil {
 		return 0, err
 	}
@@ -176,7 +196,7 @@ func (s *store) Topups(ctx context.Context, user string, now time.Time) (credits
 	if err = s.db.QueryRowContext(ctx, `SELECT credits FROM users WHERE id = ?`, user).Scan(&credits); err != nil {
 		return
 	}
-	if err = s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(CASE WHEN created_at > ? THEN usd_cents END), 0),
+	if err = s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(CASE WHEN credited_at > ? THEN usd_cents END), 0),
 		COALESCE(SUM(usd_cents), 0) FROM topups WHERE user_id = ? AND status = 'credited'`,
 		now.Unix()-86400, user).Scan(&sums.Day, &sums.Total); err != nil {
 		return
@@ -516,7 +536,10 @@ func (s *store) scanTopups(ctx context.Context, c *bsc, now time.Time) error {
 	return nil
 }
 
-// scanRange records every transfer to the Agentic Wallet in blocks [from, to].
+// scanRange records every transfer to the Agentic Wallet in blocks [from, to]. One transaction never stops it: a
+// zero-value transfer (anyone can emit one from any address) is skipped before its receipt is read, and a transfer
+// whose receipt can't be read (too big, malformed: both rpcs agree) is recorded for the back office, without
+// credits, and the scan moves on. A provider that is down still stops it, so nothing is skipped by an outage.
 func (s *store) scanRange(ctx context.Context, c *bsc, from, to uint64, now time.Time) error {
 	for _, token := range game.payments.Topup.Tokens {
 		trs, err := c.TransfersTo(ctx, token, game.payments.AgenticWallet, from, to)
@@ -524,6 +547,9 @@ func (s *store) scanRange(ctx context.Context, c *bsc, from, to uint64, now time
 			return err
 		}
 		for _, tr := range trs {
+			if tr.Amount == nil || tr.Amount.Sign() == 0 { // nothing arrived: nothing to credit or refund
+				continue
+			}
 			var known int
 			if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM topups WHERE tx = ? AND log_index = ?`,
 				tr.Tx, tr.LogIndex).Scan(&known); err != nil {
@@ -538,12 +564,15 @@ func (s *store) scanRange(ctx context.Context, c *bsc, from, to uint64, now time
 			}
 			var gas uint64
 			if user != "" { // the receipt costs two rpc calls: only for a player's top-up (its gas is recorded)
-				rc, err := c.Receipt(ctx, tr.Tx)
+				rc, err := scanReceipt(ctx, c, tr)
+				if errors.Is(err, errUnreadable) {
+					if err := s.recordUnreadable(ctx, tr, err, now); err != nil {
+						return err
+					}
+					continue
+				}
 				if err != nil {
 					return err
-				}
-				if !rc.OK || rc.Block != tr.Block {
-					return fmt.Errorf("topup scan: %s does not match its receipt", tr.Tx)
 				}
 				gas = rc.GasUsed
 			}
@@ -553,6 +582,39 @@ func (s *store) scanRange(ctx context.Context, c *bsc, from, to uint64, now time
 		}
 	}
 	return nil
+}
+
+// scanReceipt: the receipt of a scanned transfer, checked against it. errUnreadable when both rpcs fail to read it
+// (the caller records the transfer with recordUnreadable and moves on); any other error stops the scan.
+func scanReceipt(ctx context.Context, c *bsc, tr Transfer) (Receipt, error) {
+	rc, err := c.Receipt(ctx, tr.Tx)
+	if err != nil {
+		return rc, err
+	}
+	if !rc.OK || rc.Block != tr.Block {
+		return rc, fmt.Errorf("topup scan: %s does not match its receipt", tr.Tx)
+	}
+	return rc, nil
+}
+
+// recordUnreadable records a transfer whose receipt can't be read as "unknown" with no user and no credits, the
+// reason saying why, for the back office (a real top-up in it is refunded by hand, or claimed by its player's own
+// report if the receipt ever reads). Nothing changes if the transfer is recorded already.
+func (s *store) recordUnreadable(ctx context.Context, tr Transfer, why error, now time.Time) error {
+	if tr.Amount == nil || tr.Amount.Sign() < 0 {
+		return errBad
+	}
+	cents := usdCents(tr.Amount)
+	if cents < 0 {
+		return errBad
+	}
+	slog.Warn("topup scan: unreadable receipt, recorded for the back office", "tx", tr.Tx, "err", why)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO topups (tx, log_index, user_id, sender, token, amount, usd_cents,
+		status, reason, created_at, updated_at) VALUES (?, ?, '', ?, ?, ?, ?, 'unknown', ?, ?, ?)
+		ON CONFLICT (tx, log_index) DO NOTHING`,
+		strings.ToLower(tr.Tx), int64(tr.LogIndex), tr.From, tr.Token, tr.Amount.String(), cents,
+		"unreadable receipt (too big or malformed): not credited, for the back office", now.Unix(), now.Unix())
+	return err
 }
 
 func (s *store) setScanned(ctx context.Context, block uint64, now time.Time) error {

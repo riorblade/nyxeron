@@ -30,6 +30,10 @@ var (
 	errTxFailed    = errors.New("bsc: transaction failed")
 	errUnconfirmed = errors.New("bsc: not enough confirmations yet")
 	errNotLocked   = errors.New("bsc: token is not locked in payments.json")
+	// errUnreadable: an answer too big to read (over rpcMaxBytes) or not valid JSON. Returned by both() only when
+	// both rpcs say so: then it is the transaction itself (e.g. a receipt padded with logs), not a provider that is
+	// down, and asking again won't help.
+	errUnreadable = errors.New("bsc: answer too big or malformed")
 
 	hashRe  = regexp.MustCompile(`^0x[0-9a-fA-F]{64}$`)
 	addrRe  = regexp.MustCompile(`^0x[0-9a-fA-F]{40}$`)
@@ -115,7 +119,7 @@ func (b *bsc) Receipt(ctx context.Context, tx string) (Receipt, error) {
 			Logs            []rpcLog `json:"logs"`
 		}
 		if err := json.Unmarshal(raw, &r); err != nil {
-			return Receipt{}, err
+			return Receipt{}, fmt.Errorf("%w: %w", errUnreadable, err)
 		}
 		gas, _ := hexUint(r.GasUsed)
 		if !strings.EqualFold(r.TransactionHash, tx) {
@@ -354,9 +358,15 @@ func both[T any](ctx context.Context, b *bsc, method string, params []any, parse
 	case (a && errs[1] == nil) || (b && errs[0] == nil): // one provider has it, the other doesn't (yet)
 		return zero, errMismatch
 	}
+	if errors.Is(errs[0], errUnreadable) && errors.Is(errs[1], errUnreadable) {
+		return zero, fmt.Errorf("%w: %w", errUnreadable, errors.Join(errs[0], errs[1]))
+	}
 	var down []error
 	for _, err := range errs {
 		if err != nil && !errors.Is(err, errNoTx) {
+			if errors.Is(err, errUnreadable) { // one provider alone: maybe it is the broken one, not the tx
+				err = errors.New(err.Error())
+			}
 			down = append(down, err)
 		}
 	}
@@ -410,8 +420,15 @@ func (b *bsc) post(ctx context.Context, i int, method string, params []any, out 
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	if err := json.NewDecoder(io.LimitReader(res.Body, 4<<20)).Decode(&reply); err != nil {
-		return fmt.Errorf("bsc rpc %d: %w", i+1, err)
+	data, err := io.ReadAll(io.LimitReader(res.Body, rpcMaxBytes+1))
+	if err != nil {
+		return fmt.Errorf("bsc rpc %d: %w", i+1, err) // the connection broke: try again later
+	}
+	if len(data) > rpcMaxBytes {
+		return fmt.Errorf("bsc rpc %d: over %d bytes: %w", i+1, rpcMaxBytes, errUnreadable)
+	}
+	if err := json.Unmarshal(data, &reply); err != nil {
+		return fmt.Errorf("bsc rpc %d: %w: %w", i+1, errUnreadable, err)
 	}
 	if reply.Error != nil {
 		return fmt.Errorf("bsc rpc %d: %s", i+1, reply.Error.Message)
@@ -422,6 +439,9 @@ func (b *bsc) post(ctx context.Context, i int, method string, params []any, out 
 	}
 	return json.Unmarshal(reply.Result, out)
 }
+
+// rpcMaxBytes: the largest rpc answer read (a receipt or a block range of logs).
+const rpcMaxBytes = 4 << 20
 
 func hexUint(s string) (uint64, error) { return strconv.ParseUint(strings.TrimPrefix(s, "0x"), 16, 64) }
 

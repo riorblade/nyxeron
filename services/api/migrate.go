@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"regexp"
 )
 
 // Schema changes after the first release, applied once each, in order, inside a transaction. PRAGMA user_version
@@ -194,20 +195,23 @@ var migrations = []string{
 	// real stock and go, each removal written as a stock move. Nothing is reserved before the cutover. Coin shops
 	// are gone too: what CEOs still hold on their shelves is bought back in NYX Points at their own shelf price,
 	// one ledger row per player, and the shelves are emptied.
+	// Edited after it ran in production (#38): units reserved for held sales count against the verified ones
+	// (on hand + reserved never exceeds them), and a shelf with no positive price buys nothing back. Production
+	// had nothing reserved and no such shelf when it ran, so only fresh databases (and the tests) see the change.
 	`CREATE TEMP TABLE verified AS
 		SELECT ps.token, COALESCE((SELECT SUM(m.delta) FROM stock_moves m WHERE m.token = ps.token AND m.kind = 'restock'
 			AND m.tx != '' AND m.tx IN (SELECT ref FROM platform_ledger WHERE kind = 'restock')), 0) AS units
 		FROM platform_stock ps;
 	INSERT INTO stock_moves (token, delta, kind, actor, reason, at)
-		SELECT ps.token, MIN(v.units, ps.qty) - ps.qty, 'adjust', 'cutover', 'hand-entered units are not real stock',
-			CAST(strftime('%s', 'now') AS INTEGER)
-		FROM platform_stock ps JOIN verified v ON v.token = ps.token WHERE ps.qty > MIN(v.units, ps.qty);
-	UPDATE platform_stock SET qty = MIN(qty, (SELECT units FROM verified WHERE verified.token = platform_stock.token)),
+		SELECT ps.token, MAX(0, MIN(ps.qty, v.units - ps.reserved)) - ps.qty, 'adjust', 'cutover',
+			'hand-entered units are not real stock', CAST(strftime('%s', 'now') AS INTEGER)
+		FROM platform_stock ps JOIN verified v ON v.token = ps.token WHERE ps.qty > MAX(0, MIN(ps.qty, v.units - ps.reserved));
+	UPDATE platform_stock SET qty = MAX(0, MIN(qty, (SELECT units FROM verified WHERE verified.token = platform_stock.token) - reserved)),
 		updated_at = CAST(strftime('%s', 'now') AS INTEGER);
 	DROP TABLE verified;
 	CREATE TEMP TABLE buyback AS
 		SELECT user_id, SUM(qty * price) AS np, group_concat(qty || ' ' || upper(token), ', ') AS what
-		FROM shop_stock WHERE qty > 0 GROUP BY user_id;
+		FROM shop_stock WHERE qty > 0 AND price > 0 GROUP BY user_id;
 	UPDATE users SET wallet = wallet + (SELECT np FROM buyback WHERE buyback.user_id = users.id)
 		WHERE id IN (SELECT user_id FROM buyback);
 	INSERT INTO ledger (user_id, delta, balance, kind, actor, reason, at)
@@ -216,6 +220,12 @@ var migrations = []string{
 		FROM buyback b JOIN users u ON u.id = b.user_id WHERE b.np > 0;
 	DELETE FROM shop_stock;
 	DROP TABLE buyback;`,
+	// 7 — when a top-up was credited. The 24 h cap counts credits by this, not by created_at (when the transfer was
+	// first recorded): a transfer recorded "unknown" and claimed days later counts on the day it is credited (#38).
+	// Existing credited rows were credited when last updated.
+	`ALTER TABLE topups ADD COLUMN credited_at INTEGER NOT NULL DEFAULT 0;
+	UPDATE topups SET credited_at = updated_at WHERE status = 'credited' AND credited_at = 0;
+	CREATE INDEX IF NOT EXISTS topups_credited ON topups(user_id, credited_at);`,
 }
 
 func migrate(db *sql.DB) error {
@@ -228,7 +238,12 @@ func migrate(db *sql.DB) error {
 		if err != nil {
 			return err
 		}
-		if _, err := t.Exec(migrations[v]); err != nil {
+		m, err := withoutColumnsPresent(t, migrations[v])
+		if err != nil {
+			t.Rollback()
+			return err
+		}
+		if _, err := t.Exec(m); err != nil {
 			t.Rollback()
 			return fmt.Errorf("migration %d: %w", v+1, err)
 		}
@@ -241,4 +256,25 @@ func migrate(db *sql.DB) error {
 		}
 	}
 	return nil
+}
+
+var addColumnRe = regexp.MustCompile(`(?i)ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN\s+(\w+)[^;]*;`)
+
+// withoutColumnsPresent drops a migration's ADD COLUMN statements for columns the table already has, so a
+// migration runs again on a database that has it (SQLite has no ADD COLUMN IF NOT EXISTS; a test harness may
+// rewind user_version).
+func withoutColumnsPresent(t *sql.Tx, m string) (string, error) {
+	var err error
+	out := addColumnRe.ReplaceAllStringFunc(m, func(stmt string) string {
+		g := addColumnRe.FindStringSubmatch(stmt)
+		var n int
+		if e := t.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`, g[1], g[2]).Scan(&n); e != nil {
+			err = e
+		}
+		if n > 0 {
+			return ""
+		}
+		return stmt
+	})
+	return out, err
 }

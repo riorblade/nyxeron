@@ -165,6 +165,19 @@ func (s *store) unpaused(ctx context.Context) error {
 	return nil
 }
 
+// pausedIn: errPaused while a reconciliation mismatch stands, read inside the transaction that moves the money
+// (unpaused is only an early answer: a reconciliation can pause between it and the commit).
+func pausedIn(t *sql.Tx) error {
+	var n int
+	if err := t.QueryRow(`SELECT COUNT(*) FROM settings WHERE key = ?`, pauseKey).Scan(&n); err != nil {
+		return err
+	}
+	if n > 0 {
+		return errPaused
+	}
+	return nil
+}
+
 // Reconciliations: the last results, newest first (from the audit log).
 func (s *store) Reconciliations(ctx context.Context, limit int) ([]map[string]any, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT detail, reason, at FROM audit WHERE action = 'reconcile'
@@ -295,6 +308,7 @@ func (s *store) RecordSeed(ctx context.Context, c *bsc, actor, tx, reason string
 		return 0, err
 	}
 	var cents int64
+	var senders []string
 	for _, stable := range game.payments.Topup.Tokens {
 		trs, err := transfersIn(rc, stable)
 		if err != nil {
@@ -303,7 +317,19 @@ func (s *store) RecordSeed(ctx context.Context, c *bsc, actor, tx, reason string
 		for _, tr := range trs {
 			if strings.EqualFold(tr.To, game.payments.AgenticWallet) && !strings.EqualFold(tr.From, game.payments.AgenticWallet) {
 				cents += usdCents(tr.Amount)
+				senders = append(senders, tr.From)
 			}
+		}
+	}
+	// A player's wallet sent it (banned or not, reported or not): a top-up, theirs to be credited or refunded.
+	for _, from := range senders {
+		var n int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE lower(wallet_address) = ? AND wallet_address != ''`,
+			strings.ToLower(from)).Scan(&n); err != nil {
+			return 0, err
+		}
+		if n > 0 {
+			return 0, errRejected
 		}
 	}
 	if cents <= 0 {
