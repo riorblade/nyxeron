@@ -133,10 +133,10 @@ func (pl *players) route(mux *http.ServeMux) {
 			Cash   int64              `json:"cash"`
 			Bought map[string]Holding `json:"bought"`
 			Pnl    int64              `json:"pnl"`
-			Room   string             `json:"room"` // a live party at a rented venue: its tenant gets the spend
+			Room   string             `json:"room"` // the relay room the guest was in, or "" (kept in the ledger row)
 		}
 		if ok && body(w, r, &in) {
-			p, err := pl.db.Night(r.Context(), id, in.Cash, in.Bought, in.Pnl, in.Room)
+			p, err := pl.db.Night(r.Context(), id, in.Cash, in.Bought, in.Pnl, in.Room, time.Now())
 			reply(w, p, err)
 		}
 	})
