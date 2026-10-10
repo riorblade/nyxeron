@@ -44,6 +44,8 @@ Base URL: `https://api.nyxeron.xyz` (dev: same origin, Vite proxies `/api` to `:
 | POST | `/api/wallet/refill` | — | only when the wallet is nearly empty |
 | POST | `/api/nights` | `{cash, bought, pnl, room?}` | a night out as a guest; at a live city party the tenant is paid the spend |
 | POST | `/api/gigs` | `{fee}` | a DJ gig played to the end (capped, rate-limited) |
+| GET | `/api/topups` | — | `{credits, topups}`: the player's credit balance and last 20 top-ups |
+| POST | `/api/topups` | `{tx}` | report a USDC/USDT transfer from your embedded wallet to the Agentic Wallet; the api reads it on BSC and credits it once it is final. 202 `{status:"pending"}` until then; errors `tx_failed`, `not_a_topup` (422), `no_wallet` (409), `too_soon` (429), `paused`, `chain_unavailable`, `auth_unavailable`, `not_configured` (503). Minimum and caps: `payments.json` (see [payments.md](payments.md)) |
 | GET | `/api/docs/{kind}` | — | `[{slot, updatedAt, meta}]` |
 | GET/PUT/DELETE | `/api/docs/{kind}/{slot}` | document | kinds: `saves` (auto, 1–3), `djsets` (main), `layouts`, `shoutouts` |
 
@@ -149,3 +151,4 @@ curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application
 | `BSC_RPC_1`, `BSC_RPC_2` | BNB Smart Chain JSON-RPC, two independent providers that must agree (`bsc.go`); both needed |
 | `RELAY_URL` | the relay's internal base URL, for live-room stats |
 | `RELAY_TICKET_SECRET` | signs relay tickets (`POST /api/relay/ticket`); the relay has the same value (empty = no tickets) |
+| `CITY_OPEN` | `1` opens the city (see [City](#city)); unset keeps it shut |

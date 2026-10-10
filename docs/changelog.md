@@ -11,6 +11,12 @@ teammate would notice.
   Classic formulas and numbers come straight from `packages/core`; the City, payments and infrastructure are described
   qualitatively only (what may be published: #47).
 
+## 2026-10-10 · A clear message when the 3D club can't start
+
+- **No WebGL, no silent failure:** on a browser without WebGL (hardware acceleration off, some VMs and work
+  laptops) the venue now says the 3D club needs WebGL and that the night still runs on the panels, instead of an
+  empty room and an uncaught error. The night, guests, report and next day were already unaffected.
+
 ## 2026-10-10 · Top-up reports can't drain the chain quota
 
 - **Bounded RPC cost per player:** reporting made-up transaction hashes to the top-up endpoint used to cost two paid
