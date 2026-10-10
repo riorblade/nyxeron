@@ -13,9 +13,13 @@ teammate would notice.
   a valid one.
 - **After closing time** guest players can't walk in or buy (and not in a sealed venue), and the door can't be
   forced after 04:00. Once a career is over, nothing spends Coin or moves stock.
-- **Moving up** never overfills the new stock room: what doesn't fit (old storage tiers stay behind) is left behind.
+- **Moving up** never overfills the new stock room: what doesn't fit (old storage tiers stay behind) is left behind, and the office feed
+  says how much of each token stayed (`stockTrimmed` event).
 - Unknown ids, a bad dress code / happy-hour slot, or a NaN avatar are refused cleanly instead of writing NaN or
-  bricking every later night; the AI CEO no longer hangs when handed a night.
+  bricking every later night; the AI CEO no longer hangs when handed a night. A house-rules change that leaves a
+  field undefined keeps that rule, and an old save with a broken house rule loads with the default for that rule.
+- **Tests:** `pnpm test` runs a smoke-sized fuzz of the sim (a few seconds); `pnpm test:brutal` runs the full
+  hostile fuzz (80 seeds × 350 steps + 30 hostile-id runs, about a minute) and CI runs both.
 
 ## 2026-10-10 · The office comes alive (neon UI)
 

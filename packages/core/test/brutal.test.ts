@@ -3,7 +3,7 @@
  * the invariants after every step, plus targeted exploit hunts. A failing test here is a bug report: its name says
  * what broke and its message carries the seed and the action trace to reproduce it.
  */
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import * as C from "../src";
 import type { ActionResult, GameState, TokenId } from "../src";
 
@@ -623,14 +623,23 @@ const report = (f: Map<string, Finding>) =>
 
 // ---------------------------------------------------------------- tests
 
+/**
+ * `pnpm test` runs a smoke-sized fuzz (a few seeds, a few seconds); `pnpm test:brutal` (NYX_BRUTAL=1, also in CI)
+ * runs the full size: 80 seeds (from 120) and 30 hostile runs (from 60) still reproduce every bug this suite found
+ * on main. The fuzz runs in `beforeAll`, so it is timed with the tests and skipped with them (`-t`).
+ */
+const BRUTAL = !!process.env.NYX_BRUTAL;
+const FUZZ_TIMEOUT = 600_000;
+
 describe("brutal fuzz: valid ids, hostile numbers, every action in every phase", () => {
-  // 80 seeds (from 120) and 30 hostile runs (from 60) still reproduce every bug this suite found on main.
-  const SEEDS = 80;
+  const SEEDS = BRUTAL ? 80 : 6;
   const STEPS = 350;
   const findings = new Map<string, Finding>();
   const finals: S[] = [];
-  for (let seed = 1; seed <= SEEDS; seed++)
-    finals.push(fuzzRun(seed, STEPS, false, findings).final);
+  beforeAll(() => {
+    for (let seed = 1; seed <= SEEDS; seed++)
+      finals.push(fuzzRun(seed, STEPS, false, findings).final);
+  }, FUZZ_TIMEOUT);
 
   const pick = (prefix: string) =>
     new Map([...findings].filter(([k]) => k.startsWith(prefix)));
@@ -662,19 +671,25 @@ describe("brutal fuzz: valid ids, hostile numbers, every action in every phase",
   it("nothing moves the books after the game is over", () => {
     expect(report(pick("afterOver:"))).toBe("");
   });
-  it("same seed + same actions → identical state (determinism)", () => {
-    const again = new Map<string, Finding>();
-    for (let seed = 1; seed <= SEEDS; seed += 7) {
-      const a = fuzzRun(seed, STEPS, false, again);
-      expect(json(a.final), `seed ${seed}`).toBe(json(finals[seed - 1]!));
-    }
-  }, 60_000); // replays 18 × 350 steps: well over the default 5 s
+  it(
+    "same seed + same actions → identical state (determinism)",
+    () => {
+      const again = new Map<string, Finding>();
+      for (let seed = 1; seed <= SEEDS; seed += BRUTAL ? 7 : 3) {
+        const a = fuzzRun(seed, STEPS, false, again);
+        expect(json(a.final), `seed ${seed}`).toBe(json(finals[seed - 1]!));
+      }
+    },
+    FUZZ_TIMEOUT,
+  ); // replays every 7th seed at full size: 12 × 350 steps, well over the default 5 s
 });
 
 describe("brutal fuzz: hostile ids (unknown / prototype keys)", () => {
   const findings = new Map<string, Finding>();
-  for (let seed = 1001; seed <= 1030; seed++)
-    fuzzRun(seed, 250, true, findings);
+  beforeAll(() => {
+    for (let seed = 1001; seed <= (BRUTAL ? 1030 : 1004); seed++)
+      fuzzRun(seed, 250, true, findings);
+  }, FUZZ_TIMEOUT);
   it("no action throws on an unknown id", () => {
     const f = new Map([...findings].filter(([k]) => k.startsWith("throw:")));
     expect([...f.keys()].sort()).toEqual([]);
@@ -1034,5 +1049,99 @@ describe("CEO career exploits", () => {
     // Bounded by the crowd's wallets + seats × standard spend: far below 1e12.
     expect(e.coin - s.coin).toBeLessThan(1e9);
     expect(Number.isFinite(e.coin)).toBe(true);
+  });
+});
+
+describe("review follow-ups (#61)", () => {
+  const brick = (s: S) => {
+    try {
+      C.runNight(s);
+      return "plays";
+    } catch (err) {
+      return `bricked: ${(err as Error).message}`;
+    }
+  };
+
+  it("setPolicy with undefined keys keeps the current house rules (no wiped dress code)", () => {
+    let s = { ...C.createGameState(1, "edm", { level: 3 }), hype: 40 };
+    s = ok(C.setPolicy(s, { dressCode: "smart", happyHour: "early" }));
+    const r = ok(
+      C.setPolicy(s, {
+        dressCode: undefined,
+        happyHour: undefined,
+        ladiesNight: undefined,
+        cover: undefined,
+      }),
+    );
+    expect(r.policy).toEqual(s.policy);
+    expect(brick(r)).toBe("plays");
+  });
+
+  it("migrateState repairs a bad house policy in an old save, field by field", () => {
+    const s = { ...C.createGameState(1, "edm", { level: 3 }), hype: 40 };
+    const bad = {
+      ...s,
+      policy: {
+        dressCode: "nope",
+        happyHour: "toString",
+        ladiesNight: "yes",
+        cover: -5,
+      } as never,
+    };
+    const m = C.migrateState(bad);
+    expect(m.policy).toEqual(C.DEFAULT_POLICY);
+    expect(brick(m)).toBe("plays");
+    // Good fields survive next to a bad one.
+    const mixed = C.migrateState({
+      ...s,
+      policy: {
+        ...s.policy,
+        dressCode: undefined,
+        ladiesNight: true,
+        cover: 7,
+      } as never,
+    });
+    expect(mixed.policy).toEqual({
+      ...C.DEFAULT_POLICY,
+      ladiesNight: true,
+      cover: 7,
+    });
+  });
+
+  it("R18: stock that doesn't fit the new venue is logged (stockTrimmed), not silently destroyed", () => {
+    let s = C.createGameState(1, "edm", { level: 4 });
+    s = { ...s, coin: 1e9, reputation: 90 };
+    for (let i = 0; i < 3; i++) s = ok(C.buyUpgrade(s, "storage"));
+    s = ok(
+      C.r01_orderStock(s, "tsla", C.storageOf(s) - C.stockHeld(s), "corner"),
+    );
+    const up = ok(C.r18_upgradeLevel(s));
+    const trimmed = up.log.filter((e) => e.kind === "stockTrimmed");
+    expect(trimmed.length).toBeGreaterThan(0);
+    const lost = trimmed.reduce(
+      (a, e) => a + (e.kind === "stockTrimmed" ? e.qty : 0),
+      0,
+    );
+    // What's kept + what's logged = the old stock at the new venue's value.
+    const k = C.priceScale(4) / C.priceScale(5);
+    const before = C.ids(C.tokens).reduce(
+      (a, t) =>
+        a +
+        Math.floor(s.stock[t] * k) +
+        s.pendingOrders
+          .filter((o) => o.drink === t)
+          .reduce((b, o) => b + Math.floor(o.qty * k), 0),
+      0,
+    );
+    expect(C.stockHeld(up) + lost).toBe(before);
+    // Nothing logged when everything fits.
+    const roomy = ok(
+      C.r18_upgradeLevel({
+        ...C.createGameState(2, "edm", { level: 1 }),
+        coin: 1e9,
+        reputation: 90,
+      }),
+    );
+    expect(roomy.log.some((e) => e.kind === "stockTrimmed")).toBe(false);
   });
 });

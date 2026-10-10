@@ -7,7 +7,7 @@ import {
   type TokenId,
 } from "../data";
 import { fail, type ActionResult } from "../result";
-import type { GameState } from "../state";
+import type { GameEvent, GameState } from "../state";
 import { endGame } from "./economy";
 import { stockHeld, storageOf } from "./strategy";
 
@@ -54,7 +54,20 @@ export function r18_upgradeLevel(s: GameState): ActionResult {
   // The new venue's stock room comes without the old one's extra storage tiers: what doesn't fit stays behind.
   const room = storageOf({ ...s, level, upgrades: NO_UPGRADES });
   const held = stockHeld({ ...s, ...goods });
-  if (held > room) goods = scaled(goods, room / held);
+  const trimmed: GameEvent[] = [];
+  if (held > room) {
+    const before = goods;
+    goods = scaled(goods, room / held);
+    // Say what stayed behind (per token, shelves + orders on the way), so it doesn't just vanish.
+    const per = (g: typeof goods, d: TokenId) =>
+      (g.stock[d] ?? 0) +
+      g.pendingOrders.reduce((a, o) => a + (o.drink === d ? o.qty : 0), 0);
+    for (const d of Object.keys(s.stock) as TokenId[]) {
+      const qty = per(before, d) - per(goods, d);
+      if (qty > 0)
+        trimmed.push({ day: s.day, kind: "stockTrimmed", drink: d, qty });
+    }
+  }
   return {
     ok: true,
     state: {
@@ -74,7 +87,7 @@ export function r18_upgradeLevel(s: GameState): ActionResult {
           ),
         ]),
       ) as GameState["prices"],
-      log: [...s.log, { day: s.day, kind: "levelUp", level }],
+      log: [...s.log, ...trimmed, { day: s.day, kind: "levelUp", level }],
     },
   };
 }

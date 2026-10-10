@@ -36,6 +36,10 @@ export function setPolicy(
 ): ActionResult {
   if (s.phase !== "day") return fail("wrongPhase");
   if (s.level < POLICY_MIN_LEVEL) return fail("levelLocked");
+  // A key sent as undefined means "leave it": spreading it would wipe the rule (and crash the next night).
+  patch = Object.fromEntries(
+    Object.entries(patch).filter(([, v]) => v !== undefined),
+  ) as Partial<HousePolicy>;
   // Only house rules the game knows: an unknown dress code or happy-hour slot would break every night after.
   if (
     (patch.dressCode !== undefined &&

@@ -36,7 +36,7 @@ Each rule is a function in `packages/core/src/rules` with a unit test.
 | R15 | Entertainment tax on night revenue: L3 20%, L4 30%, L5 40% (none for booth/shop) | `economy.ts` |
 | R16 | On-premise sales with only a takeaway liquor permit → violation, venue sealed | `legal.ts` |
 | R17 | Controversial promo (daytime, rep > 20): hype +30, 25% chance rep −20 and a guaranteed inspection | `marketing.ts` |
-| R18 | Move up a venue (daytime) if Coin ≥ cost and reputation ≥ requirement; stock moves at its value (count × old price scale ÷ new), and what doesn't fit the new stock room (storage tiers stay behind) is left behind; prices keep their markup, up to the new venue's ceiling | `progression.ts` |
+| R18 | Move up a venue (daytime) if Coin ≥ cost and reputation ≥ requirement; stock moves at its value (count × old price scale ÷ new), and what doesn't fit the new stock room (storage tiers stay behind) is left behind (logged per token as `stockTrimmed`); prices keep their markup, up to the new venue's ceiling | `progression.ts` |
 | R19 | *Retired:* paid speed-ups. Value never buys progress; the economy is Coin + tokens (see the PRD) | — |
 
 Once a career is over (victory, survived or defeat) nothing moves Coin or stock until the club plays on. An action
