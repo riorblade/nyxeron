@@ -36,8 +36,13 @@ var (
 	errUnreadable = errors.New("bsc: answer too big or malformed")
 	// errRefused: both rpcs answered the request with a JSON-RPC error, or one with that and the other unreadable
 	// (e.g. one block's logs: "response size exceeded" from one, over rpcMaxBytes from the other). Both are up and
-	// answering; the question itself is what they won't answer. Returned by both() only when both rpcs say so.
+	// answering, but that is not proof the question is the problem: providers throttle (-32005 "limit exceeded") and
+	// time out upstream with the same kind of answer. Before moving past what got it, ask a question that can't be
+	// too big (LogsServed, ReceiptsServed). Returned by both() only when both rpcs say so.
 	errRefused = errors.New("bsc: both rpcs refused the request")
+	// errNotServing: both rpcs refused a question that can't be too big either: they are throttling, timing out
+	// upstream, or don't serve the method. Like a provider that is down: the scanner stops, it doesn't move on.
+	errNotServing = errors.New("bsc: both rpcs refuse even a probe (throttled, timing out, or not serving the method)")
 
 	hashRe  = regexp.MustCompile(`^0x[0-9a-fA-F]{64}$`)
 	addrRe  = regexp.MustCompile(`^0x[0-9a-fA-F]{40}$`)
@@ -247,6 +252,43 @@ func (b *bsc) transferLogs(ctx context.Context, token, addr string, from, to uin
 		}
 		return out, nil
 	})
+}
+
+// noLogs: an address no log can come from (no contract lives at the zero address): a filter on it matches nothing.
+const noLogs = "0x0000000000000000000000000000000000000000"
+
+// noTx: a hash no transaction has: its receipt is null on any working provider.
+const noTx = "0x0000000000000000000000000000000000000000000000000000000000000000"
+
+// LogsServed: both rpcs answer eth_getLogs over block with a filter that matches nothing (an answer that can't be
+// too big). nil when they do; else errNotServing. Tells "this block's logs are too many" from "eth_getLogs is
+// throttled or not served".
+func (b *bsc) LogsServed(ctx context.Context, block uint64) error {
+	n := "0x" + strconv.FormatUint(block, 16)
+	_, err := both(ctx, b, "eth_getLogs", []any{map[string]any{"address": noLogs, "fromBlock": n, "toBlock": n}},
+		func(raw json.RawMessage) (int, error) {
+			var logs []json.RawMessage
+			err := json.Unmarshal(raw, &logs)
+			return len(logs), err
+		})
+	return served(err)
+}
+
+// ReceiptsServed: both rpcs answer eth_getTransactionReceipt for a hash no transaction has (null). nil when they do;
+// else errNotServing. Tells "this receipt is too big or malformed" from "receipts are throttled or not served".
+func (b *bsc) ReceiptsServed(ctx context.Context) error {
+	_, err := b.Receipt(ctx, noTx)
+	if errors.Is(err, errNoTx) {
+		return nil
+	}
+	return served(err)
+}
+
+func served(err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%w: %s", errNotServing, strings.ReplaceAll(err.Error(), "\n", "; "))
 }
 
 // SafeHead: the newest block with payments.json's confirmations on both rpcs (0 when the chain is too short).

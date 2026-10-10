@@ -534,15 +534,24 @@ const scanSpan = 500               // blocks per read at most; halved while a pr
 // looks the same, so one pass doesn't skip a whole outage: past this many, the pass stops and the next one goes on.
 const scanSkipsPerPass = 5
 
-// scanRetryMax: how many times what the scanner couldn't read is read in all (the first time included) before it is
-// left to the back office ("given_up"). Retries wait 0, 1, 2, 4 … 128 minutes: about 4 h in all.
+// scanRetryMax: how many times a block's logs (or the wallet's payouts) the scanner couldn't read are read in all
+// (the first time included) before they are left to the back office ("given_up"). Retries wait 0, 1, 2, 4 … 128
+// minutes: about 4 h in all.
 const scanRetryMax = 10
+
+// scanReceiptRetryMax: the same for a player's receipt (a player's money): reads keep coming every 128 minutes after
+// the first ten, about 2 days in all.
+const scanReceiptRetryMax = 30
+
+// scanRetryWaitMax: the longest wait between two reads of a retry (2^7 minutes).
+const scanRetryWaitMax = 7
 
 // scanRetriesPerPass: the oldest open retries read per pass at most.
 const scanRetriesPerPass = 20
 
-// unanswerable: both rpcs answered, and neither answer can be used (too big, malformed, or a JSON-RPC error). The
-// request itself is the problem, not a provider that is down.
+// unanswerable: both rpcs answered, and neither answer can be used (too big, malformed, or a JSON-RPC error). Most
+// likely the request itself is the problem, but throttling looks the same: probe (LogsServed, ReceiptsServed)
+// before moving past it.
 func unanswerable(err error) bool { return errors.Is(err, errUnreadable) || errors.Is(err, errRefused) }
 
 // scanTopups credits transfers to the Agentic Wallet that no browser reported (closed tab, lost network), from
@@ -606,6 +615,10 @@ func (s *store) scanRange(ctx context.Context, c *bsc, from, to uint64, skips *i
 			if from != to || !unanswerable(err) || (!skipped && *skips >= scanSkipsPerPass) {
 				return err
 			}
+			// Throttled, timing out upstream, or no eth_getLogs at all: stop, the block is read when they answer.
+			if err := c.LogsServed(ctx, from); err != nil {
+				return err
+			}
 			if !skipped {
 				skipped = true
 				*skips++
@@ -615,7 +628,7 @@ func (s *store) scanRange(ctx context.Context, c *bsc, from, to uint64, skips *i
 			}
 			continue
 		}
-		if err := s.scanTransfers(ctx, c, trs, from, to, &paid, now); err != nil {
+		if err := s.scanTransfers(ctx, c, trs, from, to, &paid, skips, now); err != nil {
 			return err
 		}
 	}
@@ -647,8 +660,10 @@ func bookedTx(ctx context.Context, q querier, tx string) (bool, error) {
 }
 
 // scanTransfers records the transfers to the Agentic Wallet read from blocks [from, to] (see scanRange). A tx the
-// platform booked (seed, restock) is skipped: nothing is recorded for it, whoever sent it.
-func (s *store) scanTransfers(ctx context.Context, c *bsc, trs []Transfer, from, to uint64, paid *payouts, now time.Time) error {
+// platform booked (seed, restock) is skipped: nothing is recorded for it, whoever sent it. A player's receipt both
+// rpcs refuse counts against skips like a block (scanSkipsPerPass), and only once a probe shows they still answer
+// receipts: throttling stops the scan instead of recording every deposit in the range unreadable.
+func (s *store) scanTransfers(ctx context.Context, c *bsc, trs []Transfer, from, to uint64, paid *payouts, skips *int, now time.Time) error {
 	for _, tr := range trs {
 		if tr.Amount == nil || tr.Amount.Sign() == 0 { // nothing arrived: nothing to credit or refund
 			continue
@@ -675,6 +690,13 @@ func (s *store) scanTransfers(ctx context.Context, c *bsc, trs []Transfer, from,
 		if user != "" { // the receipt costs two rpc calls: only for a player's top-up (its gas is recorded)
 			rc, err := scanReceipt(ctx, c, tr)
 			if unanswerable(err) {
+				if *skips >= scanSkipsPerPass {
+					return err
+				}
+				if err := c.ReceiptsServed(ctx); err != nil {
+					return err
+				}
+				*skips++
 				if err := s.recordUnreadable(ctx, tr, err, now); err != nil {
 					return err
 				}
@@ -782,13 +804,27 @@ func scanRetryDue(attempts int, last int64) int64 {
 	if attempts <= 1 {
 		return last
 	}
-	return last + int64(60)<<min(attempts-2, 20)
+	return last + int64(60)<<min(attempts-2, scanRetryWaitMax)
 }
 
-// retryScans reads again what earlier passes couldn't (scan_retries "open"), oldest first, at most
-// scanRetriesPerPass a pass. What reads now is recorded like any scanned transfer ("done"); what both rpcs still
-// refuse counts a read, up to scanRetryMax ("given_up": the back office's). Any other error (a provider down, the
-// payments pause) ends this pass's retries without counting: they go on next pass.
+// scanRetryDueSQL: scanRetryDue in SQL, so a pass picks only rows that are due (rows waiting out a long backoff
+// never hold a due one up).
+var scanRetryDueSQL = fmt.Sprintf(`updated_at + CASE WHEN attempts <= 1 THEN 0 ELSE 60 << min(attempts - 2, %d) END`,
+	scanRetryWaitMax)
+
+// scanRetryLimit: how many reads a retry of this kind gets in all.
+func scanRetryLimit(kind string) int {
+	if kind == "receipt" {
+		return scanReceiptRetryMax
+	}
+	return scanRetryMax
+}
+
+// retryScans reads again what earlier passes couldn't (scan_retries "open") and is due now, players' receipts first,
+// then oldest first, at most scanRetriesPerPass a pass. What reads now is recorded like any scanned transfer
+// ("done"); what both rpcs still refuse, while they answer a probe, counts a read, up to scanRetryLimit ("given_up":
+// the back office's). Any other error (a provider down, throttled or failing the probe, the payments pause) ends
+// this pass's retries without counting: they go on next pass.
 func (s *store) retryScans(ctx context.Context, c *bsc, now time.Time) error {
 	type retry struct {
 		kind, ref string
@@ -797,7 +833,8 @@ func (s *store) retryScans(ctx context.Context, c *bsc, now time.Time) error {
 		updated   int64
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT kind, ref, block, attempts, updated_at FROM scan_retries
-		WHERE status = 'open' ORDER BY updated_at, block LIMIT ?`, scanRetriesPerPass)
+		WHERE status = 'open' AND `+scanRetryDueSQL+` <= ? ORDER BY kind = 'receipt' DESC, updated_at, block LIMIT ?`,
+		now.Unix(), scanRetriesPerPass)
 	if err != nil {
 		return err
 	}
@@ -829,6 +866,15 @@ func (s *store) retryScans(ctx context.Context, c *bsc, now time.Time) error {
 		default:
 			err = s.retryReceipt(ctx, c, r.ref, r.block, now)
 		}
+		if unanswerable(err) { // a read counts only while the providers answer a probe of the same kind
+			probe := c.ReceiptsServed(ctx)
+			if r.kind != "receipt" {
+				probe = c.LogsServed(ctx, r.block)
+			}
+			if probe != nil {
+				return probe
+			}
+		}
 		switch {
 		case err == nil:
 			_, err = s.db.ExecContext(ctx, `UPDATE scan_retries SET status = 'done', attempts = attempts + 1, updated_at = ?
@@ -836,7 +882,7 @@ func (s *store) retryScans(ctx context.Context, c *bsc, now time.Time) error {
 		case unanswerable(err) || errors.Is(err, errReceiptMismatch):
 			_, err = s.db.ExecContext(ctx, `UPDATE scan_retries SET attempts = attempts + 1, reason = ?, updated_at = ?,
 				status = CASE WHEN attempts + 1 >= ? THEN 'given_up' ELSE 'open' END
-				WHERE kind = ? AND ref = ? AND block = ?`, shortErr(err), now.Unix(), scanRetryMax, r.kind, r.ref, int64(r.block))
+				WHERE kind = ? AND ref = ? AND block = ?`, shortErr(err), now.Unix(), scanRetryLimit(r.kind), r.kind, r.ref, int64(r.block))
 		}
 		if err != nil {
 			return err
@@ -852,7 +898,8 @@ func (s *store) retryLogs(ctx context.Context, c *bsc, token string, block uint6
 		return err
 	}
 	var paid payouts
-	return s.scanTransfers(ctx, c, trs, block, block, &paid, now)
+	skips := 0
+	return s.scanTransfers(ctx, c, trs, block, block, &paid, &skips, now)
 }
 
 // retryPayouts reads the Agentic Wallet's payouts in blocks [from, ref] again. The strangers' rows recorded while they

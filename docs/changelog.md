@@ -11,6 +11,12 @@ teammate would notice.
   recorded for the back office (no credits) and the scan moves on, at most 5 blocks per pass. Those are read again
   for about 4 hours (10 reads) and credited if they read; the Payments page lists what is still unread
   ("Unread on chain") and shows each top-up's reason.
+- **Throttling stops the scanner instead of skipping:** both RPCs refusing a block or a receipt (rate limits,
+  upstream timeouts, no `eth_getLogs` on the plan) look like an oversized one. Before moving past one, the scanner now
+  asks both a question that can't be too big; if they refuse that too, it stops and reads the block when they answer.
+  Retries read under throttling don't count, players' receipts are read again for about 2 days (blocks about 4 h),
+  due retries go first (players' receipts before blocks), and the Payments page keeps open and given-up rows in
+  separate windows, receipts first, with a **Resolve** action (reason, audit log).
 - **Daily cap holds for late claims:** transfers seen before the player's wallet was stored, claimed a day later,
   could credit $100 at once. The $20/day cap now counts by when a top-up is credited.
 - **Seed and top-up can't count the same dollars:** a tx booked as the team's seed or as a restock is skipped by the

@@ -32,7 +32,8 @@ type fakeRPC struct {
 	// failLogsFrom: eth_getLogs filtered on this "from" topic answers an rpc error (like a response over the cap)
 	failLogsFrom string
 	// refuseLogsAt: eth_getLogs over a range holding one of these blocks answers an rpc error (a block whose logs
-	// are too many to answer)
+	// are too many to answer). Like a real provider, which refuses by the size of the answer, a filter that matches
+	// nothing (the zero address: LogsServed) is still answered
 	refuseLogsAt map[uint64]bool
 	mu           sync.Mutex
 	methods      []string
@@ -94,7 +95,7 @@ func (f *fakeRPC) serve(t *testing.T) string {
 			lo, _ := hexUint(q.FromBlock)
 			hi, _ := hexUint(q.ToBlock)
 			for b := range f.refuseLogsAt {
-				if b >= lo && b <= hi {
+				if b >= lo && b <= hi && q.Address != noLogs {
 					_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32005,"message":"query returned more than 10000 results"}}`))
 					return
 				}

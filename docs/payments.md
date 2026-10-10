@@ -63,12 +63,21 @@ the back office). No single transaction or block can stop the scanner:
 - A player's transfer whose receipt both RPCs refuse (over 4 MB, malformed, or a JSON-RPC error from each) is
   recorded `unknown` with the reason, owed back in full, without credits.
 - One block whose Transfer logs for a token both RPCs refuse (anyone can fill a block with ~10k zero-value transfers
-  to the Agentic Wallet for a few dollars) is passed: at most 5 such blocks per pass, so a shared outage isn't swept
-  away in one go.
+  to the Agentic Wallet for a few dollars) is passed: at most 5 such blocks or receipts per pass, so a shared outage
+  isn't swept away in one go.
+- A JSON-RPC error from both isn't proof the request is the problem: providers throttle (`-32005 limit exceeded`),
+  time out upstream, or don't serve the method, with the same HTTP 200 answer. So before moving past a block or a
+  receipt the scanner asks both a question that can't be too big (`eth_getLogs` over that block for the zero
+  address, which matches nothing; the receipt of the zero hash, which is `null`). If they refuse that too, the pass
+  stops like an outage and nothing is skipped.
 
-Both are recorded in `scan_retries` and read again on later passes: right away, then after 1, 2, 4 … 128 minutes,
-10 reads in all (about 4 h). What reads is credited like any scanned transfer; what never reads is `given_up`. The back
-office's Payments page lists the open and given-up ones ("Unread on chain") and each top-up's reason; a player's own
+Both are recorded in `scan_retries` and read again on later passes, players' receipts first, only the ones due:
+right away, then after 1, 2, 4 … 128 minutes, then every 128 minutes. A block's logs get 10 reads (about 4 h), a
+player's receipt 30 (about 2 days). A read refused while the providers also refuse the probe doesn't count. What reads
+is credited like any scanned transfer; what never reads is `given_up`. The back office's Payments page lists the open
+and given-up ones ("Unread on chain", each with its own window of 200, players' receipts first) and each top-up's
+reason; once one is checked on BscScan and credited or refunded by hand, **Resolve** closes it (reason in the audit
+log). A player's own
 report (`POST /api/topups`) still credits such a deposit meanwhile. One RPC failing alone still stops the scan, so an
 outage never skips a transfer. A transfer recorded `unknown` and claimed later counts against the daily cap when it is
 credited (`credited_at`; `created_at` stays when it was first seen). A tx booked as the team's seed or as a restock
@@ -191,7 +200,9 @@ ORDER BY created_at;
 
 **Migration 8** (`credited_at`, `scan_retries`, the `platform_ledger(lower(ref))` index) needs no data check: it
 backfills `credited_at` for credited rows from `updated_at` and only adds a table and an index. After deploying it,
-`GET /api/admin/payments` answers `scanRetries` (empty at first).
+`GET /api/admin/payments` answers `scanRetries` (empty at first). Migration 8 changed inside PR #64 (the `payouts`
+kind); a database that ran an earlier head of that PR (none in production) must be recreated or get the new table by
+hand.
 
 Balances are read from BSC, never from the database.
 

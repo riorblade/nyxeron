@@ -163,8 +163,8 @@ func TestScanOneProviderRefusingABlockStopsTheScan(t *testing.T) {
 	}
 }
 
-// A receipt that stays unreadable is read again a bounded number of times, then given up; its row stays unknown,
-// owed back in full, with its reason.
+// A receipt that stays unreadable is read again a bounded number of times (a player's money: longer than a block's
+// logs, for more than a day), then given up; its row stays unknown, owed back in full, with its reason.
 func TestScanRetryUnreadableReceiptIsBounded(t *testing.T) {
 	x := newTopupAPI(t, player, usdcAt+40)
 	x.db.Get(ctx, brutalMe)
@@ -175,11 +175,19 @@ func TestScanRetryUnreadableReceiptIsBounded(t *testing.T) {
 	c := newBSC(x.a.serve(t), x.b.serve(t))
 	now := time.Now()
 	x.db.setScanned(ctx, usdcAt-1, now)
-	for range 60 {
+	start := now
+	for range 30 { // a day of passes, an hour apart
 		x.db.scanTopups(ctx, c, now)
 		now = now.Add(time.Hour)
 	}
-	if st, n := scanRetryRow(t, x.db, "receipt", usdcTx, usdcAt); st != "given_up" || n != scanRetryMax {
+	if st, _ := scanRetryRow(t, x.db, "receipt", usdcTx, usdcAt); st != "open" {
+		t.Fatalf("a player's receipt given up within %v", now.Sub(start))
+	}
+	for range 100 {
+		x.db.scanTopups(ctx, c, now)
+		now = now.Add(time.Hour)
+	}
+	if st, n := scanRetryRow(t, x.db, "receipt", usdcTx, usdcAt); st != "given_up" || n != scanReceiptRetryMax {
 		t.Fatalf("%q after %d reads", st, n)
 	}
 	var st, why string

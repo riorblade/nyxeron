@@ -83,6 +83,23 @@ export function Payments({ canEdit }: { canEdit: boolean }) {
       setMsg(`Couldn't mark ${short(tx)} refunded: ${(e as Error).message}`);
     }
   };
+  const resolve = async (r: Data["scanRetries"][number]) => {
+    const reason = prompt(
+      "Checked it on BscScan? Say what you did (credited, refunded, nothing to do; goes to the audit log). It is no longer read again.",
+    )?.trim();
+    if (!reason) return;
+    try {
+      await api("POST", "/admin/scan-retries/resolve", {
+        kind: r.kind,
+        ref: r.ref,
+        block: r.block,
+        reason,
+      });
+      reload();
+    } catch (e) {
+      setMsg(`Couldn't resolve block ${r.block}: ${(e as Error).message}`);
+    }
+  };
   const voidSale = async (id: number) => {
     const reason = prompt(
       "Why void this sale? (goes to the audit log)",
@@ -239,15 +256,24 @@ export function Payments({ canEdit }: { canEdit: boolean }) {
           <>
             <p className="mb-2 text-sm text-white/60">
               Blocks or receipts the top-up scanner couldn&apos;t read (both
-              providers refused them) and moved past. Open ones are read again
-              for about 4 hours; players&apos; own reports still credit their
-              deposits. Given up: check the block on BscScan and credit or
-              refund by hand. Wallet payouts: until they read, unknown
+              providers refused them) and moved past. Open ones are read again:
+              blocks for about 4 hours, players&apos; receipts for about 2 days;
+              players&apos; own reports still credit their deposits. Given up:
+              check the block on BscScan, credit or refund by hand, then Resolve
+              it (with what you did). Wallet payouts: until they read, unknown
               senders&apos; transfers in those blocks may be a swap&apos;s
               change and can&apos;t be marked refunded.
             </p>
             <Table
-              head={["Block", "What", "Status", "Reads", "Last read", "Why"]}
+              head={[
+                "Block",
+                "What",
+                "Status",
+                "Reads",
+                "Last read",
+                "Why",
+                ...(canEdit ? [""] : []),
+              ]}
             >
               {data.scanRetries.map((r) => (
                 <tr key={`${r.kind}-${r.ref}-${r.block}`}>
@@ -285,6 +311,17 @@ export function Payments({ canEdit }: { canEdit: boolean }) {
                     {when(r.updatedAt)}
                   </td>
                   <td className="text-xs text-white/70">{r.reason}</td>
+                  {canEdit && (
+                    <td>
+                      <button
+                        className="btn h-8 text-xs"
+                        onClick={() => void resolve(r)}
+                        aria-label={`Resolve block ${r.block}`}
+                      >
+                        Resolve
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </Table>
