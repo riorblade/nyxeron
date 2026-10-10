@@ -124,7 +124,7 @@ For the platform's restocking agent (e.g. built with BNB Agent Studio). Secret: 
 | Method | Path | Body | Notes |
 | --- | --- | --- | --- |
 | GET | `/api/agent/demand` | — | per token: on hand, reserved, with CEOs, sold 24h/7d, shops, days left, suggested restock; last 100 movements |
-| POST | `/api/agent/restock` | `{token, tx, note?}` | the api reads the swap on BSC (two RPCs, 15 confirmations) and adds the units of whitelisted bStock the Agentic Wallet received; the tx counts once; USDC paid within the agent's limits (`payments.json`); 202 `pending` until final; audited as `agent` |
+| POST | `/api/agent/restock` | `{token, tx, note?}` | the api reads the swap on BSC (two RPCs, 15 confirmations), books the USDC paid as platform money out and adds the whole units of whitelisted bStock the Agentic Wallet received (up to what its balance backs: `short` = units bought but not added; a fraction of a unit adds none but is still booked; other whitelisted bStocks in the same tx: `others`); the tx counts once (and never also as a seed); USDC paid within the agent's limits (`payments.json`); 202 `pending` until final; audited as `agent` |
 
 Example:
 

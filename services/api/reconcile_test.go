@@ -256,3 +256,36 @@ func TestTopupPausedOverHTTP(t *testing.T) {
 		t.Fatalf("recorded while paused: %d", n)
 	}
 }
+
+// Issue #55 (F1): the agent swaps $0.30 of platform USDC for 0.0009 TSLAB (less than one unit). The swap is booked
+// (the spend, no unit; the fraction stays in the wallet as surplus) and the next reconciliation still matches,
+// instead of pausing payments for everyone over a spend nobody could book.
+func TestSubUnitSwapKeepsTheBooksInLine(t *testing.T) {
+	c, ch, a, b := reconCity(t)
+	c.run(func(tx *sql.Tx) error { return platformLedger(tx, 300, "seed", "0xseed", "test") })
+	walletHolds(a, b, 1300, 10) // players' 1,000 credits + the $3 seed; 10 units counted
+	if r, _ := c.s.Reconcile(ctx, ch, "system", "test", c.now); !r.OK {
+		t.Fatalf("baseline: %+v", r)
+	}
+	sub := big.NewInt(9e14)
+	rc := swapReceipt(t, 30, sub, game.payments.AgenticWallet)
+	a.receipts[usdcTx], b.receipts[usdcTx] = rc, rc
+	walletHolds(a, b, 1270, 10)
+	tsla := fmt.Sprintf("0x%064x", new(big.Int).Add(big.NewInt(10e15), sub)) // 10.9 units on chain
+	for _, f := range []*fakeRPC{a, b} {
+		f.mu.Lock()
+		f.balances[strings.ToLower(game.payments.Tokens["tsla"].Contract)] = tsla
+		f.mu.Unlock()
+	}
+	got, err := c.s.VerifiedRestock(ctx, ch, "agent", "tsla", usdcTx, "", c.now)
+	if err != nil || got.Units != 0 || got.USDCents != 30 {
+		t.Fatalf("sub-unit swap: %+v %v", got, err)
+	}
+	r, err := c.s.Reconcile(ctx, ch, "system", "hourly", c.now)
+	if err != nil || !r.OK {
+		t.Fatalf("after a sub-unit swap: %+v %v", r, err)
+	}
+	if u := r.Units["tsla"]; u.Counted != 10 || u.OnChain != 10 {
+		t.Fatalf("units %+v: the fraction is surplus, not stock", u)
+	}
+}

@@ -3,6 +3,16 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-10 · Every real swap goes on the books
+
+- **No more pauses from a swap the api refused:** a swap of less than one unit (0.001 share), or one bought while
+  units were already short on chain, used to be refused after the USDC had left the Agentic Wallet, so the next
+  hourly check paused payments for every player. Now any verified swap is booked once: the USDC always, whole units
+  up to what the wallet backs (a purchase made while short repairs the shortfall; the back office shows how many
+  units it covered as `short`). Fractions of a unit stay in the wallet as surplus.
+- **One tx, one booking:** a tx booked as a restock can't also be booked as the team's seed, or the other way round.
+- **Multi-token swaps:** a swap that bought two whitelisted bStocks adds both in one report.
+
 ## 2026-10-10 · A paid band always plays
 
 - **Booking a DJ at night no longer cancels the band:** a band booked by day plays its slot even if the CEO books a DJ

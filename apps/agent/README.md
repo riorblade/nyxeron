@@ -7,6 +7,8 @@ and asks the platform's Binance Agentic Wallet what the budget buys.
 **It only trades with `--buy`:** then it swaps `AGENT_BUY_USD` of USDC (platform funds, slippage 1%), follows the
 order until the wallet reports its tx, and reports the tx to `POST /api/agent/restock`. The api reads the swap on
 BSC itself and adds the units the Agentic Wallet really received; the agent's own numbers count for nothing.
+The api books every verified swap, even one below a unit (0 units, the USDC still booked), so a small
+`AGENT_BUY_USD` wastes money on dust but never pauses payments.
 
 ```sh
 npm install --global @binance/agentic-wallet    # the `baw` CLI

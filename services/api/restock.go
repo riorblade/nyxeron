@@ -9,6 +9,7 @@ import (
 	"math"
 	"math/big"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 )
@@ -25,7 +26,6 @@ var (
 	errNoStock       = errors.New("restock: no whitelisted bStock reached the Agentic Wallet")
 	errOverLimit     = errors.New("restock: over the agent's limits")
 	errNotConfigured = errors.New("restock: BSC_RPC_1 and BSC_RPC_2 are not set")
-	errUnbacked      = errors.New("restock: the Agentic Wallet doesn't hold that much bStock")
 )
 
 // netFlow: how much of a token the Agentic Wallet gained in a successful tx (negative: it paid). Its transfers to
@@ -72,8 +72,6 @@ func restockError(w http.ResponseWriter, err error) {
 		code, name = http.StatusUnprocessableEntity, "over_limit"
 	case errors.Is(err, errPaused):
 		code, name = http.StatusServiceUnavailable, "paused"
-	case errors.Is(err, errUnbacked):
-		code, name = http.StatusConflict, "unbacked"
 	case errors.Is(err, errBad):
 		code, name = http.StatusBadRequest, "bad_request"
 	case errors.Is(err, errNotConfigured):
@@ -85,13 +83,18 @@ func restockError(w http.ResponseWriter, err error) {
 	writeJSON(w, code, map[string]string{"error": name})
 }
 
-// Restocked: what a verified restock added.
+// Restocked: what a verified restock booked.
 type Restocked struct {
 	Token    string `json:"token"`
-	Units    int64  `json:"units"`
+	Units    int64  `json:"units"`  // whole units added to the warehouse
 	Shares   string `json:"shares"` // base units of the bStock received (18 decimals)
 	USDCents int64  `json:"usdCents"`
 	Tx       string `json:"tx"`
+	// Short: whole units bought but not added, because the wallet already held fewer units than the books count
+	// (the purchase covers that shortfall first).
+	Short int64 `json:"short,omitempty"`
+	// Others: units added of other whitelisted tokens the same swap bought (the payment is booked once, here).
+	Others map[string]int64 `json:"others,omitempty"`
 }
 
 // unitsOf: whole units in an amount of bStock (base units, 18 decimals), rounded down.
@@ -107,18 +110,30 @@ func unitsOf(shares *big.Int) int64 {
 	return u.Int64()
 }
 
-// VerifiedRestock reads a swap on BSC and adds the units it bought to the warehouse, with the USDC paid as
-// platform money out, in one transaction. errUnconfirmed / errNoTx: not final yet, report it again later.
+// buy: one whitelisted bStock a swap delivered to the Agentic Wallet.
+type buy struct {
+	token         string
+	shares        *big.Int
+	units, onHand int64 // whole units in shares; the wallet's balance on chain, in units
+}
+
+// VerifiedRestock reads a swap on BSC and books it in one transaction: the USDC/USDT paid as platform money out,
+// and the whole units it bought into the warehouse. errUnconfirmed / errNoTx: not final yet, report it again later.
 //
 // A restock is a purchase: the Agentic Wallet's NET bStock gain in the tx (in − out, its transfers to itself
 // ignored) against USDC/USDT it paid out. A tx with no stablecoin paid (moving bStock it already had, or getting
-// back what it sent away) adds nothing. After the purchase, everything counted as real stock must still be
-// covered by the wallet's bStock balance on chain. The agent's per-swap and daily limits bind the agent; the
-// team's own reports (the back office: seeding the first stock) are not capped.
+// back what it sent away) is not one. Every verified purchase is booked, exactly once (issue #55): the money left
+// the wallet whatever it bought, and leaving it off the books would pause payments at the next reconciliation.
+//   - Less than one unit: the spend is booked with 0 units; the fraction stays in the wallet as surplus (the
+//     reconciliation only needs counted ≤ on chain).
+//   - Units already short on chain: only the units the wallet's balance backs are added (Short: the rest), so
+//     the purchase repairs the shortfall and the books never count more than the chain holds.
+//   - Several whitelisted bStocks in one tx: all are added, the payment booked once.
+//
+// The agent's per-swap and daily limits bind the agent; the team's own reports (the back office) are not capped.
 func (s *store) VerifiedRestock(ctx context.Context, c *bsc, actor, token, tx, reason string, now time.Time) (Restocked, error) {
 	out := Restocked{Token: token, Tx: strings.ToLower(tx)}
-	lock, ok := game.payments.Tokens[token]
-	if !ok || !hashRe.MatchString(tx) || len(reason) > 200 {
+	if _, ok := game.payments.Tokens[token]; !ok || !hashRe.MatchString(tx) || len(reason) > 200 {
 		return out, errBad
 	}
 	limited := actor == "agent"
@@ -135,9 +150,29 @@ func (s *store) VerifiedRestock(ctx context.Context, c *bsc, actor, token, tx, r
 	if err != nil {
 		return out, err
 	}
-	shares, err := netFlow(rc, lock.Contract) // bStock: what the wallet gained
-	if err != nil {
-		return out, err
+	ids := make([]string, 0, len(game.payments.Tokens))
+	for id := range game.payments.Tokens {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	var buys []buy // the reported token first
+	for _, id := range ids {
+		shares, err := netFlow(rc, game.payments.Tokens[id].Contract) // bStock: what the wallet gained
+		if err != nil {
+			return out, err
+		}
+		if shares.Sign() <= 0 {
+			continue
+		}
+		b := buy{token: id, shares: shares, units: unitsOf(shares)}
+		if b.units < 0 {
+			return out, errBad
+		}
+		if id == token {
+			buys = append([]buy{b}, buys...)
+		} else {
+			buys = append(buys, b)
+		}
 	}
 	var cents int64
 	for _, stable := range game.payments.Topup.Tokens {
@@ -149,17 +184,20 @@ func (s *store) VerifiedRestock(ctx context.Context, c *bsc, actor, token, tx, r
 			cents += usdCentsUp(new(big.Int).Neg(flow)) // what left the wallet, never less (the books stay cautious)
 		}
 	}
-	out.Shares, out.USDCents, out.Units = shares.String(), cents, unitsOf(shares)
-	if out.Units <= 0 || cents <= 0 {
+	if len(buys) == 0 || buys[0].token != token || cents <= 0 {
 		return out, errNoStock
 	}
+	out.Shares, out.USDCents = buys[0].shares.String(), cents
 	if limited && cents > game.payments.Agent.MaxUsdPerSwap*100 {
 		return out, errOverLimit
 	}
-	// The chain must hold what we'd count: warehouse + held + players' real units, this restock included.
-	balance, err := c.BalanceOf(ctx, lock.Contract, game.payments.AgenticWallet)
-	if err != nil {
-		return out, err
+	// The chain must hold what we count: warehouse + held + players' real units, this restock included.
+	for i := range buys {
+		balance, err := c.BalanceOf(ctx, game.payments.Tokens[buys[i].token].Contract, game.payments.AgenticWallet)
+		if err != nil {
+			return out, err
+		}
+		buys[i].onHand = unitsOf(balance)
 	}
 	t, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -179,25 +217,42 @@ func (s *store) VerifiedRestock(ctx context.Context, c *bsc, actor, token, tx, r
 			return out, errOverLimit
 		}
 	}
-	var counted int64
-	if err := t.QueryRow(`SELECT COALESCE((SELECT qty + reserved FROM platform_stock WHERE token = ?1), 0) +
-		COALESCE((SELECT SUM(qty) FROM backed_units WHERE token = ?1), 0)`, token).Scan(&counted); err != nil {
-		return out, err
-	}
-	if counted+out.Units > unitsOf(balance) {
-		return out, errUnbacked
-	}
 	if strings.TrimSpace(reason) == "" {
 		reason = "verified swap"
 	}
-	if err := moveStock(t, token, out.Units, "restock", "", actor, reason, out.Tx); err != nil {
+	detail := map[string]any{"usdCents": cents, "tx": out.Tx}
+	var what []string
+	for i, b := range buys {
+		var counted int64
+		if err := t.QueryRow(`SELECT COALESCE((SELECT qty + reserved FROM platform_stock WHERE token = ?1), 0) +
+			COALESCE((SELECT SUM(qty) FROM backed_units WHERE token = ?1), 0)`, b.token).Scan(&counted); err != nil {
+			return out, err
+		}
+		add := min(b.units, max(b.onHand-counted, 0)) // never more than the chain backs
+		// A move even for 0 units: the trail shows the swap, and it is what makes the tx count once.
+		if err := moveStock(t, b.token, add, "restock", "", actor, reason, out.Tx); err != nil {
+			return out, err
+		}
+		what = append(what, fmt.Sprintf("%d units of %s", add, b.token))
+		detail[b.token] = map[string]any{"units": add, "bought": b.units, "shares": b.shares.String()}
+		if i == 0 {
+			out.Units, out.Short = add, b.units-add
+			detail["units"], detail["shares"] = add, out.Shares // as before, for the reported token
+		} else {
+			if out.Others == nil {
+				out.Others = map[string]int64{}
+			}
+			out.Others[b.token] = add
+		}
+		if add < b.units {
+			slog.Warn("restock: units short on chain, booked what the wallet backs", "token", b.token,
+				"bought", b.units, "added", add, "tx", out.Tx)
+		}
+	}
+	if err := platformLedger(t, -toCredits(cents), "restock", out.Tx, strings.Join(what, ", ")); err != nil {
 		return out, err
 	}
-	if err := platformLedger(t, -toCredits(cents), "restock", out.Tx, fmt.Sprintf("%d units of %s", out.Units, token)); err != nil {
-		return out, err
-	}
-	if err := audit(t, actor, "stock-restock", token, map[string]any{"units": out.Units, "shares": out.Shares,
-		"usdCents": cents, "tx": out.Tx}, reason); err != nil {
+	if err := audit(t, actor, "stock-restock", token, detail, reason); err != nil {
 		return out, err
 	}
 	return out, t.Commit()
@@ -207,10 +262,13 @@ type querier interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
-// unused: errTxUsed when a restock already counted this tx (any letter case).
+// unused: errTxUsed when this tx (any letter case) is already on the books as a restock or as the team's seed:
+// one tx is one or the other, once (issue #55: a swap's refund leg must not also count as seed money).
 func (s *store) unused(ctx context.Context, q querier, tx string) error {
 	var n int
-	if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM stock_moves WHERE lower(tx) = lower(?) AND kind = 'restock'`,
+	if err := q.QueryRowContext(ctx, `SELECT
+		(SELECT COUNT(*) FROM stock_moves WHERE lower(tx) = lower(?1) AND kind = 'restock') +
+		(SELECT COUNT(*) FROM platform_ledger WHERE lower(ref) = lower(?1) AND kind IN ('restock', 'seed'))`,
 		tx).Scan(&n); err != nil {
 		return err
 	}

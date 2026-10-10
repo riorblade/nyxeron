@@ -66,6 +66,11 @@ suggested) and buys bStock in bulk with **platform funds** (fees, or a seed the 
 credits. `POST /api/agent/restock {token, tx}` adds units **only after the api verifies the swap on BSC**
 (bStock received by the Agentic Wallet, amount from the logs, tx unused, 15 confirmations, two RPCs agree). Manual
 restock in the back office becomes "report a tx" (same verification); typing a number no longer creates stock.
+Every verified swap is booked exactly once, as a restock or as the team's seed, never both: the USDC/USDT it paid
+always goes on the books as platform money out (otherwise the next reconciliation would pause payments). Whole units
+go to the warehouse, up to what the wallet's balance backs; less than one unit adds none (the fraction stays in the
+wallet as surplus), and when units are already short on chain the purchase covers the shortfall first (`short` in
+the answer). A swap that bought several whitelisted bStocks adds all of them in one report.
 
 ### 4. Party sales (dropship, settled at the end)
 
@@ -91,7 +96,8 @@ from guest, units from the warehouse, wholesale to the platform, margin to the t
   log from the locked USDC/USDT contract; recipient = Agentic Wallet; sender = the player's stored wallet; amount
   from the log ≥ $3 and within the player's caps (credited up to the room left; what isn't credited is recorded as
   `rejected`, or in the row's reason, for the back office to refund); two RPCs agree.
-- Before restock units: as above for the bStock transfer into the Agentic Wallet; USDC spent ≤ the agent's limits.
+- Before restock units: as above for the bStock transfer into the Agentic Wallet; USDC spent ≤ the agent's limits;
+  units added ≤ what the wallet's balance backs; the tx not already booked as a restock or a seed.
 - Before a sale: credits and warehouse checked and held in the same transaction; prices from the server, never from
   the browser.
 - Always: every credit change goes through the ledger in the same transaction as its cause; secrets and addresses

@@ -311,15 +311,17 @@ func (s *store) RecordSeed(ctx context.Context, c *bsc, actor, tx, reason string
 	}
 	return cents, s.inTx(ctx, func(t *sql.Tx) error {
 		var booked, credited int
-		if err := t.QueryRow(`SELECT (SELECT COUNT(*) FROM platform_ledger WHERE kind = 'seed' AND ref = ?1),
+		// Booked already, as the seed or as anything else (a restock's refund leg is not seed money: issue #55).
+		if err := t.QueryRow(`SELECT (SELECT COUNT(*) FROM platform_ledger WHERE lower(ref) = ?1) +
+			(SELECT COUNT(*) FROM stock_moves WHERE lower(tx) = ?1 AND kind = 'restock'),
 			(SELECT COUNT(*) FROM topups WHERE tx = ?1 AND status = 'credited')`, tx).Scan(&booked, &credited); err != nil {
 			return err
 		}
-		if booked > 0 {
-			return errTxUsed
-		}
 		if credited > 0 {
 			return errRejected // a player's top-up: it backs their credits, it isn't the platform's
+		}
+		if booked > 0 {
+			return errTxUsed
 		}
 		if err := platformLedger(t, toCredits(cents), "seed", tx, reason); err != nil {
 			return err
