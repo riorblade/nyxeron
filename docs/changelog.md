@@ -3,6 +3,12 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-10 · No blank screen after an update
+
+- **A tab left open across an update recovers by itself:** if it asks for a part of the game that the new version
+  replaced, it reloads once into the new version. Anything else that breaks while drawing a screen now shows "Something
+  went wrong" with a Reload button instead of a blank page.
+
 ## 2026-10-10 · Relay: signed-in players only
 
 - **Live clubs know who you are:** the api now hands signed-in players a short pass for the multiplayer relay, and the
