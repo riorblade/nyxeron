@@ -7,7 +7,8 @@ teammate would notice.
 
 - **Agent container:** `deploy/agent.Dockerfile` and a profiled `agent` service run the stock agent and the Binance
   Agentic Wallet CLI on the VPS. The wallet owner signs it in once by scanning a QR; the session and the swap record
-  live on a volume (`deploy/README.md` → Stock agent, #69).
+  live on a volume (`deploy/README.md` → Stock agent, #69). `BAW_INSTANCE_ID` keeps the sign-in across runs
+  (baw keys its session to the container's MAC otherwise).
 
 ## 2026-10-11 · A guest's night out is checked by the api
 

@@ -100,6 +100,9 @@ services:
       NYXERON_API: https://api.${DOMAIN:-localhost}
       AGENT_BUY_USD: ${AGENT_BUY_USD:-3}
       AGENT_STATE: /root/state.json
+      # baw encrypts its session with a key from the NIC's MAC unless this is set; every `run` is a new container
+      # with a new MAC, so without a fixed id the owner's QR sign-in is lost on the next run.
+      BINANCE_INSTANCE_ID: ${BAW_INSTANCE_ID:-nyxeron-agent}
     volumes:
       - agent_home:/root
     mem_limit: 512m
