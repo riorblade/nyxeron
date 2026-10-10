@@ -1,0 +1,93 @@
+---
+title: "Real-money economy (on BNB Chain)"
+description: "How NYXERON turns USDC/USDT on BNB Chain into Credits, sells real tokenized stock at parties and shops, and keeps every Credit and unit backed on-chain."
+---
+
+NYXERON runs two economies side by side. The classic game is play money and can never touch real value. The city
+runs on **Credits**, which exist only because a stablecoin really arrived in the platform's wallet on BNB Chain, and
+sells **real tokenized stock** (bStock) that the same wallet really holds. Every rule below exists to keep one promise:
+nothing in the game is worth more than what is on-chain.
+
+## The four currencies
+
+| Currency | Where it comes from | What it buys | Backing |
+| --- | --- | --- | --- |
+| **NYX Points** (play money) | 20,000 starter wallet, refilled when below 2,000, DJ gigs, grants | Classic and practice nights | None. It cannot be converted into Credits |
+| **Credits** | Created only by a verified USDC or USDT top-up on BNB Chain; after that they also move between players as a host's sale margin, and back to a guest when a party sale is cancelled | Venue rent, real stock at city parties and shops | USDC + USDT in the platform's wallet, 100 Credits = 1 USD |
+| **Play portfolio** | Stock "bought" during a night as a guest | Score and PnL | None |
+| **Real units** | A settled purchase in the city | Held by the player | bStock in the platform's wallet, 1 unit = 0.001 share |
+
+A Credit balance can never go below zero, and every change to it is written to a ledger together with its cause.
+The play-money side never touches Credits.
+
+<Note>
+The city is not open yet. It runs on Credits only, so until top-ups are live every city action (renting a venue,
+opening a shop, hosting a city party, buying stock there) is answered with `city_closed`.
+</Note>
+
+## Top-up: stablecoin in, Credits out
+
+A player sends USDC or USDT (BEP-20) from their embedded wallet to the platform's wallet. The game never trusts the
+browser for the amount: it reads the transfer from BNB Chain itself and waits for BNB Chain to confirm it before
+crediting anything. Transfers nobody reported (a closed tab, a lost connection) are picked up too, so a top-up is
+never lost, and each transfer is credited at most once.
+
+### Limits
+
+| | Value |
+| --- | --- |
+| Exchange rate | 100 Credits = 1 USD |
+| Minimum top-up | 3 USD |
+| Daily cap | 20 USD per rolling 24 hours |
+| Lifetime cap | 100 USD |
+
+A small fee is kept to pay for the gas the platform sponsors. A top-up is credited only up to the room left under
+both caps; anything over a cap, or a transfer below the minimum, earns no Credits and is recorded so it can be
+refunded by hand. Two top-ups arriving at the same moment can't both use the same room under the cap.
+
+<Accordion title="Example">
+A new player sends **10 USDC** and receives about 1,000 Credits, less the small gas fee. Later that day they send
+**15 USDC**: only 10 USD of daily room is left, so 10 USD is credited and the other 5 USD is recorded for a refund.
+A third transfer the same day finds no room left and is recorded as rejected.
+</Accordion>
+
+If BNB Chain has not confirmed the transfer yet, the game says the top-up is pending and simply checks again later.
+
+## Selling real stock
+
+In the city, a venue tenant (the "CEO") is a reseller: they hold no stock and need no capital. The platform keeps a
+warehouse of real bStock; the CEO sets a sale price, and when a guest buys, the platform keeps its wholesale cost and
+the CEO keeps the difference as margin. The only stock sold for Credits today is Tesla, as the bStock **TSLAB**.
+
+What a player can rely on:
+
+- **Prices follow the real market.** Wholesale comes from a live market quote, and a CEO can only price within a band
+  above it. If the quote is stale or missing, nothing is sold.
+- **No surprise prices.** The buyer agrees to a price; if it changed under them, or the market has moved above the
+  CEO's price, the sale is refused rather than completed.
+- **A shop sale settles at once.** The buyer pays and receives the units immediately.
+- **A party sale is held, then settled.** The buyer's Credits and the units are set aside during the party and settle
+  after it ends. If the party is cancelled, the sale is voided: Credits go back to the guest and the units go back on
+  the shelf. Each sale settles or is voided exactly once.
+- **No overselling.** Units are only sold from stock the warehouse really holds.
+
+## Renting a venue
+
+Hosting a city party or running a shop needs a venue, rented by the week in Credits. Bigger venues (higher levels)
+cost more. Rent is platform income, and like every other Credit movement it is written to the ledger.
+
+## Backed on-chain
+
+The platform's wallet and stock are reconciled against the game's books: every Credit players hold (including Credits
+set aside in party sales) must be covered by USDC and USDT in the wallet, and every real unit by bStock in the wallet.
+
+## Restocking the warehouse
+
+Warehouse units exist only for bStock the platform's wallet really bought on BNB Chain. The game reads each purchase
+from the chain before adding a single unit, rounds down to whole units (any fraction stays in the wallet as surplus),
+and pays for restocks from platform income (fees, rent and wholesale), never from players' Credits.
+
+<Note>
+There is no withdrawal yet: Credits and real units stay in the game, and each player's lifetime top-up is capped at
+100 USD.
+</Note>

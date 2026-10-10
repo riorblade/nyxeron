@@ -1,0 +1,38 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "NYXERON",
+  "description": "NYXERON · Nightclub Empire: a multiplayer nightclub game on BNB Chain where the drinks are tokenized stocks.",
+  "colors": {
+    "primary": "#111111",
+    "light": "#FFFFFF",
+    "dark": "#111111"
+  },
+  "logo": {
+    "light": "/logo/mark-black.svg",
+    "dark": "/logo/mark-white.svg",
+    "href": "/"
+  },
+  "favicon": "/favicon.svg",
+  "navbar": {
+    "links": [{ "label": "X", "href": "https://x.com/nyxeron_xyz" }],
+    "primary": { "type": "button", "label": "Play now", "href": "https://nyxeron.xyz" }
+  },
+  "navigation": {
+    "groups": [
+      { "group": "Get started", "pages": ["index", "how-to-play"] },
+      {
+        "group": "Game engine",
+        "pages": ["engine/night-loop", "engine/guests", "engine/crowd", "engine/market", "engine/economy"]
+      },
+      { "group": "On-chain", "pages": ["economy/real-money"] },
+      { "group": "Technology", "pages": ["architecture", "multiplayer-live", "tech-stack"] }
+    ]
+  },
+  "footer": {
+    "socials": {
+      "x": "https://x.com/nyxeron_xyz",
+      "website": "https://nyxeron.xyz"
+    }
+  }
+}

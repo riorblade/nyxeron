@@ -3,6 +3,14 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-10 · Docs: public site with the engine as formulas
+
+- **Public docs for players and judges** in `docs/site` (Mintlify; `cd docs/site && npx mint dev`): what NYXERON is,
+  how to play, the game engine written out as formulas (night loop, guests and spending, crowd/DJ/security, market,
+  economy and progression), the real-money economy on BNB Chain, architecture, live multiplayer and the tech stack.
+  Classic formulas and numbers come straight from `packages/core`; the City, payments and infrastructure are described
+  qualitatively only (what may be published: #47).
+
 ## 2026-10-10 · Stock agent: no double buys, reports that survive, a price floor
 
 - **One swap at a time:** the agent records the swap it placed (`AGENT_STATE`) until the api has counted it; a run

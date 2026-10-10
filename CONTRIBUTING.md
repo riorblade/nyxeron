@@ -156,3 +156,6 @@ kit, no state library besides zustand.
 - New rules/systems/endpoints have tests; balance changes have numbers.
 - Docs updated where behaviour changed (`docs/api.md`, `docs/game-design.md`, the relevant README) and a line in
   `docs/changelog.md` for anything a player or admin would notice.
+- `docs/site` (the public docs) is a second copy of `docs/game-design.md`: a rule or balance change updates the
+  matching `docs/site/engine/*` page in the same PR. The site is public and the repo private: follow #47 for what may
+  be published (no anti-abuse numbers, payment or agent internals, infra, internal endpoints or source links).
