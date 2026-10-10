@@ -29,6 +29,7 @@ const (
 	jwksMinGap  = time.Minute     // re-fetch keys at most this often (unknown kid → key rotation)
 	jwksBootGap = 5 * time.Second // no key loaded yet (Privy blipped at start): retry sooner
 	jwksMaxAge  = time.Hour       // refetch in the background, so a key Privy removed stops working
+	jwksMaxKeep = 24 * time.Hour  // never trust keys this old, even while every refetch fails
 	clockSkew   = 30 * time.Second
 )
 
@@ -137,7 +138,13 @@ func (p *privy) key(kid string, now time.Time) (*ecdsa.PublicKey, error) {
 	if len(p.keys) == 0 {
 		gap = jwksBootGap
 	}
-	due := p.fetched.IsZero() || now.Sub(p.fetched) >= gap
+	// A last fetch "in the future" (a skewed now) counts as due rather than blocking new kids until it passes.
+	since := now.Sub(p.fetched)
+	due := p.fetched.IsZero() || since >= gap || since < 0
+	// Kept through Privy outages (#41), but not forever: a key from a day ago must be confirmed by a fresh fetch.
+	if !p.loaded.IsZero() && now.Sub(p.loaded) > jwksMaxKeep {
+		p.keys = nil
+	}
 	if k := p.lookup(kid); k != nil {
 		if now.Sub(p.loaded) > jwksMaxAge && due && p.inflight == nil {
 			go p.fetch(p.begin(now), now)

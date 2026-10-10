@@ -306,7 +306,7 @@ func TestJWKSBootBlipRetriesSoon(t *testing.T) {
 	}
 }
 
-func TestJWKSRemovedKeyExpires(t *testing.T) {
+func TestJWKSRotatedKeyExpires(t *testing.T) {
 	old, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	p, _, _, _ := jwksServer(t, old)
 	now := time.Now()
@@ -330,4 +330,24 @@ func TestJWKSRemovedKeyExpires(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatal("a key Privy removed was still accepted after the max age")
+}
+
+func TestJWKSKeysNotTrustedPastADayWhilePrivyIsDown(t *testing.T) {
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	p, _, _, down := jwksServer(t, key)
+	now := time.Now()
+	k1 := map[string]any{"alg": "ES256", "kid": "k1", "typ": "JWT"}
+	if _, err := p.verify(signJWT(t, key, k1, good(now.Add(time.Hour))), now); err != nil {
+		t.Fatal(err)
+	}
+	down.Store(true)
+	hours := now.Add(10 * time.Hour) // an outage: the cached key keeps everyone signed in
+	if _, err := p.verify(signJWT(t, key, k1, good(hours.Add(time.Hour))), hours); err != nil {
+		t.Fatal("cached key dropped during a short outage:", err)
+	}
+	time.Sleep(50 * time.Millisecond) // let the background refresh fail
+	day := now.Add(jwksMaxKeep + time.Hour)
+	if _, err := p.verify(signJWT(t, key, k1, good(day.Add(time.Hour))), day); err == nil {
+		t.Fatal("a day-old key accepted without Privy confirming it")
+	}
 }
