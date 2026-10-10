@@ -12,10 +12,10 @@ Ordered by priority. Each item ends with passing tests and a short demo.
 
 ## Next: real money and real stock (spec: [payments.md](payments.md))
 
-- [ ] Top-ups (USDC/USDT on BSC) mint credits; Coin stays play money.
-- [ ] Warehouse on real bStock (TSLA first), restocked by the agent with verified swaps.
-- [ ] Party sales held during the party and settled at the end (CEO as reseller); shops settle at once.
-- [ ] Hourly reconciliation against BSC balances.
+- [x] Top-ups (USDC/USDT on BSC) mint credits; Coin stays play money (#30).
+- [x] Warehouse on real bStock (TSLA first), restocked by the agent with verified swaps (#31).
+- [x] Party sales held during the party and settled at the end (CEO as reseller); shops settle at once (#32).
+- [x] Hourly reconciliation against BSC balances (#33).
 
 ## Later: on-chain stock
 
