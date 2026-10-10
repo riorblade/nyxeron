@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -23,10 +24,12 @@ import (
 // Docs: https://docs.privy.io/authentication/user-authentication/access-tokens
 
 const (
-	privyAPI   = "https://auth.privy.io/api/v1"
-	userTTL    = 5 * time.Minute
-	jwksMinGap = time.Minute // re-fetch keys at most this often (unknown kid → key rotation)
-	clockSkew  = 30 * time.Second
+	privyAPI    = "https://auth.privy.io/api/v1"
+	userTTL     = 5 * time.Minute
+	jwksMinGap  = time.Minute     // re-fetch keys at most this often (unknown kid → key rotation)
+	jwksBootGap = 5 * time.Second // no key loaded yet (Privy blipped at start): retry sooner
+	jwksMaxAge  = time.Hour       // refetch in the background, so a key Privy removed stops working
+	clockSkew   = 30 * time.Second
 )
 
 // Me is the verified player.
@@ -41,10 +44,12 @@ type privy struct {
 	base          string // privyAPI (tests point it at a fake)
 	client        *http.Client
 
-	mu      sync.Mutex
-	keys    map[string]*ecdsa.PublicKey
-	fetched time.Time
-	users   map[string]cachedMe
+	mu       sync.Mutex
+	keys     map[string]*ecdsa.PublicKey
+	fetched  time.Time     // last JWKS fetch started
+	loaded   time.Time     // last JWKS fetch that gave keys
+	inflight chan struct{} // closed when the running fetch ends (one at a time)
+	users    map[string]cachedMe
 }
 
 type cachedMe struct {
@@ -123,25 +128,84 @@ func audIncludes(raw json.RawMessage, app string) bool {
 	return false
 }
 
-// key returns the signing key with this id, fetching the app's JWKS when it is unknown (rate limited).
+// key returns the signing key with this id. Known keys never wait on the network: a fetch runs outside the lock,
+// one at a time, and only callers with an unknown kid wait for it. Fetches are rate limited (jwksMinGap, or
+// jwksBootGap while no key has loaded), and keys older than jwksMaxAge are refreshed in the background.
 func (p *privy) key(kid string, now time.Time) (*ecdsa.PublicKey, error) {
 	p.mu.Lock()
-	defer p.mu.Unlock()
-	if k := p.keys[kid]; k != nil {
+	gap := jwksMinGap
+	if len(p.keys) == 0 {
+		gap = jwksBootGap
+	}
+	due := p.fetched.IsZero() || now.Sub(p.fetched) >= gap
+	if k := p.lookup(kid); k != nil {
+		if now.Sub(p.loaded) > jwksMaxAge && due && p.inflight == nil {
+			go p.fetch(p.begin(now), now)
+		}
+		p.mu.Unlock()
 		return k, nil
 	}
-	// Rate limited even while no key was ever loaded (Privy down at start), so sign-ins can't hammer it.
-	if !p.fetched.IsZero() && now.Sub(p.fetched) < jwksMinGap {
-		return nil, errToken
+	wait := p.inflight
+	if wait == nil {
+		// Rate limited even while no key was ever loaded (Privy down at start), so sign-ins can't hammer it.
+		if !due {
+			p.mu.Unlock()
+			return nil, errToken
+		}
+		wait = p.begin(now)
+		go p.fetch(wait, now)
 	}
+	p.mu.Unlock()
+	<-wait
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if k := p.lookup(kid); k != nil {
+		return k, nil
+	}
+	return nil, errToken
+}
+
+// lookup: the key with this id; a token without a kid gets the app's only key. Caller holds p.mu.
+func (p *privy) lookup(kid string) *ecdsa.PublicKey {
+	if k := p.keys[kid]; k != nil {
+		return k
+	}
+	if kid == "" && len(p.keys) == 1 {
+		for _, k := range p.keys {
+			return k
+		}
+	}
+	return nil
+}
+
+// begin marks a fetch as running. Caller holds p.mu.
+func (p *privy) begin(now time.Time) chan struct{} {
 	p.fetched = now
+	p.inflight = make(chan struct{})
+	return p.inflight
+}
+
+// fetch downloads the JWKS and swaps the keys in. A failed fetch keeps the keys we have: anyone can trigger one with
+// a made-up kid, and an empty set would sign every player out until the next fetch is allowed.
+func (p *privy) fetch(done chan struct{}, at time.Time) {
+	keys, err := p.download()
+	p.mu.Lock()
+	if err == nil {
+		p.keys, p.loaded = keys, at
+	} else {
+		slog.Warn("jwks fetch failed", "err", err)
+	}
+	p.inflight = nil
+	p.mu.Unlock()
+	close(done)
+}
+
+func (p *privy) download() (map[string]*ecdsa.PublicKey, error) {
 	res, err := p.client.Get(fmt.Sprintf("%s/apps/%s/jwks.json", p.base, url.PathEscape(p.appID)))
 	if err != nil {
 		return nil, err
 	}
 	defer res.Body.Close()
-	// A failed refetch keeps the keys we have: anyone can trigger one with a made-up kid, and an empty set would
-	// sign every player out until the next fetch is allowed.
 	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("jwks: %s", res.Status)
 	}
@@ -168,17 +232,7 @@ func (p *privy) key(kid string, now time.Time) (*ecdsa.PublicKey, error) {
 	if len(keys) == 0 {
 		return nil, errors.New("jwks: no usable key")
 	}
-	p.keys = keys
-	if k := p.keys[kid]; k != nil {
-		return k, nil
-	}
-	// A token without a kid: accept the app's only key.
-	if kid == "" && len(p.keys) == 1 {
-		for _, k := range p.keys {
-			return k, nil
-		}
-	}
-	return nil, errToken
+	return keys, nil
 }
 
 func pad32(b []byte) []byte {
