@@ -3,6 +3,20 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-11 · The stock agent runs on the server
+
+- **Agent container:** `deploy/agent.Dockerfile` and a profiled `agent` service run the stock agent and the Binance
+  Agentic Wallet CLI on the VPS. The wallet owner signs it in once by scanning a QR; the session and the swap record
+  live on a volume (`deploy/README.md` → Stock agent, #69).
+
+## 2026-10-11 · A guest's night out is checked by the api
+
+- **`POST /api/nights` no longer takes the client's word** (#67): every token unit must have cost at least 1 Coin
+  (the desk's floor price), the night's P&L can't beat what the market range lets the bought tokens be worth, `room`
+  must be a relay code (or empty), and an account settles at most one night per minute. Before, a hand-written client
+  could take home 1,000,000 TSLA for 0 Coin, replay a +20,000 P&L night 100 times, store 15 KB of text in the
+  ledger, and loop spend → refill into a 400,000-Coin portfolio. Play money only, but it fed the leaderboard.
+
 ## 2026-10-10 · Payments survive the brutal tests (#38)
 
 - **The top-up scanner can't be wedged:** a stranger could stop it for good with a 0-value transfer from a player's

@@ -60,6 +60,11 @@ var game struct {
 			SettleGraceMinutes int `json:"settleGraceMinutes"`
 		} `json:"party"`
 	}
+	strategy struct {
+		Market struct {
+			Range [2]float64 `json:"range"` // the desk price's multiplier on the list price, low to high
+		} `json:"market"`
+	}
 	payments struct {
 		ChainID       int              `json:"chainId"`
 		Confirmations uint64           `json:"confirmations"`
@@ -88,7 +93,7 @@ var game struct {
 func init() {
 	for name, v := range map[string]any{
 		"tokens": &game.tokens, "levels": &game.levels, "city": &game.city,
-		"payments": &game.payments,
+		"payments": &game.payments, "strategy": &game.strategy,
 	} {
 		b, err := gameFS.ReadFile("gamedata/" + name + ".json")
 		if err == nil {

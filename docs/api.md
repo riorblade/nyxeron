@@ -42,7 +42,7 @@ Base URL: `https://api.nyxeron.xyz` (dev: same origin, Vite proxies `/api` to `:
 | POST | `/api/profile/import` | profile | once: this device's pre-account data, bounded |
 | PATCH | `/api/profile` | `{name?, avatar?}` | |
 | POST | `/api/wallet/refill` | — | only when the wallet is nearly empty |
-| POST | `/api/nights` | `{cash, bought, pnl, room?}` | a night out as a guest; at a live city party the tenant is paid the spend |
+| POST | `/api/nights` | `{cash, bought, pnl, room?}` | a night out as a guest (play money): every unit cost ≥ 1, `pnl` within what the market range allows, `room` a relay code or empty, one per account per minute (409 if sooner) |
 | POST | `/api/gigs` | `{fee}` | a DJ gig played to the end (capped, rate-limited) |
 | GET | `/api/topups` | — | `{credits, topups}`: the player's credit balance and last 20 top-ups |
 | POST | `/api/topups` | `{tx}` | report a USDC/USDT transfer from your embedded wallet to the Agentic Wallet; the api reads it on BSC and credits it once it is final. 202 `{status:"pending"}` until then; errors `tx_failed`, `not_a_topup` (422; also a tx booked as the platform's seed or a restock), `no_wallet` (409), `too_soon` (429), `paused`, `chain_unavailable`, `auth_unavailable`, `not_configured` (503). Minimum and caps: `payments.json` (see [payments.md](payments.md)) |

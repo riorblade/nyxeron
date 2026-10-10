@@ -116,7 +116,7 @@ func TestCoinPathsNeverTouchCredits(t *testing.T) {
 			return s.Restock(ctx, "boss", "tsla", 50, "restock", "test", "")
 		},
 		"night": func() error {
-			_, e := s.Night(ctx, "b", startWallet-1500, map[string]Holding{"tsla": {Qty: 1, Cost: 1000}}, 0, "")
+			_, e := s.Night(ctx, "b", startWallet-1500, map[string]Holding{"tsla": {Qty: 1, Cost: 1000}}, 0, "", time.Now())
 			return e
 		},
 		"gig": func() error { _, e := s.Gig(ctx, "b", 100, now); return e },

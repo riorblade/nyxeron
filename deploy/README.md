@@ -103,3 +103,19 @@ docker compose -f deploy/compose.yml logs -f relay
 
 `pnpm dev` (game) plus `pnpm dev:relay` and `pnpm dev:api` (Go; Vite proxies `/ws` and `/api` to them).
 Load test the relay: `cd services/relay && go run ./cmd/loadtest -url ws://127.0.0.1:8787/ws -rooms 10 -peers 30`.
+
+### Stock agent (Agentic Wallet)
+
+The agent and `baw` run in a one-off container (`agent` profile; never started by `up`). The wallet owner signs the
+server in once by scanning a QR in the Binance App; the session and the agent's swap record stay on the `agent_home`
+volume. `AGENT_KEY` comes from `deploy/.env`; the api is `https://api.$DOMAIN`.
+
+```sh
+C="docker compose -f deploy/compose.yml -f deploy/compose.backend.yml --profile agent"
+$C build agent
+$C run --rm --entrypoint baw agent auth signin          # QR/link → the owner scans it in the Binance App
+$C run --rm --entrypoint baw agent auth verify --qrCodeId <id>
+$C run --rm --entrypoint baw agent wallet address       # must be payments.json → agenticWallet
+$C run --rm agent --token tsla                          # quote only, no money moves
+$C run --rm agent --token tsla --buy                    # a real swap: only after the wallet owner's go
+```

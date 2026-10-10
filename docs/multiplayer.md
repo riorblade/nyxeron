@@ -83,7 +83,7 @@ room over (`replaced`).
   - **Host:** `hostOpen` → room code + invite link (`/?join=CODE`); applies `visitorJoin/visitorBuy/visitorLeave`
     by player id (`night.visitors`); broadcasts ≤ 4 snapshots/s.
   - **Guest:** `guestJoin(code)`; renders snapshots; buys are intents; on leaving, the night settles to the api
-    (`/api/nights`, with the room so a city party's tenant is paid).
+    (`/api/nights`, with the room code; play money, one settle per account per minute).
   - **DJ:** sends mix state 4×/s (~300 B: track, playhead, tempo, EQ/filter/sends, faders, crossfader, loop) plus
     one-shot moves (pads, brake, backspin). Everyone's own engine follows (`dj/mixsync.ts`): aim ~0.12 s ahead,
     seek only past 0.25 s drift.
