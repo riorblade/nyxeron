@@ -8,23 +8,64 @@ import { BSC } from "./rwa";
 /** USDC on BSC: what the agent pays with. */
 export const USDC = payments.topup.tokens.USDC;
 
-type Reply<T> =
-  | { success: true; data: T }
-  | { success: false; error: { name: string; message: string } };
+/** The wallet answered and said no: nothing was done (unlike a crash or unreadable output, where it may have). */
+export class BawRefused extends Error {}
+
+/**
+ * How long one `baw` call may take before it is killed (SIGTERM): a hung wallet call would hold the run lock for
+ * good. A swap killed this way keeps its record (its outcome is unknown): fail closed, a person checks.
+ */
+export const BAW_TIMEOUT_MS = 90_000;
+
+/**
+ * Reads `baw`'s answer. Anything but `{success: true, data}` or `{success: false, error}` is an error here, never
+ * a TypeError later: a malformed refusal (`{success: false}` without `error`) is still a refusal.
+ */
+export function readReply<T>(stdout: string, err: Error | null): T {
+  let reply: unknown;
+  try {
+    reply = JSON.parse(stdout);
+  } catch {
+    throw err ?? new Error(`baw: unreadable output: ${stdout}`);
+  }
+  if (!reply || typeof reply !== "object" || Array.isArray(reply))
+    throw new Error(`baw: unexpected answer: ${stdout}`);
+  const r = reply as {
+    success?: unknown;
+    data?: unknown;
+    error?: { name?: unknown; message?: unknown } | null;
+  };
+  if (r.success === true && r.data && typeof r.data === "object")
+    return r.data as T;
+  if (r.success === false) {
+    const e = r.error && typeof r.error === "object" ? r.error : {};
+    throw new BawRefused(
+      `${String(e.name ?? "Error")}: ${String(e.message ?? "the wallet refused without saying why")}`,
+    );
+  }
+  throw new Error(`baw: unexpected answer: ${stdout}`);
+}
 
 /** Runs `baw <args> --json`. A refusal comes back as JSON on a non-zero exit, so stdout is read either way. */
 function baw<T>(args: string[]): Promise<T> {
   return new Promise((resolve, reject) => {
-    execFile("baw", [...args, "--json"], (err, stdout) => {
-      let reply: Reply<T>;
-      try {
-        reply = JSON.parse(stdout) as Reply<T>;
-      } catch {
-        return reject(err ?? new Error(`baw: unreadable output: ${stdout}`));
-      }
-      if (reply.success) resolve(reply.data);
-      else reject(new Error(`${reply.error.name}: ${reply.error.message}`));
-    });
+    execFile(
+      "baw",
+      [...args, "--json"],
+      { timeout: BAW_TIMEOUT_MS },
+      (err, stdout) => {
+        // Nothing may throw inside this callback: an uncaught exception would skip the run's cleanup.
+        try {
+          if (err?.killed && err.signal)
+            throw new Error(
+              `baw ${args.slice(0, 2).join(" ")}: no answer within ${BAW_TIMEOUT_MS / 1000} s (killed)`,
+            );
+          resolve(readReply<T>(stdout, err));
+        } catch (e) {
+          reject(e as Error);
+        }
+      },
+    );
   });
 }
 
@@ -85,18 +126,19 @@ export async function order(orderId: string): Promise<Order | undefined> {
     "--orderId",
     orderId,
   ]);
-  return page.list.find((o) => o.orderId === orderId);
+  if (!Array.isArray(page.list))
+    throw new Error(`baw: order list for ${orderId} has no list`);
+  return page.list.find((o) => o?.orderId === orderId);
 }
 
 /**
- * Where a followed swap stands: "wait" (still pending), "done" with its tx, or "failed". A FINISHED order
- * without a tx hash can't be reported, so it counts as failed.
+ * Where a followed swap stands: "wait" (still pending), "done" with its tx, or "failed" (the wallet says FAILED:
+ * nothing spent). A FINISHED order without a tx hash yet is "wait": its USDC is spent, so its record must stay
+ * until the tx shows up and is reported.
  */
 export function outcome(o: Order | undefined) {
-  if (o?.status === "FINISHED")
-    return o.txHash
-      ? { state: "done" as const, tx: o.txHash }
-      : { state: "failed" as const };
+  if (o?.status === "FINISHED" && o.txHash)
+    return { state: "done" as const, tx: o.txHash };
   if (o?.status === "FAILED") return { state: "failed" as const };
-  return { state: "wait" as const }; // PENDING, or any status the wallet adds later: keep following
+  return { state: "wait" as const }; // PENDING, FINISHED without a tx yet, or any status the wallet adds later
 }

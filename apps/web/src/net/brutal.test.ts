@@ -169,9 +169,16 @@ describe("relay client under a hostile network", () => {
     FakeWS.all[0]!.say({ t: "joined", room: "ROOM01", id: 1 });
     FakeWS.all[1]!.say({ t: "joined", room: "ROOM01", id: 2 });
     await Promise.all([ja, jb]);
+    // Two different random draws for the two waits: with jitter they reconnect at different times, without it at
+    // the same one. (Unstubbed, two uniform waits could land on the same ms and fail the test now and then.)
+    const random = vi
+      .spyOn(Math, "random")
+      .mockReturnValueOnce(0.1)
+      .mockReturnValueOnce(0.9);
     FakeWS.all[0]!.drop();
     FakeWS.all[1]!.drop();
     await vi.advanceTimersByTimeAsync(600);
+    random.mockRestore();
     expect(FakeWS.all).toHaveLength(4);
     expect(FakeWS.all[3]!.at).not.toBe(FakeWS.all[2]!.at);
   });

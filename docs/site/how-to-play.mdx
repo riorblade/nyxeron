@@ -1,0 +1,67 @@
+---
+title: "How to play"
+description: "Roles, modes, currencies and the five venues you climb through."
+---
+
+## A day and a night
+
+Every in-game day has two halves.
+
+<Steps>
+  <Step title="Day · run the business">
+    As CEO you order stock from suppliers (Classic; in the City the platform holds the stock), set menu prices, hire staff, book a DJ or a band, promote the night, renew
+    permits and set the house rules (cover charge, dress code, happy hour).
+  </Step>
+  <Step title="Night · 22:00 to 04:00">
+    The club opens. The simulation runs minute by minute: guests arrive, dance, buy tokens, get rowdy; the DJ lifts
+    the room; inspectors may walk in. You react live — promote, open the door, call security.
+  </Step>
+  <Step title="Report · the books">
+    Sales, costs, tax and fines are settled, reputation moves, and the next day begins.
+  </Step>
+</Steps>
+
+The rules behind each step are written out as formulas in [The night loop](/engine/night-loop).
+
+## Roles
+
+| Role | Goal | Key decisions |
+| --- | --- | --- |
+| **CEO** | Grow from a token booth to the Premium Venue without going broke or getting shut down | Stock (Classic), prices, staff, talent, promotion, permits, house rules |
+| **Guest** | Have a night out and leave with a portfolio | Which club, which tokens, at what price |
+| **DJ** | Keep the room moving | Tracks, transitions, pads — live, heard by everyone in the club |
+
+## Two modes, two currencies
+
+<Tabs>
+  <Tab title="Classic · NYX Points">
+    The single-player club career, played with **NYX Points (NP)**, a play currency that is never real money. You
+    always start at Level 1 and climb level by level. AI-hosted events let you party solo.
+  </Tab>
+  <Tab title="City · Credits">
+    The shared city: CEOs rent venues, run shops and host parties for real players. A City CEO holds no stock: what the club or shop sells comes from the platform's warehouse. Everything is paid
+    in **Credits**, which are minted only from USDC/USDT topped up and verified on BNB Chain, and the stock sold is real
+    tokenized stock bought on-chain. See [Real-money economy](/economy/real-money).
+  </Tab>
+</Tabs>
+
+## The five venues
+
+| Level | Venue | Capacity |
+| --- | --- | --- |
+| 1 | Token Booth | 20 |
+| 2 | Token Shop | 40 |
+| 3 | Token Bar & Live Music | 90 |
+| 4 | Nightclub | 190 |
+| 5 | Premium Venue | 500 |
+
+<CardGroup cols={3}>
+  <Card title="Token Booth" img="/images/venue-1.webp" />
+  <Card title="Token Bar & Live Music" img="/images/venue-3.webp" />
+  <Card title="Premium Venue" img="/images/venue-5.webp" />
+</CardGroup>
+
+## What's on the menu
+
+Single stocks (Tesla, NVIDIA, SK Hynix, SpaceX) and baskets (US Broad Market, Big Tech, AI Semis, Dividend Blue
+Chips). A basket follows the weighted move of its legs — see [Market & pricing](/engine/market).

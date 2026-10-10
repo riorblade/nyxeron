@@ -1,0 +1,325 @@
+---
+title: "Crowd, DJ & security"
+description: "Crowd energy, hype, the DJ and band multipliers, tilt and fights, security escorts, inspections and permits, and how the 0–100 stats move."
+---
+
+The night is not only a till. A room has a mood, music has to fit the crowd, drunk guests start fights, and inspectors check the paperwork. **Why:** these systems turn running a club into a set of trade-offs (spend on a DJ, on security, on permits) instead of a pricing puzzle.
+
+All random draws come from the seeded deterministic generator described in [The night loop](/engine/night-loop), so the same seed replays the same fights and the same inspector.
+
+## The 0–100 stats
+
+Reputation, hype, safety, guest satisfaction and the crowd-energy target are all bounded with
+
+$$
+\operatorname{clamp}(v) = \min\big(100,\; \max(0,\; v)\big)
+$$
+
+| Stat | Starts at | Moved by | Bound |
+|---|---|---|---|
+| Reputation $R$ | 20 | night result, fights, shutdown, promo backfire | clamp at every change; $R \le 0$ is a defeat |
+| Hype $H$ | 0 | promos, DJ and band bookings, daily decay | clamp; decay floors at 0 |
+| Safety | 100 | fights, daily recovery | clamp; recovery caps at 100 |
+| Satisfaction (per guest) | 60 | every minute, see below | clamp at the end of each guest's minute |
+| Energy target $E^\ast$ | n/a | room, music, crowd moves | clamp |
+| Violations | 0 | failed inspections, forcing the door | not clamped; 3 is a defeat |
+
+## Hype
+
+Hype is a day-level stat: it fills the club tonight (it is the largest term in the head-count formula on [Guests & spending](/engine/guests)) and fades by 10 every day.
+
+$$
+H \leftarrow \operatorname{clamp}(H + \Delta H), \qquad
+\Delta H = \begin{cases}
+h_c & \text{promo on channel } c \\
+\operatorname{round}(0.3 \cdot \text{fanbase}) & \text{booking a DJ or a band} \\
+30 & \text{controversial promo}
+\end{cases}
+$$
+
+where $h_c$ is 4, 6, 10, 14 or 25 for Posters, X, Instagram, TikTok and Influencer and 0.3 is the DJ hype factor. Each promo costs one CEO energy point and can run once per day.
+
+The **controversial promo** buys +30 hype for 3000 coin, but backfires with probability 0.25: reputation $-20$ and an inspector is guaranteed tonight. It is refused while reputation is 20 or less, so a backfire alone can never end the game.
+
+## Crowd energy
+
+Crowd energy $E_t \in [0, 100]$ is the room's mood during the night. **Why:** a half-empty room with nobody dancing feels dead, and the player should feel the difference between a packed floor and a quiet bar.
+
+Energy starts at 30 and moves 10% of the way toward a target each minute:
+
+$$
+E_{t+1} = E_t + 0.1\,\big(E^\ast_t - E_t\big)
+$$
+
+Since $E_0 = 30$ and $E^\ast_t \in [0, 100]$, each step is a convex combination, so $E_t$ stays in $[0, 100]$ without a clamp. The target is
+
+$$
+E^\ast_t = \operatorname{clamp}\Big( 100\,\big(0.55\, D_t + 0.45\, \Phi_t\big) + 5\,(u_{\text{snd}} + u_{\text{lgt}}) + 15\, \beta^{\text{band}}_t + X_t \Big)
+$$
+
+$$
+\Phi_t = \min\!\Big(1,\; \frac{n_{\text{in}} + 6\, n_{\text{host}}}{0.95\, C}\Big), \qquad
+D_t = \min\!\Big(1,\; \frac{n_{\text{dance}} / n_{\text{in}}}{0.85}\Big)
+$$
+
+where
+
+- $\Phi_t$ is how full the room looks: guests inside $n_{\text{in}}$, each host counting as 6 guests, against 95% of capacity $C$.
+- $D_t$ is the dancing share, maxing out when 85% of guests dance ($D_t = 0$ in an empty room). Guests' states are those chosen in the previous minute.
+- $u_{\text{snd}}, u_{\text{lgt}} \in \lbrace 0, 1, 2, 3 \rbrace$ are the sound and lighting upgrade tiers (+5 energy each).
+- $\beta^{\text{band}}_t$ is the band's multiplier while a band plays, else 0.
+- $X_t$ is the sum of active crowd moves (below).
+
+**Crowd moves** are player actions with a duration and a cooldown. Each repeat is weaker: power $= \max(0.2,\; 1 - \text{fatigue} \cdot \text{uses})$. The DJ anthem instead uses power 1.2 if the DJ matched the crowd, 0.7 if not.
+
+| Move | Energy added to $E^\ast$ | Duration / cooldown (min) | Fatigue | Needs |
+|---|---|---|---|---|
+| MC hype | $25 \cdot$ power (and +0.15 · power satisfaction per minute) | 20 / 60 | 0.3 | an MC |
+| Hosts to the floor | $\min(40, 6\, n_{\text{host}}) \cdot \text{power} \cdot (1 - E_t/200)$ | 30 / 90 | 0.2 | a host |
+| DJ anthem | $35 \cdot$ power (and +10 · power satisfaction once, stay +45 · power min) | 20 / 360 | 1 | a DJ on the decks |
+| Sparkler parade | $15 \cdot$ power (and bottle sales to copycats) | 10 / 45 | 0.35 | booked tables, after minute 90 |
+
+### What energy does
+
+From Level 3 (the first venue with a dance floor), energy shapes every guest's minute:
+
+| Effect | Formula |
+| --- | --- |
+| Mood drift per minute | $0.05\,\frac{E_t - 50}{50} + 0.01\, u_{\text{lgt}}$ |
+| Dance chance multiplier | $\operatorname{lerp}(0.6, 1.4;\, E_t / 100)$ |
+| Bar chance multiplier | $\operatorname{lerp}(0.8, 1.25;\, E_t / 100)$ |
+| Early exit | if $E_t \lt 35$ and satisfaction $\lt 45$: leaves with probability 0.02 per minute |
+| Encore | at their leave minute, if $E_t \ge 75$: stays 25 more minutes with probability 0.5 (once, not past closing) |
+
+where $\operatorname{lerp}(a, b; x) = a + (b - a)\operatorname{clamp}_{[0,1]}(x)$.
+
+### Guest satisfaction per minute
+
+Putting the pieces together, a guest inside who does not leave this minute gets
+
+$$
+\text{sat}_{t+1} = \operatorname{clamp}\Big( \text{sat}_t + \underbrace{s^{\text{room}}_t + 0.05\,\kappa_t + 0.15\,\text{pow}_{\text{mc}}\,\mathbb{1}_{\text{mc}} + 0.01\, n_{\text{host}}\,\mathbb{1}_{\text{man}}}_{\text{ambient}} + 0.6\,\text{pnl}_t + a_t \Big)
+$$
+
+where $s^{\text{room}}_t$ is the energy drift above (0 below Level 3), $\kappa_t = \min(1, 60\, n_{\text{rel}} / n_{\text{in}})$ the Guest Relations coverage, $\text{pnl}_t$ the guest's paper profit on tokens, and $a_t$ the action term:
+
+$$
+a_t = \begin{cases}
++5 \;(+2 \text{ per round bought}) & \text{bought a token} \\
+-10 & \text{token out of stock} \\
+-1 & \text{waiting at a full bar} \\
+0.15 \cdot \max\big(m^{\text{DJ}}_t,\, m^{\text{band}}_t\big) \cdot (1 + 0.1\, u_{\text{snd}}) & \text{danced} \\
+-0.05 & \text{idle}
+\end{cases}
+$$
+
+At the end of the night, the average of this number over every admitted guest decides reputation (see [Reputation](#reputation-from-the-night)).
+
+## The DJ (rule R4)
+
+A DJ booking (one per night) brings hype now and lifts the dance floor later. It is usually made by day, but a DJ can still be booked after the doors open, as long as it is before minute 60 (23:00), when the set starts. At minute 60 (23:00) the DJ takes the decks and reads the room:
+
+$$
+m^{\text{DJ}} = \begin{cases}
+1 + 0.2 = 1.2 & g_{\text{DJ}} = \hat g \\
+1 - 0.15 = 0.85 & g_{\text{DJ}} \ne \hat g
+\end{cases}
+\qquad
+\hat g = \operatorname*{arg\,max}_{g} \#\lbrace \text{guests inside with genre } g \rbrace
+$$
+
+where $\hat g$ is the dominant genre (ties go to the genre seen first; if the club is empty it falls back to all of tonight's guests, then to the club's own genre). Before minute 60, and on nights without a DJ, $m^{\text{DJ}} = 0.5$: dancing to the house playlist is half as satisfying. The DJ's arrival also pumps the token market by 0.06 that minute.
+
+**Matching the genre.** The player cannot see the room before 23:00, but can forecast it. Since each guest likes the club genre with probability 0.4 and otherwise a uniform genre of their segment, the expected genre share is
+
+$$
+\Pr(\text{genre} = g) = 0.4\,\mathbb{1}_{g = g_{\text{club}}} + \sum_{s} 0.6 \cdot \frac{w_s}{\sum_j w_j} \cdot \frac{\mathbb{1}_{g \in G_s}}{\lvert G_s \rvert}
+$$
+
+where $w_s$ are tonight's segment weights (promos included) and $G_s$ the segment's genres. Promoting to the right segment is how a player steers the room toward the DJ they booked.
+
+| DJ | Genre | Fanbase | Hype on booking | Fee | Level |
+| --- | --- | --- | --- | --- | --- |
+| DJ Jax | rnb | 40 | 12 | 2500 | 4 |
+| DJ Mira | house | 45 | 14 | 3000 | 4 |
+| DJ Kalu | hiphop | 55 | 17 | 4000 | 4 |
+| DJ Nova | techno | 62 | 19 | 5000 | 4 |
+| DJ Rhea | edm | 70 | 21 | 6000 | 4 |
+| DJ Sable | edm | 80 | 24 | 9000 | 4 |
+| DJ Orion | techno | 92 | 28 | 20000 | 5 |
+| DJ Lux | house | 95 | 29 | 25000 | 5 |
+
+## Live bands
+
+A band is booked by day, one per night. Its set is fixed when the night opens, from whether a DJ is booked by then:
+
+$$
+\text{set} = \begin{cases}
+[0, 60) & \text{a DJ is booked: opening act, 22:00–23:00} \\
+[30, 180) & \text{no DJ: main act, 22:30–01:00}
+\end{cases}
+$$
+
+A DJ booked later in the night doesn't move the band: a paid act always plays its slot, and the two simply overlap.
+
+When the set starts, the band reads the room with the same R4 rule, giving $m^{\text{band}} \in \lbrace 1.2, 0.85 \rbrace$. While it plays, it adds $15\, m^{\text{band}}$ to the energy target and dancers use $\max(m^{\text{DJ}}, m^{\text{band}})$, so a band rescues the pre-DJ hour from the 0.5 playlist factor.
+
+| Band | Genre | Fanbase | Hype on booking | Fee | Level |
+|---|---|---|---|---|---|
+| Soul Avenue | rnb | 40 | 12 | 1500 | 3 |
+| Brasshouse | house | 45 | 14 | 1800 | 3 |
+| The Bassline Collective | hiphop | 50 | 15 | 2200 | 3 |
+| Iron Loop | techno | 55 | 17 | 3500 | 4 |
+| Neon Pulse Live | edm | 60 | 18 | 4000 | 4 |
+
+## Tilt and fights
+
+Tilt $\tau \ge 0$ is how wound-up a guest is. It has no upper bound. Each minute:
+
+$$
+\tau \leftarrow \max(0,\; \tau - 0.1) \;+\; 8\,\max(0, -\text{pnl}) \;+\; \text{fomo}_k \cdot \mathbb{1}_{\text{bought } k}
+$$
+
+where $\text{fomo}_k$ is 0 to 22 depending on the token, added once per purchase (a round bought for someone else adds none). A guest with $\tau \ge 80$ is **at risk** and may start a fight (rule R9). Each minute, an at-risk guest fights with probability
+
+$$
+p_{\text{fight}} = \begin{cases}
+0.003 & n_{\text{sec}} \cdot 40 \lt n_{\text{in}} \quad \text{(understaffed)} \\
+0.0002 & \text{otherwise}
+\end{cases}
+$$
+
+where $n_{\text{sec}}$ is the security staff on the books and $n_{\text{in}}$ the number inside at that moment. One guard per 40 guests cuts the fight rate fifteen-fold. A fight throws the guest out and costs
+
+$$
+\text{Safety} \leftarrow \operatorname{clamp}(\text{Safety} - 15), \qquad R \leftarrow \operatorname{clamp}(R - 5)
+$$
+
+### Security escorts
+
+Guards act on their own before trouble starts. Each minute, before the guests act, with $\epsilon_t$ escorts still in progress:
+
+$$
+\text{free}_t = \max(0,\; n_{\text{sec}} - \epsilon_t)
+$$
+
+The $\text{free}_t$ most tilted at-risk guests are walked out, and each escorting guard is busy for 6 minutes. At-risk guests beyond that wait, and roll for fights. The player can also send security to a specific at-risk guest from an alert.
+
+| Parameter | Value |
+| --- | --- |
+| Tilt decay | 0.1 / min |
+| Fight threshold | 80 |
+| Guests per guard | 40 |
+| Fight chance (understaffed / staffed) | 0.003 / 0.0002 per min |
+| Safety / reputation per fight | −15 / −5 |
+| Escort time | 6 min |
+| Security wage | 400 / day, from Level 3 |
+
+## Permits, inspections and violations
+
+A licensed club has to keep its permits current. **Why:** cutting corners on paperwork should be a gamble with real odds, not a free saving.
+
+A permit $j$ is active on day $d$ if it is valid and $d \lt \text{expires}_j$. Renewing an active permit extends it from its current expiry, so renewing early loses nothing.
+
+| Permit | Cost | Days | From level | Required at |
+|---|---|---|---|---|
+| Business permit | 1000 | 30 | 1 | all levels |
+| OTC trading licence | 5000 | 30 | 2 | Level 2 |
+| Trading-floor licence | 15000 | 30 | 3 | Levels 3–5 |
+| Crowd permit | 10000 | 7 | 4 | over 150 inside |
+
+### The inspection roll (R6)
+
+When the club opens, an inspector is scheduled with probability
+
+$$
+p_{\text{insp}} = \begin{cases}
+1 & \text{forced (controversial-promo backfire or a scenario event)} \\
+\max\big(p_0,\; 0.2\big) & \text{Safety} \lt 40 \\
+p_0 & \text{otherwise}
+\end{cases}
+\qquad
+p_0 = \begin{cases}
+0.4 & \text{a required permit is missing or expired} \\
+0.05 & \text{all in order}
+\end{cases}
+$$
+
+at a uniform minute in $\lbrace 0, \dots, 359 \rbrace$. Fights get reported: a club with low safety draws inspectors even with perfect paperwork.
+
+### The visit
+
+The inspection **passes** if no required permit is missing and no underage guest was admitted tonight (rule R8: underage guests get in when there is no security from Level 3 on). Otherwise:
+
+$$
+\text{coin} \leftarrow \text{coin} - 5000, \qquad \text{violations} \leftarrow \text{violations} + 1
+$$
+
+and if the on-premise licence is missing while the takeaway one is active (rule R16), the venue is **sealed** for 1 night: the next night has no guests.
+
+### Crowd permit (R7) and the door (R10)
+
+The first minute more than 150 guests are inside, the engine rolls once: without an active crowd permit, the club is **shut down** with probability 0.5. Everyone leaves, and at the report
+
+$$
+\text{coin} \leftarrow \text{coin} - \operatorname{round}\big(0.5\,(\text{bar} + \text{cover} + \text{table})\big), \qquad R \leftarrow \operatorname{clamp}(R - 10)
+$$
+
+Forcing the door open past capacity (R10) is an immediate violation, once per night.
+
+| Parameter | Value |
+| --- | --- |
+| Inspection chance, permits in order | 0.05 |
+| Inspection chance, permit missing | 0.4 |
+| Low-safety threshold / chance | 40 / 0.2 |
+| Fine | 5000 |
+| Crowd threshold / shutdown chance | 150 / 0.5 |
+| Shutdown revenue / reputation penalty | 50% / −10 |
+| Sealed nights (R16) | 1 |
+| Violations to lose | 3 |
+
+## Reputation from the night
+
+At the report, the average satisfaction $\bar S = \operatorname{round}\big(\frac{1}{\lvert A \rvert}\sum_{g \in A} \text{sat}_g\big)$ over all admitted guests $A$ sets the reputation change (rule R11):
+
+$$
+\Delta R = \begin{cases}
+\operatorname{round}\!\Big(3 + 5 \cdot \dfrac{\bar S - 70}{30}\Big) & \bar S \ge 70 \\
+0 & 40 \le \bar S \lt 70 \\
+-5 & \bar S \lt 40
+\end{cases}
+\qquad R \leftarrow \operatorname{clamp}(R + \Delta R)
+$$
+
+A good night is worth +3 to +8; a bad one costs 5. With no admitted guests, reputation does not change.
+
+| Parameter | Value |
+| --- | --- |
+| Good night | 70 |
+| Bad night | 40 |
+| Gain range | 3–8 |
+| Bad-night loss | 5 |
+
+<Accordion title="Worked example: one minute of a busy Nightclub">
+
+Level 4 (capacity 190), 150 guests inside, 60 of them dancing, 2 hosts, 3 guards, sound and lighting at tier 1, no band, no crowd move, energy $E_t = 40$.
+
+**Energy.**
+
+$$
+\Phi = \min\!\Big(1, \tfrac{150 + 12}{0.95 \times 190}\Big) = 0.898, \quad
+D = \min\!\Big(1, \tfrac{60/150}{0.85}\Big) = 0.471
+$$
+
+$$
+E^\ast = 100\,(0.55 \times 0.471 + 0.45 \times 0.898) + 10 = 76.3, \qquad
+E_{t+1} = 40 + 0.1\,(76.3 - 40) = 43.6
+$$
+
+The room is filling up, so energy climbs about 3.6 points this minute.
+
+**Fights.** 3 guards cover $3 \times 40 = 120$ guests, fewer than 150, so the club is understaffed: each at-risk guest fights with probability 0.003 per minute, about $1 - 0.997^{60} = 16.5\%$ over an hour. A fourth guard ($160 \ge 150$) drops that to $1 - 0.9998^{60} = 1.2\%$.
+
+**Reputation.** If the night ends with average satisfaction 82, $\Delta R = \operatorname{round}(3 + 5 \times 12/30) = 5$.
+
+</Accordion>

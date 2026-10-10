@@ -76,6 +76,8 @@ services:
       # BNB Smart Chain, read through two providers that must agree (services/api/bsc.go).
       BSC_RPC_1: ${BSC_RPC_1:-}
       BSC_RPC_2: ${BSC_RPC_2:-}
+      # 1 opens the city (rent, shops, parties in Credit). Empty: shut, players see "City · coming soon".
+      CITY_OPEN: ${CITY_OPEN:-}
       # Live rooms on the back office overview (the relay's internal /stats).
       RELAY_URL: http://relay:8787
       GOGC: "50"

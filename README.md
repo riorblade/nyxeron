@@ -87,17 +87,18 @@ Vite proxies `/api` and `/ws` to the local services, so no CORS setup is needed 
 
 ## Documentation
 
-| Doc                                          | For                                                |
-| -------------------------------------------- | -------------------------------------------------- |
-| [docs/PRD.md](docs/PRD.md)                   | Product: vision, users, features, economy, success |
-| [docs/architecture.md](docs/architecture.md) | System design, data flow, trust model              |
-| [docs/game-design.md](docs/game-design.md)   | Rules (R1–R19), levels, night simulation, balance  |
-| [docs/api.md](docs/api.md)                   | HTTP API: player, city, back office, agent         |
-| [docs/multiplayer.md](docs/multiplayer.md)   | Relay protocol and live session sync               |
-| [docs/roadmap.md](docs/roadmap.md)           | What's next                                        |
-| [docs/changelog.md](docs/changelog.md)       | What shipped, when, and the numbers behind it      |
-| [deploy/README.md](deploy/README.md)         | Running it on a VPS and Vercel                     |
-| [CONTRIBUTING.md](CONTRIBUTING.md)           | Workflow, conventions, definition of done          |
+| Doc                                          | For                                                                        |
+| -------------------------------------------- | -------------------------------------------------------------------------- |
+| [docs/PRD.md](docs/PRD.md)                   | Product: vision, users, features, economy, success                         |
+| [docs/architecture.md](docs/architecture.md) | System design, data flow, trust model                                      |
+| [docs/game-design.md](docs/game-design.md)   | Rules (R1–R19), levels, night simulation, balance                          |
+| [docs/api.md](docs/api.md)                   | HTTP API: player, city, back office, agent                                 |
+| [docs/multiplayer.md](docs/multiplayer.md)   | Relay protocol and live session sync                                       |
+| [docs/roadmap.md](docs/roadmap.md)           | What's next                                                                |
+| [docs/changelog.md](docs/changelog.md)       | What shipped, when, and the numbers behind it                              |
+| [docs/site/](docs/site)                      | Public docs (Mintlify): the game, the engine as formulas, on-chain economy |
+| [deploy/README.md](deploy/README.md)         | Running it on a VPS and Vercel                                             |
+| [CONTRIBUTING.md](CONTRIBUTING.md)           | Workflow, conventions, definition of done                                  |
 
 ## Tech
 
