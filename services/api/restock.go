@@ -225,30 +225,46 @@ func (s *store) VerifiedRestock(ctx context.Context, c *bsc, actor, token, tx, r
 	if limited && cents > game.payments.Agent.MaxUsdPerSwap*100 {
 		return out, errOverLimit
 	}
-	// The chain must hold what we count: warehouse + held + players' real units, this restock included.
-	for i := range buys {
-		balance, err := c.BalanceOf(ctx, game.payments.Tokens[buys[i].token].Contract, game.payments.AgenticWallet)
-		if err != nil {
-			return out, err
+	// The chain must hold what we count: warehouse + held + players' real units, this restock included. The
+	// balance is read before the write (no network call holds the database), so a report that finds units short
+	// reads the chain again and books once more: another report of the same token committing in between must not
+	// look like a loss (a false pause, or a write-off of units the wallet holds).
+	for attempt := 0; ; attempt++ {
+		for i := range buys {
+			balance, err := c.BalanceOf(ctx, game.payments.Tokens[buys[i].token].Contract, game.payments.AgenticWallet)
+			if err != nil {
+				return out, err
+			}
+			buys[i].onHand = unitsOf(balance)
 		}
-		buys[i].onHand = unitsOf(balance)
+		got, again, err := s.bookRestock(ctx, actor, token, reason, out, buys, cents, limited, attempt > 0, now)
+		if again {
+			continue
+		}
+		return got, err
 	}
+}
+
+// bookRestock writes one verified swap in one transaction (see VerifiedRestock). With final false, units found
+// short return again = true instead of being acted on, so the caller re-reads the chain first.
+func (s *store) bookRestock(ctx context.Context, actor, token, reason string, out Restocked, buys []buy, cents int64,
+	limited, final bool, now time.Time) (got Restocked, again bool, err error) {
 	t, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return out, err
+		return out, false, err
 	}
 	defer t.Rollback()
 	// Checked again inside the write: two reports of one tx at once count once.
 	if err := s.unused(ctx, t, out.Tx); err != nil {
-		return out, err
+		return out, false, err
 	}
 	if limited {
 		today, err := spentToday(t, now)
 		if err != nil {
-			return out, err
+			return out, false, err
 		}
 		if today+cents > game.payments.Agent.MaxUsdPerDay*100 {
-			return out, errOverLimit
+			return out, false, errOverLimit
 		}
 	}
 	if strings.TrimSpace(reason) == "" {
@@ -259,17 +275,20 @@ func (s *store) VerifiedRestock(ctx context.Context, c *bsc, actor, token, tx, r
 	for i, b := range buys {
 		units, err := carryFraction(t, b.token, b.shares, now)
 		if err != nil {
-			return out, err
+			return out, false, err
 		}
 		var counted int64
 		if err := t.QueryRow(`SELECT COALESCE((SELECT qty + reserved FROM platform_stock WHERE token = ?1), 0) +
 			COALESCE((SELECT SUM(qty) FROM backed_units WHERE token = ?1), 0)`, b.token).Scan(&counted); err != nil {
-			return out, err
+			return out, false, err
 		}
 		short := units - min(units, max(b.onHand-counted, 0)) // bought, but the chain doesn't back it
+		if short > 0 && !final {
+			return out, true, nil // read the chain again before calling it a loss (the deferred rollback undoes this try)
+		}
 		// A move even for 0 units: the trail shows the swap, and it is what makes the tx count once.
 		if err := moveStock(t, b.token, units, "restock", "", actor, reason, out.Tx); err != nil {
-			return out, err
+			return out, false, err
 		}
 		add := units
 		if short > 0 {
@@ -284,11 +303,11 @@ func (s *store) VerifiedRestock(ctx context.Context, c *bsc, actor, token, tx, r
 			} else {
 				why := fmt.Sprintf("lost on chain: %d units counted, %d held (%s)", counted+units, b.onHand, reason)
 				if err := moveStock(t, b.token, -short, "loss", "", actor, why, out.Tx); err != nil {
-					return out, err
+					return out, false, err
 				}
 				if err := audit(t, actor, "stock-loss", b.token, map[string]any{"units": short, "tx": out.Tx,
 					"counted": counted, "onChain": b.onHand, "bought": units}, why); err != nil {
-					return out, err
+					return out, false, err
 				}
 				add = units - short
 			}
@@ -307,17 +326,17 @@ func (s *store) VerifiedRestock(ctx context.Context, c *bsc, actor, token, tx, r
 	}
 	if len(problems) > 0 {
 		if err := pauseFor(t, problems, now); err != nil {
-			return out, err
+			return out, false, err
 		}
 		out.Paused = true
 	}
 	if err := platformLedger(t, -toCredits(cents), "restock", out.Tx, strings.Join(what, ", ")); err != nil {
-		return out, err
+		return out, false, err
 	}
 	if err := audit(t, actor, "stock-restock", token, detail, reason); err != nil {
-		return out, err
+		return out, false, err
 	}
-	return out, t.Commit()
+	return out, false, t.Commit()
 }
 
 type querier interface {

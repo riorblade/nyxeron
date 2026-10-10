@@ -629,3 +629,32 @@ func withHash(t *testing.T, receipt, tx string) string {
 	b, _ := json.Marshal(rc)
 	return string(b)
 }
+
+// Security review of #56: the wallet's balance is read before the write. If another report of the same token
+// commits in between, a stale balance makes a backed swap look short. The report reads the chain again before it
+// calls anything a loss: no false pause from the agent, no write-off of units the wallet holds from an admin.
+func TestStaleBalanceIsReadAgainBeforeALoss(t *testing.T) {
+	for _, actor := range []string{"agent", "kiel@x"} {
+		t.Run(actor, func(t *testing.T) {
+			s := testStore(t)
+			stockOf(t, s, "tsla", 10)
+			c, a, b := restockChain(t, swapReceipt(t, 300, bought, game.payments.AgenticWallet), usdcAt+20)
+			holdsTSLA(a, b, new(big.Int).Add(big.NewInt(10e15), bought)) // all 10 + the 8.09 bought: fully backed
+			stale := fmt.Sprintf("0x%064x", big.NewInt(10e15))           // an older read: before this swap landed
+			a.staleOnce, b.staleOnce = stale, stale
+			got, err := s.VerifiedRestock(ctx, c, actor, "tsla", usdcTx, "", time.Now())
+			if err != nil || got.Short != 0 || got.Units != 8 || got.Paused {
+				t.Fatalf("a backed swap read as short: %+v %v", got, err)
+			}
+			if why, _ := s.Paused(ctx); why != nil {
+				t.Fatalf("paused on a stale read: %v", why)
+			}
+			if n := count(t, s, `SELECT COUNT(*) FROM stock_moves WHERE kind = 'loss'`); n != 0 {
+				t.Fatalf("wrote off %d loss moves on a stale read", n)
+			}
+			if q, _ := onHand(t, s, "tsla"); q != 18 {
+				t.Fatalf("on hand %d, want 18", q)
+			}
+		})
+	}
+}
