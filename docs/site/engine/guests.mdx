@@ -130,7 +130,7 @@ where $\Delta H$ is the hype the promo actually added (after the 0–100 clamp),
 
 Each minute, guests whose arrival minute has come join the queue. The door then processes at most **3** queued guests, in arrival order:
 
-1. **Capacity.** If the number inside has reached $C = \operatorname{round}\big(\text{capacity}_L \cdot (1 + 0.15\, u_{\text{cap}})\big)$, the door closes for this minute, unless the player forced it open (a permit violation). Here $u_{\text{cap}} \in \lbrace 0, 1, 2, 3 \rbrace$ is the capacity upgrade tier.
+1. **Capacity.** If the number inside has reached $C = \operatorname{round}\big(\text{capacity}_L \cdot (1 + 0.15\, u_{\text{cap}})\big)$, the door closes for this minute, unless the player forced it open (a violation under R10). Here $u_{\text{cap}} \in \lbrace 0, 1, 2, 3 \rbrace$ is the capacity upgrade tier.
 2. **ID check.** An underage guest is turned away if the club has security, or if it is below Level 3 (the owner checks IDs at the counter). Otherwise the guest gets in, and an inspector who visits that night will find them.
 3. **Dress code.** Turned away with probability 0.1 / 0.25 (men) or 0.03 / 0.08 (women) under a smart / strict code.
 4. **Cover.** The guest pays $\min(c_g,\, b)$ and their budget drops by the same amount, where $c_g = 0$ for guest-list guests and for women on ladies' night, and $c_g = c$ otherwise.

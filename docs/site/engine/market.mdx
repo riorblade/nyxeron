@@ -124,7 +124,7 @@ $$
 | $\beta_t$ | bar boost from room energy and Guest Relations (see [Crowd](/engine/crowd)) |
 | $0.06$ | base bar chance per minute |
 | $\phi_{k,t}$ | FOMO factor of the token (below) |
-| $\tau_g$ | the guest's tilt = 150 |
+| $\tau_g$ | the guest's tilt; each point slows ordering by $1/150$, never below 20% of the base chance: $\max(0.2,\, 1 - \tau_g/150)$ |
 
 The order only goes through if the guest's budget covers $p_{k,t}$ and a serving slot is free. Pricing at the standard gives a ratio of 1. Pricing a third below it gives the full 1.5 boost. Pricing at double the standard halves the chance.
 

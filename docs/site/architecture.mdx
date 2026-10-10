@@ -92,11 +92,11 @@ stablecoins the platform holds, and stock units in the books by the tokenized st
 <Steps>
 <Step title="Day: prepare in the browser">
 The CEO orders stock, books staff and a DJ, runs promotion. Each action is a pure core function that returns a new
-state or a typed failure. Live stock prices come from `GET /api/quotes` (Binance RWA feed, cached for 60 seconds).
+state or a typed failure. Live stock prices come from `GET /api/quotes` (Binance RWA feed, cached briefly).
 </Step>
 <Step title="Open the club">
 `startNight` begins a 360-minute night at 22:00. If the CEO goes live, the browser opens a relay room and announces it
-to the api every 20 seconds, so it shows up in "Clubs open now".
+to the api every few seconds, so it shows up in "Clubs open now".
 </Step>
 <Step title="Night: the host simulates, everyone watches">
 `tickNight` advances one in-game minute every second (or two or three per second at 2× and 3×). After any change the
