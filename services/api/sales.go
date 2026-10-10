@@ -109,7 +109,15 @@ func setPrices(t *sql.Tx, table, key string, id int64, prices map[string]int64) 
 }
 
 func (s *store) prices(ctx context.Context, table, key string, id int64) (map[string]int64, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT token, price FROM `+table+` WHERE `+key+` = ?`, id)
+	return pricesOf(ctx, s.db, table, key, id)
+}
+
+// pricesOf reads a price list through q (the store, or a sale's own transaction: with one connection, a read
+// through the store inside a transaction would wait on itself).
+func pricesOf(ctx context.Context, q interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}, table, key string, id int64) (map[string]int64, error) {
+	rows, err := q.QueryContext(ctx, `SELECT token, price FROM `+table+` WHERE `+key+` = ?`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -147,20 +155,53 @@ func partyOf(q interface {
 	return p, err
 }
 
+// invited: whether a player may be at a party, the same right as joining it (events.go): a public party is
+// everyone's, a private one only its host's and the players who opened its invite link (an rsvp). Unknown → no.
+func invited(q interface {
+	QueryRow(string, ...any) *sql.Row
+}, pid int64, viewer string) (bool, error) {
+	var ok int
+	err := q.QueryRow(`SELECT private = 0 OR host_id = ?2 OR EXISTS (SELECT 1 FROM rsvps r WHERE r.party_id = p.id
+		AND r.user_id = ?2) FROM parties p WHERE id = ?1`, pid, viewer).Scan(&ok)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return ok == 1, err
+}
+
+// PartyPrices: a party's price list, for the players who may be at it (a private one's stays private).
+func (s *store) PartyPrices(ctx context.Context, viewer string, pid int64) (map[string]int64, error) {
+	if ok, err := invited(s.db, pid, viewer); err != nil {
+		return nil, err
+	} else if !ok {
+		return nil, errNotFound
+	}
+	return s.prices(ctx, "party_prices", "party_id", pid)
+}
+
+// sellerBanned: a banned player changes nothing (profile.go), so their shop and parties don't sell for them.
+func sellerBanned(t *sql.Tx, seller string) (bool, error) {
+	var b int
+	err := t.QueryRow(`SELECT banned FROM users WHERE id = ?`, seller).Scan(&b)
+	return b == 1, err
+}
+
 // SetPartyPrices: the host's price list for a city event, before it starts.
 func (s *store) SetPartyPrices(ctx context.Context, host string, pid int64, prices map[string]int64, quotes map[string]float64, now time.Time) error {
 	p, err := partyOf(s.db, pid)
 	if err != nil {
 		return err
 	}
-	if p.host != host || p.lease == 0 || p.cancelled {
+	if p.host != host || p.lease <= 0 || p.cancelled {
 		return errNotFound // only the host of a city event (practice clubs don't sell real stock)
 	}
 	if now.Unix() >= p.starts {
 		return errPriceLocked
 	}
 	var level int
-	if err := s.db.QueryRowContext(ctx, `SELECT level FROM leases WHERE id = ?`, p.lease).Scan(&level); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT level FROM leases WHERE id = ?`, p.lease).Scan(&level); errors.Is(err, sql.ErrNoRows) {
+		return errNotFound
+	} else if err != nil {
 		return err
 	}
 	if err := checkPrices(prices, level, quotes); err != nil {
@@ -232,30 +273,41 @@ func sellable(prices map[string]int64, token string, qty, maxPrice int64, quotes
 }
 
 // BuyAtParty: while a city event is on, a guest buys at the host's price. Credits are held and units reserved;
-// both settle when the party ends.
+// both settle when the party ends. A private party sells only to the players who may be at it. The party, the
+// guest's invite and the prices are read inside the sale's transaction, so a cancel can't slip in between.
 func (s *store) BuyAtParty(ctx context.Context, buyer string, pid int64, token string, qty, maxPrice int64, quotes map[string]float64, now time.Time) (Sale, error) {
 	sale := Sale{Token: token, Qty: qty, Status: "held"}
 	if err := s.unpaused(ctx); err != nil {
 		return sale, err
 	}
-	p, err := partyOf(s.db, pid)
-	if err != nil {
-		return sale, err
-	}
-	if p.lease == 0 || p.cancelled || now.Unix() < p.starts || now.Unix() >= p.ends {
-		return sale, errNotLive
-	}
-	if buyer == p.host {
-		return sale, errRejected
-	}
-	prices, err := s.prices(ctx, "party_prices", "party_id", pid)
-	if err != nil {
-		return sale, err
-	}
-	if sale.Price, sale.Wholesale, err = sellable(prices, token, qty, maxPrice, quotes); err != nil {
-		return sale, err
-	}
-	err = s.inTx(ctx, func(t *sql.Tx) error {
+	err := s.inTx(ctx, func(t *sql.Tx) error {
+		p, err := partyOf(t, pid)
+		if err != nil {
+			return err
+		}
+		if ok, err := invited(t, pid, buyer); err != nil {
+			return err
+		} else if !ok {
+			return errNotFound // as if it didn't exist, like the events list
+		}
+		if p.lease <= 0 || p.cancelled || now.Unix() < p.starts || now.Unix() >= p.ends {
+			return errNotLive
+		}
+		if buyer == p.host {
+			return errRejected
+		}
+		if banned, err := sellerBanned(t, p.host); err != nil {
+			return err
+		} else if banned {
+			return errNotLive
+		}
+		prices, err := pricesOf(ctx, t, "party_prices", "party_id", pid)
+		if err != nil {
+			return err
+		}
+		if sale.Price, sale.Wholesale, err = sellable(prices, token, qty, maxPrice, quotes); err != nil {
+			return err
+		}
 		if err := creditLedger(t, buyer, -sale.Price*qty, "hold", "", fmt.Sprintf("party %d: %d %s", pid, qty, token)); err != nil {
 			return err // not enough credits
 		}
@@ -279,26 +331,33 @@ func (s *store) BuyAtShop(ctx context.Context, buyer string, lease int64, token 
 	if err := s.unpaused(ctx); err != nil {
 		return sale, err
 	}
-	var owner string
-	var open int
-	err := s.db.QueryRowContext(ctx, `SELECT user_id, open FROM leases WHERE id = ? AND ends_at > ?`, lease, now.Unix()).Scan(&owner, &open)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && open == 0) {
-		return sale, errNotFound
-	}
-	if err != nil {
-		return sale, err
-	}
-	if buyer == owner {
-		return sale, errRejected
-	}
-	prices, err := s.prices(ctx, "shop_prices", "lease_id", lease)
-	if err != nil {
-		return sale, err
-	}
-	if sale.Price, sale.Wholesale, err = sellable(prices, token, qty, maxPrice, quotes); err != nil {
-		return sale, err
-	}
-	err = s.inTx(ctx, func(t *sql.Tx) error {
+	// The lease (its tenant, open, not ended) and the prices are read inside the sale's transaction: a buy racing an
+	// eviction or a close can't settle after it, paying the margin to a tenant who no longer runs the shop.
+	err := s.inTx(ctx, func(t *sql.Tx) error {
+		var owner string
+		var open int
+		err := t.QueryRow(`SELECT user_id, open FROM leases WHERE id = ? AND ends_at > ?`, lease, now.Unix()).Scan(&owner, &open)
+		if errors.Is(err, sql.ErrNoRows) || (err == nil && open == 0) {
+			return errNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if buyer == owner {
+			return errRejected
+		}
+		if banned, err := sellerBanned(t, owner); err != nil {
+			return err
+		} else if banned {
+			return errNotFound // shut, as if closed
+		}
+		prices, err := pricesOf(ctx, t, "shop_prices", "lease_id", lease)
+		if err != nil {
+			return err
+		}
+		if sale.Price, sale.Wholesale, err = sellable(prices, token, qty, maxPrice, quotes); err != nil {
+			return err
+		}
 		if err := creditLedger(t, buyer, -sale.Price*qty, "sale", "", fmt.Sprintf("shop %d: %d %s", lease, qty, token)); err != nil {
 			return err
 		}
@@ -362,35 +421,37 @@ func settle(t *sql.Tx, id int64, now time.Time) error {
 // settle is logged and retried next time; it never holds up the others.
 func (s *store) SettleParties(ctx context.Context, now time.Time) (settled int, err error) {
 	grace := int64(game.city.Party.SettleGraceMinutes) * 60
-	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT s.party_id, p.cancelled FROM sales s JOIN parties p ON p.id = s.party_id
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT s.party_id FROM sales s JOIN parties p ON p.id = s.party_id
 		WHERE s.status = 'held' AND s.party_id > 0 AND (p.cancelled = 1 OR p.starts_at + p.minutes * 60 + ? <= ?)
 		ORDER BY s.party_id`, grace, now.Unix())
 	if err != nil {
 		return 0, err
 	}
-	type due struct {
-		pid       int64
-		cancelled bool
-	}
-	var parties []due
+	var parties []int64
 	for rows.Next() {
-		var d due
-		if err := rows.Scan(&d.pid, &d.cancelled); err != nil {
+		var pid int64
+		if err := rows.Scan(&pid); err != nil {
 			rows.Close()
 			return 0, err
 		}
-		parties = append(parties, d)
+		parties = append(parties, pid)
 	}
 	rows.Close()
 	var errs []error
-	for _, d := range parties {
+	for _, pid := range parties {
 		err := s.inTx(ctx, func(t *sql.Tx) error {
-			ids, err := heldSales(t, d.pid)
+			// Settle or void on the party as it is now, inside this transaction: an admin cancel that committed
+			// since the scan above voids its sales.
+			p, err := partyOf(t, pid)
+			if err != nil {
+				return err
+			}
+			ids, err := heldSales(t, pid)
 			if err != nil {
 				return err
 			}
 			for _, id := range ids {
-				if d.cancelled {
+				if p.cancelled {
 					err = voidHeld(t, id, "system", "party cancelled")
 				} else {
 					err = settle(t, id, now)
@@ -399,13 +460,13 @@ func (s *store) SettleParties(ctx context.Context, now time.Time) (settled int, 
 					return err
 				}
 			}
-			if !d.cancelled {
+			if !p.cancelled {
 				settled += len(ids)
 			}
 			return nil
 		})
 		if err != nil {
-			errs = append(errs, fmt.Errorf("party %d: %w", d.pid, err))
+			errs = append(errs, fmt.Errorf("party %d: %w", pid, err))
 		}
 	}
 	return settled, errors.Join(errs...)
@@ -524,9 +585,9 @@ func (pl *players) routeSales(mux *http.ServeMux) {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "not_configured"})
 			return
 		}
-		prices, err := pl.db.prices(r.Context(), "party_prices", "party_id", id(r, "id"))
+		prices, err := pl.db.PartyPrices(r.Context(), pl.viewer(r), id(r, "id"))
 		if err != nil {
-			fail(w, err)
+			salesError(w, err)
 			return
 		}
 		wholesale := map[string]int64{}

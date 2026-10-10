@@ -76,10 +76,12 @@ buys nothing when the api's `paused`/spend fields are missing (`apps/agent/READM
 
 1. **Before the party**, the CEO sets a price per token for it (≤ 3× wholesale). Prices are locked for the party.
 2. **During the party**, a guest's purchase is a server call (`POST /api/events/{id}/buy {token, qty}`), not just a
-   message to the host's browser. In one transaction: check the guest's credits and the warehouse; **hold** the
+   message to the host's browser. In one transaction: check the party (live, not cancelled; a private one only for
+   its invited guests; its host not banned), the guest's credits and the warehouse; **hold** the
    credits; **reserve** the units; record the sale (`pending`) with the CEO's price and the wholesale price at that
    moment. The host's game shows the sale as it does now (the sim is the show; the server is the money).
 3. **When the party ends** (end time + `settleGraceMinutes`), one settlement job, per party, in one transaction:
+   a party cancelled by then (read inside that transaction) has its sales voided instead; otherwise
    held credits are captured, reserved units move to the guest's real units, the wholesale amount goes to the
    platform, the margin goes to the CEO's credits, every line in the ledger and the audit log.
 4. A sale can be voided by an admin before settlement (credits released, units unreserved). A host who disconnects
@@ -88,7 +90,8 @@ buys nothing when the api's `paused`/spend fields are missing (`apps/agent/READM
 ### 5. City shops (dropship, settled at once)
 
 A shop open while the tenant is away has no "end": each purchase settles immediately with the same rules (credits
-from guest, units from the warehouse, wholesale to the platform, margin to the tenant).
+from guest, units from the warehouse, wholesale to the platform, margin to the tenant). The shop's lease (its tenant,
+open, not ended) is checked inside that same transaction; a banned tenant's shop sells nothing.
 
 ## Zero trust (unchanged from the proposal, plus)
 
@@ -96,6 +99,14 @@ from guest, units from the warehouse, wholesale to the platform, margin to the t
   log from the locked USDC/USDT contract; recipient = Agentic Wallet; sender = the player's stored wallet; amount
   from the log ≥ $3 and within the player's caps (credited up to the room left; what isn't credited is recorded as
   `rejected`, or in the row's reason, for the back office to refund); two RPCs agree.
+- Top-up reports can't burn the shared paid RPC quota: one report per player per 2 s (`429 too_soon`); at most
+  20 *misses* per player per 10 minutes, then `429 too_many_misses` until they age out, while the scanner still
+  credits a real transfer. A miss is any report whose receipt the RPCs couldn't show to hold a USDC/USDT transfer
+  from the player's wallet to the Agentic Wallet: no transaction yet, a failed one, someone else's (final or still
+  confirming), and any RPC error (oversized receipt, mismatch, provider down). A settled refusal (`tx_failed`,
+  `not_a_topup`) is answered again for 10 minutes without RPC calls. The player's own transfer still confirming
+  (`202`) is never a miss: it is in the receipt from its first block. Stale limiter entries are swept every 10
+  minutes. Constants in `services/api/topups.go`.
 - Before restock units: as above for the bStock transfer into the Agentic Wallet; USDC spent ≤ the agent's limits.
 - Before a sale: credits and warehouse checked and held in the same transaction; prices from the server, never from
   the browser.
