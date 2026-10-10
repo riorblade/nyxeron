@@ -24,6 +24,7 @@ export const eventText = (e: GameEvent) => en.event(e, names);
 export const isAlert = (e: GameEvent) =>
   [
     "outOfStock",
+    "stockTrimmed",
     "fight",
     "inspection",
     "crowdShutdown",

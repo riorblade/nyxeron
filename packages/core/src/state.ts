@@ -1,13 +1,17 @@
 import type { Visitor } from "./rules/visitor";
 import {
   tokens,
+  defaultPrice,
+  maxPrice,
   economy,
   ids,
+  isId,
   levels,
   permits,
   priceScale,
   requiredPermits,
   staffRoles,
+  strategy,
   type BandId,
   type ChannelId,
   type DressCode,
@@ -90,6 +94,8 @@ export type GameEvent =
   | Ev<"controversialPromo", { hype: number; backfired: boolean }>
   | Ev<"permitRenewed", { permit: PermitId; expiresDay: number }>
   | Ev<"levelUp", { level: Level }>
+  /** Moving up: stock (shelves + orders on the way) that didn't fit the new venue's stock room stayed behind. */
+  | Ev<"stockTrimmed", { drink: TokenId; qty: number }>
   | Ev<"djStarted", { dj: TalentId; crowdGenre: Genre; match: boolean }>
   | Ev<"bandBooked", { band: BandId; hype: number }>
   | Ev<"bandStarted", { band: BandId; crowdGenre: Genre; match: boolean }>
@@ -423,6 +429,43 @@ export function compactForSave(s: GameState): GameState {
   };
 }
 
+/** List prices a save can hold: a positive integer up to the venue's ceiling (an old save may carry null/huge ones). */
+function repairPrices(s: GameState): GameState["prices"] {
+  const ok = (d: TokenId) => {
+    const p = s.prices?.[d];
+    return Number.isInteger(p) && p > 0 && p <= maxPrice(d, s.level);
+  };
+  if (ids(tokens).every(ok)) return s.prices;
+  return fill(ids(tokens), (d) =>
+    ok(d)
+      ? s.prices[d]
+      : Number.isFinite(s.prices?.[d]) && s.prices[d] > 0
+        ? Math.max(1, Math.min(maxPrice(d, s.level), Math.round(s.prices[d])))
+        : defaultPrice(d, s.level),
+  );
+}
+
+/** House rules a save can hold: an old save with an unknown dress code / slot would crash every night after. */
+function repairPolicy(p: Partial<HousePolicy> | undefined): HousePolicy {
+  const d = DEFAULT_POLICY;
+  return {
+    ladiesNight:
+      typeof p?.ladiesNight === "boolean" ? p.ladiesNight : d.ladiesNight,
+    dressCode: isId(strategy.dressCode, p?.dressCode)
+      ? p.dressCode
+      : d.dressCode,
+    cover:
+      p?.cover === null ||
+      (Number.isInteger(p?.cover) && (p?.cover as number) >= 0)
+        ? (p?.cover ?? null)
+        : d.cover,
+    happyHour:
+      p?.happyHour === "off" || isId(strategy.happyHour, p?.happyHour)
+        ? p!.happyHour!
+        : d.happyHour,
+  };
+}
+
 export function migrateState(s: GameState): GameState {
   const staff = { ...fill(ids(staffRoles), () => 0), ...s.staff };
   const n = s.night;
@@ -431,7 +474,8 @@ export function migrateState(s: GameState): GameState {
     // The old player sandbox is gone (venue access comes from the back office): its saves play on as careers.
     mode: (s.mode as string) === "sandbox" ? "career" : s.mode,
     staff,
-    policy: { ...DEFAULT_POLICY, ...s.policy },
+    prices: repairPrices(s),
+    policy: repairPolicy(s.policy),
     promoters: s.promoters ?? [],
     bookedBand: s.bookedBand ?? null,
     minSpend: s.minSpend ?? {},

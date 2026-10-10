@@ -19,3 +19,7 @@ apps/web/assets-src/
 
 # The stock agent's record of an outstanding swap (apps/agent/src/state.ts)
 apps/agent/agent-state.json
+
+# Go build output (`go build` inside services/*)
+services/api/api
+services/relay/relay

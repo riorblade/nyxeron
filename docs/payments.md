@@ -72,6 +72,18 @@ record (both at `AGENT_STATE`, required for `--buy`/`--report`), retries reports
 `agent.maxPriceUnderSpotPercent` below the api's spot price, re-reads the daily spend just before the swap, and
 buys nothing when the api's `paused`/spend fields are missing (`apps/agent/README.md`).
 
+Every verified swap is booked exactly once, as a restock or as the team's seed, never both: the USDC/USDT it paid
+always goes on the books as platform money out (otherwise the next reconciliation would pause payments). Whole units
+go to the warehouse; fractions of a unit are carried per token and booked once they add up to a whole unit (until
+then they sit in the wallet as surplus). When units are already missing on chain (the wallet holds fewer than the
+books count), the spend is still booked but the loss is never absorbed silently: the agent's report adds what it
+bought and **pauses payments** at once (`paused`, `short` in the answer), so every reconciliation keeps flagging the
+missing units until the team writes them off (stock adjust, with a reason); an admin's report of the swap writes them
+off itself, as an explicit `loss` stock move with its reason, audited. A swap that bought several whitelisted bStocks
+adds all of them in one report. The seed only ever comes in: a tx in which the Agentic Wallet sent anything out
+(stablecoin or bStock) is refused as a seed (`not_a_seed`), and so is any transfer a player sent, credited or
+rejected.
+
 ### 4. Party sales (dropship, settled at the end)
 
 1. **Before the party**, the CEO sets a price per token for it (≤ 3× wholesale). Prices are locked for the party.
@@ -107,7 +119,9 @@ open, not ended) is checked inside that same transaction; a banned tenant's shop
   `not_a_topup`) is answered again for 10 minutes without RPC calls. The player's own transfer still confirming
   (`202`) is never a miss: it is in the receipt from its first block. Stale limiter entries are swept every 10
   minutes. Constants in `services/api/topups.go`.
-- Before restock units: as above for the bStock transfer into the Agentic Wallet; USDC spent ≤ the agent's limits.
+- Before restock units: as above for the bStock transfer into the Agentic Wallet; USDC spent ≤ the agent's limits;
+  units the wallet's balance doesn't back are written off (admin) or pause payments (agent); the tx not already
+  booked as a restock or a seed.
 - Before a sale: credits and warehouse checked and held in the same transaction; prices from the server, never from
   the browser.
 - Always: every credit change goes through the ledger in the same transaction as its cause; secrets and addresses

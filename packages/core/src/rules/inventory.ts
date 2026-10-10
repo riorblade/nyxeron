@@ -1,5 +1,7 @@
 import {
   tokens,
+  isId,
+  maxPrice,
   priceScale,
   type Level,
   economy,
@@ -36,6 +38,9 @@ export function r01_orderStock(
   qty: number,
   supplier: SupplierId,
 ): ActionResult {
+  if (s.outcome) return fail("wrongPhase"); // the game is over: the books are closed
+  if (!isId(tokens, drink) || !isId(suppliers, supplier))
+    return fail("invalidTarget");
   if (!Number.isInteger(qty) || qty <= 0) return fail("invalidQty");
   if (
     s.level < tokens[drink].minLevel ||
@@ -120,6 +125,12 @@ export function setPrice(
   drink: TokenId,
   price: number,
 ): ActionResult {
-  if (!Number.isInteger(price) || price <= 0) return fail("invalidPrice");
+  if (!isId(tokens, drink)) return fail("invalidTarget");
+  if (
+    !Number.isInteger(price) ||
+    price <= 0 ||
+    price > maxPrice(drink, s.level)
+  )
+    return fail("invalidPrice");
   return { ok: true, state: { ...s, prices: { ...s.prices, [drink]: price } } };
 }

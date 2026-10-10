@@ -114,7 +114,7 @@ Every change requires `reason` (except announcement/admin role changes) and is w
 | POST | `/api/admin/sales/{id}/void` | `{reason}` (a held party sale: credits back, units released) | admin |
 | GET | `/api/admin/payments` | — (paused?, reconciliation history, top-ups incl. unknown senders, sales) | viewer |
 | POST | `/api/admin/reconcile` | `{reason}` (check now against BSC; a match resumes paused payments) | admin |
-| POST | `/api/admin/seed` | `{tx, reason}` (book USDC/USDT the team sent to the Agentic Wallet as the platform's own money; read on BSC, once) | admin |
+| POST | `/api/admin/seed` | `{tx, reason}` (book USDC/USDT the team sent to the Agentic Wallet as the platform's own money; read on BSC, once; 409 `credited_to_a_player` for a player's transfer, credited or rejected; 422 `not_a_seed` if the wallet sent anything out in the tx) | admin |
 | GET | `/api/admin/audit?target&before&limit` | — | viewer |
 | GET/PUT | `/api/admin/announcement` | `{text, active}` | viewer / admin |
 | GET/PUT | `/api/admin/admins` | `{email, role}` (`""` removes) | owner |
@@ -126,7 +126,7 @@ For the platform's restocking agent (e.g. built with BNB Agent Studio). Secret: 
 | Method | Path | Body | Notes |
 | --- | --- | --- | --- |
 | GET | `/api/agent/demand` | — | per token: on hand, reserved, with CEOs, sold 24h/7d, shops, days left, suggested restock; last 100 movements |
-| POST | `/api/agent/restock` | `{token, tx, note?}` | the api reads the swap on BSC (two RPCs, 15 confirmations) and adds the units of whitelisted bStock the Agentic Wallet received; the tx counts once; USDC paid within the agent's limits (`payments.json`); 202 `pending` until final; audited as `agent` |
+| POST | `/api/agent/restock` | `{token, tx, note?}` | the api reads the swap on BSC (two RPCs, 15 confirmations), books the USDC paid as platform money out and adds the whole units of whitelisted bStock the Agentic Wallet received (fractions carried per token until they make a unit; `short` = units bought that the balance doesn't back: the agent's report adds them and pauses payments, `paused: true`, until the team writes them off; an admin's report writes them off as a `loss` move; other whitelisted bStocks in the same tx: `others`); the tx counts once (and never also as a seed); USDC paid within the agent's limits (`payments.json`); 202 `pending` until final; audited as `agent` |
 
 Example:
 

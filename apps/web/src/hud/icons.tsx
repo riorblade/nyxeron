@@ -67,6 +67,7 @@ const eventIcons: Record<GameEvent["kind"], LucideIcon> = {
   controversialPromo: Flame,
   permitRenewed: FileCheck,
   levelUp: Crown,
+  stockTrimmed: Package,
   djStarted: PartyPopper,
   bandBooked: Music2,
   bandStarted: Music2,
