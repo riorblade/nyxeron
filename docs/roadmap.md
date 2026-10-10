@@ -19,8 +19,8 @@ Ordered by priority. Each item ends with passing tests and a short demo.
 
 ## Later: on-chain stock
 
-- [ ] Stock agent (BNB Agent Studio): reads `/api/agent/demand`, buys tokenized stock with the platform's agentic
-      wallet on BNB Chain, reports each purchase to `/api/agent/restock`.
+- [x] Stock agent (`apps/agent`, Binance Agentic Wallet): reads `/api/agent/demand`, buys tokenized stock on BNB
+      Chain on a 10-minute schedule, reports each purchase to `/api/agent/restock` (live since 2026-10-10).
 - [ ] Players' tokens settled on-chain (custody model and redemption to be decided), never from client-reported
       results.
 - [ ] Contracts (Foundry + OpenZeppelin) where the model needs them; testnet first.
