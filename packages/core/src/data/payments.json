@@ -25,6 +25,7 @@
     "maxUsdPerSwap": 50,
     "maxUsdPerDay": 500,
     "maxPriceOverSpotPercent": 5,
+    "maxPriceUnderSpotPercent": 20,
     "spotMaxAgeMinutes": 10
   },
   "tokens": {

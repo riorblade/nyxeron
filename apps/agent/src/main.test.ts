@@ -1,6 +1,12 @@
 // main.ts end to end with the wallet CLI (./baw) and Binance's list (./rwa) mocked, the api's fetch stubbed and
 // fake timers: nothing is signed, broadcast or sent to a real network.
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -12,6 +18,8 @@ let orderStatus: "PENDING" | "FINISHED" | "FAILED" = "FINISHED";
 /** What the wallet quotes for the budget: 50 USDC → 0.125 TSLAB, $400 a share, the reference below. */
 let received = "0.125";
 let swapFails: Error | undefined;
+/** The tx hash a FINISHED order carries (the wallet may report FINISHED before it has one). */
+let finishedTx: string | null = TX;
 
 vi.mock("./baw", async (orig) => {
   const real = await orig<typeof import("./baw")>();
@@ -32,7 +40,7 @@ vi.mock("./baw", async (orig) => {
     order: vi.fn(async (id: string) => ({
       orderId: id,
       status: orderStatus,
-      txHash: orderStatus === "FINISHED" ? TX : null,
+      txHash: orderStatus === "FINISHED" ? finishedTx : null,
     })),
   };
 });
@@ -43,6 +51,7 @@ vi.mock("./rwa", () => ({
 }));
 
 type Api = {
+  /** The demand body, or a function called on every GET (to change between calls within one run). */
   demand: unknown;
   quotes?: () => unknown;
   restock: () => Response;
@@ -72,6 +81,7 @@ beforeEach(() => {
   orderStatus = "FINISHED";
   received = "0.125";
   swapFails = undefined;
+  finishedTx = TX;
   vi.useFakeTimers();
   dir = mkdtempSync(join(tmpdir(), "agent-test-"));
   process.env.AGENT_STATE = join(dir, "agent-state.json");
@@ -83,7 +93,14 @@ beforeEach(() => {
     vi.fn(async (url: string, init?: RequestInit) => {
       calls.push(url);
       if (url.endsWith("/api/agent/demand"))
-        return new Response(JSON.stringify(api.demand), { status: 200 });
+        return new Response(
+          JSON.stringify(
+            typeof api.demand === "function"
+              ? (api.demand as () => unknown)()
+              : api.demand,
+          ),
+          { status: 200 },
+        );
       if (url.endsWith("/api/quotes"))
         return new Response(
           JSON.stringify(api.quotes ? api.quotes() : quotes(400)),
@@ -422,4 +439,123 @@ test("NYXERON_API must be https unless it is this machine", async () => {
     process.env.NYXERON_API = url;
     expect((await run("--token", "tsla")).code).toBe(0);
   }
+});
+
+// Review of #58, item 1: FINISHED means the USDC is spent; without a tx hash yet it is not a failure.
+test("a FINISHED order without a tx hash keeps its record: no second swap, the next run reports it", async () => {
+  api = { demand: demand(), restock: restocked };
+  finishedTx = null;
+  const a = await run();
+  expect(a.code).toBe(1);
+  expect(a.err).toMatch(/still pending/);
+  expect(state()).toMatchObject({ orderId: "o1" });
+  const b = await run();
+  expect(b.code).toBe(1);
+  expect(swaps.length).toBe(1);
+  finishedTx = TX;
+  api.demand = demand({ agentSpentTodayCents: 5000 });
+  const c = await run();
+  expect(c.err).toBe("");
+  expect(restockTx[0]).toBe(TX);
+});
+
+// Item 2: one --buy/--report run at a time, for the whole run; a lock left behind is reported, never taken over.
+test("a run lock held by another run stops --buy and --report; a finished run leaves no lock", async () => {
+  api = { demand: demand(), restock: restocked };
+  const lock = `${process.env.AGENT_STATE!}.lock`;
+  writeFileSync(
+    lock,
+    JSON.stringify({ pid: 999_999, at: Date.now() - 2 * 3600_000 }),
+  );
+  const a = await run();
+  expect(a.code).toBe(1);
+  expect(a.err).toMatch(/lock/);
+  expect(a.err).toMatch(/999999/);
+  const b = await run("--token", "tsla", "--report", TX);
+  expect(b.code).toBe(1);
+  expect(b.err).toMatch(/lock/);
+  expect(swaps.length).toBe(0);
+  expect(restockCalls).toBe(0);
+  expect(existsSync(lock)).toBe(true); // reported, not stolen
+  rmSync(lock);
+  const c = await run();
+  expect(c.err).toBe("");
+  expect(swaps.length).toBe(1);
+  expect(existsSync(lock)).toBe(false);
+  orderStatus = "PENDING";
+  await run(); // an error exit releases it too
+  expect(existsSync(lock)).toBe(false);
+});
+
+// Item 3: the daily spend is checked again after the slot is taken, so a run that started earlier can't buy over it.
+test("the spend is fetched again after the record is claimed: over the cap by then, nothing is bought", async () => {
+  let n = 0;
+  api = {
+    demand: () => demand({ agentSpentTodayCents: n++ === 0 ? 0 : 45_001 }),
+    restock: restocked,
+  };
+  const a = await run();
+  expect(a.code).toBe(1);
+  expect(a.err).toMatch(/daily limit/);
+  expect(n).toBe(2);
+  expect(swaps.length).toBe(0);
+  expect(() => state()).toThrow(/ENOENT/); // nothing went out: the slot is freed
+});
+
+// Item 4: only the api's own answer for this tx counts as a recorded restock.
+test("a 200 that isn't the api's answer for this tx (a proxy page, another tx, no units) keeps the record", async () => {
+  for (const body of [
+    "<html>maintenance</html>",
+    JSON.stringify({ token: "tsla", units: 125, tx: "0x" + "cd".repeat(32) }),
+    JSON.stringify({ token: "tsla", units: "125", tx: TX }),
+    JSON.stringify({ token: "tsla", units: null, tx: TX }),
+  ]) {
+    api = {
+      demand: demand(),
+      restock: () => new Response(body, { status: 200 }),
+    };
+    const r = await run();
+    expect(r.code).toBe(1);
+    expect(state()).toMatchObject({ tx: TX });
+    rmSync(process.env.AGENT_STATE!);
+  }
+  // The api's tx in another case is still this tx.
+  api.restock = () =>
+    new Response(
+      JSON.stringify({
+        token: "tsla",
+        units: 125,
+        tx: TX.toUpperCase().replace("0X", "0x"),
+      }),
+      { status: 200 },
+    );
+  expect((await run()).err).toBe("");
+  expect(() => state()).toThrow(/ENOENT/);
+});
+
+// Item 5: a spot price dated in the future is not "fresh".
+test("a spot price from the future (clock skew) is refused; a minute ahead is fine", async () => {
+  api = { demand: demand(), restock: restocked };
+  api.quotes = () => quotes(400, Date.now() + 10 * 60_000);
+  const a = await run();
+  expect(a.code).toBe(1);
+  expect(a.err).toMatch(/reference/);
+  expect(swaps.length).toBe(0);
+  api.quotes = () => quotes(400, Date.now() + 30_000);
+  expect((await run()).code).toBe(0);
+});
+
+// Item 6: a quote far below spot (or for an absurd amount) is as suspect as one far above.
+test("a quote far below the spot price, or for a non-finite or huge amount, is refused", async () => {
+  api = { demand: demand(), restock: restocked };
+  for (const r of ["0.2", "Infinity", "1e30", "NaN"]) {
+    received = r; // 0.2: $250 a share vs $400, 37.5 % under
+    const x = await run();
+    expect(x.code).toBe(1);
+    expect(x.err).toMatch(/quote/);
+  }
+  expect(swaps.length).toBe(0);
+  received = "0.15"; // $333: 16.7 % under, within the 20 %
+  expect((await run()).code).toBe(0);
+  expect(swaps.length).toBe(1);
 });

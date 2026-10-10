@@ -69,9 +69,9 @@ export async function reportRestock(
     },
     body: JSON.stringify({ token, tx, note: "agent swap" }),
   });
-  const body = (await res.json().catch(() => ({}))) as Restocked & {
-    error?: string;
-  };
+  const body = ((await res.json().catch(() => ({}))) ?? {}) as Partial<
+    Restocked & { error: string }
+  >;
   if (res.status === 202) return "pending";
   if (res.status === 409 && body.error === "tx_used") return "counted";
   if (!res.ok)
@@ -79,7 +79,19 @@ export async function reportRestock(
       `restock ${res.status} ${body.error ?? ""}`.trim(),
       res.status >= 500,
     );
-  return body;
+  // Only the api's own answer for this tx counts (a proxy's page or a stray body is a 200 too): retried, the
+  // record stays until it does.
+  if (
+    typeof body.tx !== "string" ||
+    body.tx.toLowerCase() !== tx.toLowerCase() ||
+    typeof body.units !== "number" ||
+    !Number.isFinite(body.units)
+  )
+    throw new ReportError(
+      `restock ${res.status}: the answer doesn't confirm ${tx}`,
+      true,
+    );
+  return body as Restocked;
 }
 
 /** GET /api/quotes: spot USD prices per underlying ticker (services/api/quotes.go). */

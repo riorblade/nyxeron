@@ -13,6 +13,12 @@ teammate would notice.
   spot price, is refused (`payments.json` → `agent.maxPriceOverSpotPercent`, `agent.spotMaxAgeMinutes`).
 - **Fails closed:** a missing `paused` flag or a missing/negative daily spend from the api stops the buy;
   `NYXERON_API` must be https (http only for localhost). Part of #55.
+- **No double spend after review:** one `--buy`/`--report` run at a time (a run lock, never taken over when left
+  behind); a FINISHED order without a tx hash keeps being followed instead of being dropped; the daily spend is
+  re-read after the swap's slot is taken; a 200 counts only when it names this tx and numeric units; spot prices
+  dated more than a minute ahead are refused; so are quotes more than 20 % under spot
+  (`agent.maxPriceUnderSpotPercent`) or for a non-finite amount. In production, `AGENT_STATE` goes outside the repo
+  (`deploy/README.md`).
 
 ## 2026-10-10 · A paid band always plays
 

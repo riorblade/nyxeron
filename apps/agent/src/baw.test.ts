@@ -9,9 +9,13 @@ test("outcome: wait while pending, report a finished swap's tx, give up on a fai
   expect(outcome({ orderId: "1", status: "FINISHED", txHash: "0xab" })).toEqual(
     { state: "done", tx: "0xab" },
   );
+  // FINISHED: the USDC is spent. Without a tx hash yet it is not a failure (a deleted record would buy again).
   expect(
     outcome({ orderId: "1", status: "FINISHED", txHash: null }).state,
-  ).toBe("failed");
+  ).toBe("wait");
+  expect(outcome({ orderId: "1", status: "FINISHED", txHash: "" }).state).toBe(
+    "wait",
+  );
   expect(outcome({ orderId: "1", status: "FAILED", txHash: null }).state).toBe(
     "failed",
   );

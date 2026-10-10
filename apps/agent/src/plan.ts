@@ -80,9 +80,14 @@ export type PriceCheck = {
   reason?: string;
 };
 
+/** How far ahead of this machine's clock the api's spot price may be dated (clock skew), in ms. */
+const SPOT_AHEAD_MS = 60_000;
+
 /**
  * The quote against the api's spot price (GET /api/quotes): refused when it costs more than
- * agent.maxPriceOverSpotPercent above it, or when there is no fresh reference to compare with.
+ * agent.maxPriceOverSpotPercent above it or more than agent.maxPriceUnderSpotPercent below it (a quote that
+ * good is a broken quote or reference, and the swap itself is a separate market order), when the amount isn't a
+ * finite positive number, or when there is no fresh reference (dated within [-1 min, spotMaxAgeMinutes] of now).
  */
 export function checkPrice(
   usd: number,
@@ -92,8 +97,8 @@ export function checkPrice(
   now: number,
 ): PriceCheck {
   const shares = Number(received);
-  const price = shares > 0 ? usd / shares : Infinity;
-  if (!(price < Infinity))
+  const price = shares > 0 && Number.isFinite(shares) ? usd / shares : Infinity;
+  if (!(price > 0 && price < Infinity))
     return {
       price,
       ok: false,
@@ -106,15 +111,18 @@ export function checkPrice(
     typeof reference !== "number" ||
     !(reference > 0) ||
     !Number.isFinite(reference) ||
-    !(age <= payments.agent.spotMaxAgeMinutes * 60_000)
+    !(age <= payments.agent.spotMaxAgeMinutes * 60_000) ||
+    !(age >= -SPOT_AHEAD_MS)
   )
     return {
       price,
       ok: false,
       reason: `no fresh reference price for ${ticker} from the api${spot.error ? ` (${spot.error})` : ""}: not buying`,
     };
+  const { maxPriceOverSpotPercent: over, maxPriceUnderSpotPercent: under } =
+    payments.agent;
   const overPercent = (price / reference - 1) * 100;
-  const ok = overPercent <= payments.agent.maxPriceOverSpotPercent;
+  const ok = overPercent <= over && overPercent >= -under;
   return {
     price,
     reference,
@@ -122,6 +130,8 @@ export function checkPrice(
     ok,
     reason: ok
       ? undefined
-      : `quote: $${price.toFixed(2)} a share is ${overPercent.toFixed(1)}% over the reference $${reference} (max ${payments.agent.maxPriceOverSpotPercent}%)`,
+      : overPercent > over
+        ? `quote: $${price.toFixed(2)} a share is ${overPercent.toFixed(1)}% over the reference $${reference} (max ${over}%)`
+        : `quote: $${price} a share is ${(-overPercent).toFixed(1)}% under the reference $${reference} (max ${under}%): a broken quote or reference, not buying`,
   };
 }

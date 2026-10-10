@@ -33,6 +33,7 @@ import {
   clear,
   DEFAULT_STATE,
   load,
+  lockRun,
   save,
   type Outstanding,
 } from "./state";
@@ -161,7 +162,34 @@ async function settle(
 async function main() {
   if (!key) throw new Error("AGENT_KEY is not set");
   const base = apiBase(rawApi);
+  if (statePath === DEFAULT_STATE)
+    console.warn(
+      `warning: AGENT_STATE is not set; the outstanding-swap record is ${statePath}, inside the checkout, where a ` +
+        "fresh clone or `git clean -fdX` deletes it (and a missing record means no swap is outstanding). In " +
+        "production set AGENT_STATE outside the repo, e.g. /var/lib/nyxeron-agent/state.json",
+    );
+  if (reportTx === undefined && !buy) return run(base);
 
+  // A --buy or --report run holds the run lock throughout: no other run may touch the record meanwhile.
+  const release = lockRun(statePath);
+  const stop = (code: number) => () => {
+    release();
+    process.exit(code);
+  };
+  const onInt = stop(130);
+  const onTerm = stop(143);
+  process.once("SIGINT", onInt);
+  process.once("SIGTERM", onTerm);
+  try {
+    await run(base);
+  } finally {
+    process.off("SIGINT", onInt);
+    process.off("SIGTERM", onTerm);
+    release();
+  }
+}
+
+async function run(base: string) {
   if (reportTx !== undefined) {
     if (wanted === undefined || !locked(wanted))
       throw new Error(
@@ -237,6 +265,13 @@ async function main() {
 
   // Recorded before it is submitted: if this run dies anywhere after, the next one knows a swap may be out.
   const o = claim(statePath, { token: row.token, usd });
+  // With the slot taken, today's spend is read again: a swap counted since the first read still binds the cap.
+  try {
+    checkSpend(await fetchDemand(base, key), usd);
+  } catch (e) {
+    clear(statePath, o); // nothing was submitted
+    throw e;
+  }
   try {
     o.orderId = (await swap(usd, lock.contract)).orderId;
   } catch (e) {

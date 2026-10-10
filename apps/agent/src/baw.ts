@@ -93,14 +93,13 @@ export async function order(orderId: string): Promise<Order | undefined> {
 }
 
 /**
- * Where a followed swap stands: "wait" (still pending), "done" with its tx, or "failed". A FINISHED order
- * without a tx hash can't be reported, so it counts as failed.
+ * Where a followed swap stands: "wait" (still pending), "done" with its tx, or "failed" (the wallet says FAILED:
+ * nothing spent). A FINISHED order without a tx hash yet is "wait": its USDC is spent, so its record must stay
+ * until the tx shows up and is reported.
  */
 export function outcome(o: Order | undefined) {
-  if (o?.status === "FINISHED")
-    return o.txHash
-      ? { state: "done" as const, tx: o.txHash }
-      : { state: "failed" as const };
+  if (o?.status === "FINISHED" && o.txHash)
+    return { state: "done" as const, tx: o.txHash };
   if (o?.status === "FAILED") return { state: "failed" as const };
-  return { state: "wait" as const }; // PENDING, or any status the wallet adds later: keep following
+  return { state: "wait" as const }; // PENDING, FINISHED without a tx yet, or any status the wallet adds later
 }
