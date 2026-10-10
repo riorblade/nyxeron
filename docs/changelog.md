@@ -3,6 +3,12 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-10 · A paid band always plays
+
+- **Booking a DJ at night no longer cancels the band:** a band booked by day plays its slot even if the CEO books a DJ
+  during the night. Before, the late DJ moved the band to the opener slot (22:00), which had already passed, so the
+  band's fee was spent and it never went on stage. The band's slot is now fixed when the night starts.
+
 ## 2026-10-10 · Esc closes the Leave dialog
 
 - **Esc works both ways on guest and gig nights:** Esc opens Leave and Esc again closes it (Stay); on a gig the
