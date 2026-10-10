@@ -238,8 +238,11 @@ func TestCutoverKeepsOnlyVerifiedStock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Back to just before the cutover: 100 TSLA typed in by hand, then 8 bought by a verified swap.
+	// Back to just before the cutover: 100 TSLA typed in by hand, then 8 bought by a verified swap. (Migration 7's
+	// columns go too: it runs again after the cutover.)
 	if _, err := s.db.Exec(`PRAGMA user_version = 5;
+ALTER TABLE topups DROP COLUMN refund_cents;
+ALTER TABLE topups DROP COLUMN refunded_at;
 INSERT INTO platform_stock (token, qty, updated_at) VALUES ('tsla', 108, 1), ('nvda', 100, 1), ('aapl', 3, 1);
 INSERT INTO stock_moves (token, delta, kind, actor, reason, tx, at) VALUES
 	('tsla', 100, 'restock', 'boss', 'by hand', '', 1),
@@ -277,5 +280,49 @@ INSERT INTO shop_stock (user_id, token, qty, price) VALUES ('ceo', 'tsla', 4, 25
 	}
 	if n := count(t, s, `SELECT COUNT(*) FROM shop_stock`); n != 0 {
 		t.Fatalf("shelves left %d", n)
+	}
+}
+
+// Migration 7 on top-ups recorded before it: what each row owes back comes from its status and reason.
+func TestMigrationSevenBackfillsRefundsOwed(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "live.db")
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+CREATE TABLE users (id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', avatar INTEGER NOT NULL DEFAULT 1,
+	wallet INTEGER NOT NULL, nights INTEGER NOT NULL DEFAULT 0, gigs INTEGER NOT NULL DEFAULT 0,
+	total_pnl INTEGER NOT NULL DEFAULT 0, best_pnl INTEGER NOT NULL DEFAULT 0, imported INTEGER NOT NULL DEFAULT 0,
+	last_gig INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE portfolio (user_id TEXT NOT NULL, token TEXT NOT NULL, qty INTEGER NOT NULL, cost INTEGER NOT NULL,
+	PRIMARY KEY (user_id, token));`); err != nil {
+		t.Fatal(err)
+	}
+	for v, m := range migrations[:6] {
+		if _, err := db.Exec(m); err != nil {
+			t.Fatalf("migration %d: %v", v+1, err)
+		}
+	}
+	if _, err := db.Exec(`PRAGMA user_version = 6;
+INSERT INTO topups (tx, log_index, user_id, sender, token, amount, usd_cents, fee, credits, status, reason, created_at, updated_at) VALUES
+	('0x1', 0, 'a', '0xa', 'usdc', '0', 2000, 20, 1980, 'credited', '3000 cents over the caps, to refund', 1, 1),
+	('0x2', 0, 'a', '0xa', 'usdc', '0', 1000, 10, 990, 'credited', '', 1, 1),
+	('0x3', 0, 'a', '0xa', 'usdc', '0', 200, 0, 0, 'rejected', '200 cents not credited: under the $3 minimum or over the caps, to refund', 1, 1),
+	('0x4', 0, '', '0xb', 'usdc', '0', 4000, 0, 0, 'unknown', '', 1, 1),
+	('0x5', 0, '', '0xc', 'usdc', '0', 50000, 0, 0, 'rejected', 'seed', 1, 1);`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	s, err := openStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.close()
+	want := map[string]int{"0x1": 3000, "0x2": 0, "0x3": 200, "0x4": 4000, "0x5": 0}
+	for tx, cents := range want {
+		if got := count(t, s, `SELECT refund_cents FROM topups WHERE tx = ? AND refunded_at = 0`, tx); got != cents {
+			t.Errorf("%s owes back %d, want %d", tx, got, cents)
+		}
 	}
 }

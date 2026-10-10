@@ -27,7 +27,8 @@ import (
 // nothing when that is below minUsd. What isn't credited stays recorded for the back office to refund by hand: a
 // "rejected" row when nothing was credited, or a "credited" row whose reason says how many cents were over the
 // caps (usd_cents is then the credited part; amount is always what arrived). Senders that are no player's wallet
-// are recorded as "unknown", without credits.
+// are recorded as "unknown", without credits. refund_cents keeps what is owed back, until the back office marks it
+// refunded (MarkRefunded); reconciliation counts it as owed, not as backing.
 
 type Topup struct {
 	Tx       string `json:"tx"`
@@ -93,6 +94,7 @@ func (s *store) recordTopup(ctx context.Context, tr Transfer, gasUsed uint64, us
 	}
 	tp = Topup{Tx: strings.ToLower(tr.Tx), LogIndex: int64(tr.LogIndex), Token: tr.Token, USDCents: cents,
 		Status: "unknown", At: now.Unix()}
+	refund := cents // owed back to the sender: all of it until it is credited (reconcile.go counts it as owed)
 	t, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return tp, false, err
@@ -111,16 +113,17 @@ func (s *store) recordTopup(ctx context.Context, tr Transfer, gasUsed uint64, us
 		default:
 			tp.Status, tp.USDCents, tp.Fee = "credited", ok, topupFee(ok)
 			tp.Credits = toCredits(ok - tp.Fee)
+			refund = cents - ok
 			if ok < cents {
 				tp.Reason = fmt.Sprintf("%d cents over the caps, to refund", cents-ok)
 			}
 		}
 	}
 	res, err := t.Exec(`INSERT INTO topups (tx, log_index, user_id, sender, token, amount, usd_cents, fee, gas_used, credits,
-		status, reason, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		status, reason, refund_cents, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (tx, log_index) DO NOTHING`,
 		tp.Tx, tp.LogIndex, user, tr.From, tp.Token, tr.Amount.String(), tp.USDCents, tp.Fee, int64(gasUsed), tp.Credits,
-		tp.Status, tp.Reason, tp.At, tp.At)
+		tp.Status, tp.Reason, refund, tp.At, tp.At)
 	if err != nil {
 		return tp, false, err
 	}
@@ -129,9 +132,11 @@ func (s *store) recordTopup(ctx context.Context, tr Transfer, gasUsed uint64, us
 			return tp, false, nil
 		}
 		// Recorded before the sender was known: this player's wallet sent it, so it is theirs now.
+		// Not once it was refunded (the back office marks a refunded unknown row "rejected" too).
 		claim, err := t.Exec(`UPDATE topups SET user_id = ?, status = ?, usd_cents = ?, fee = ?, credits = ?, reason = ?,
-			updated_at = ? WHERE tx = ? AND log_index = ? AND user_id = '' AND status = 'unknown' AND lower(sender) = lower(?)`,
-			user, tp.Status, tp.USDCents, tp.Fee, tp.Credits, tp.Reason, tp.At, tp.Tx, tp.LogIndex, tr.From)
+			refund_cents = ?, updated_at = ? WHERE tx = ? AND log_index = ? AND user_id = '' AND status = 'unknown'
+			AND refunded_at = 0 AND lower(sender) = lower(?)`,
+			user, tp.Status, tp.USDCents, tp.Fee, tp.Credits, tp.Reason, refund, tp.At, tp.Tx, tp.LogIndex, tr.From)
 		if err != nil {
 			return tp, false, err
 		}

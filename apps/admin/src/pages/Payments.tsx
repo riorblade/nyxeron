@@ -42,6 +42,9 @@ export function Payments({ canEdit }: { canEdit: boolean }) {
   // The check runs hourly: older than 2 h means BNB Chain couldn't be read since (the status may be out of date).
   const stale = !!last && openedAt - last.at > 2 * 3600;
   const unknown = data.topups.filter((t) => t.status === "unknown");
+  const owedBack = data.topups.filter(
+    (t) => t.refundCents > 0 && !t.refundedAt,
+  );
 
   const run = async () => {
     const reason = prompt(
@@ -61,6 +64,18 @@ export function Payments({ canEdit }: { canEdit: boolean }) {
       );
     } finally {
       setBusy(false);
+    }
+  };
+  const refunded = async (tx: string, logIndex: number) => {
+    const reason = prompt(
+      "Paid back to the sender? Say how (the refund tx; goes to the audit log). Reconciliation stops counting it as owed.",
+    )?.trim();
+    if (!reason) return;
+    try {
+      await api("POST", "/admin/topups/refund", { tx, logIndex, reason });
+      reload();
+    } catch (e) {
+      setMsg(`Couldn't mark ${short(tx)} refunded: ${(e as Error).message}`);
     }
   };
   const voidSale = async (id: number) => {
@@ -104,7 +119,11 @@ export function Payments({ canEdit }: { canEdit: boolean }) {
         <Kpi
           label="Owed to players"
           value={last ? usd(last.owedCents) : "—"}
-          note="credits, held included"
+          note={
+            last?.refundCents
+              ? `credits, held included; + ${usd(last.refundCents)} owed back to senders`
+              : "credits, held included"
+          }
         />
         <Kpi
           label="USDC + USDT in the wallet"
@@ -155,7 +174,14 @@ export function Payments({ canEdit }: { canEdit: boolean }) {
                   {when(r.at)}
                 </td>
                 <td>{r.ok ? "Backed" : <Badge>short</Badge>}</td>
-                <td className="font-mono tabular-nums">{usd(r.owedCents)}</td>
+                <td className="font-mono tabular-nums">
+                  {usd(r.owedCents)}
+                  {r.refundCents ? (
+                    <div className="text-xs text-white/60">
+                      + {usd(r.refundCents)} to refund
+                    </div>
+                  ) : null}
+                </td>
                 <td className="font-mono tabular-nums">
                   {usd(r.walletCents - r.platformCents)}
                 </td>
@@ -192,8 +218,8 @@ export function Payments({ canEdit }: { canEdit: boolean }) {
         {unknown.length ? (
           <p className="mb-2 text-sm text-white/60">
             USDC/USDT that reached the Agentic Wallet from a wallet that is no
-            player&apos;s. No credits were given; handle them by hand (they also
-            count as backing until then).
+            player&apos;s. No credits were given; refund them by hand (or book
+            them as the seed). Until then they count as owed, not as backing.
           </p>
         ) : (
           <Empty>None: every top-up came from a player&apos;s wallet.</Empty>
@@ -201,6 +227,12 @@ export function Payments({ canEdit }: { canEdit: boolean }) {
       </Section>
 
       <Section title="Top-ups (last 200)" className="mt-4">
+        {owedBack.length > 0 && (
+          <p className="mb-2 text-sm text-white/60">
+            {owedBack.length} shown here still owe money back to their sender.
+            Reconciliation counts it as owed until you mark it refunded.
+          </p>
+        )}
         {data.topups.length ? (
           <Table
             head={[
@@ -210,6 +242,7 @@ export function Payments({ canEdit }: { canEdit: boolean }) {
               "Fee",
               "Credits",
               "Status",
+              "Owed back",
               "Tx",
             ]}
           >
@@ -233,6 +266,30 @@ export function Payments({ canEdit }: { canEdit: boolean }) {
                     "credited"
                   ) : (
                     <Badge>{t.status}</Badge>
+                  )}
+                </td>
+                <td className="font-mono text-xs tabular-nums">
+                  {t.refundCents > 0 ? (
+                    t.refundedAt ? (
+                      <span className="text-white/60">
+                        {usd(t.refundCents)} refunded
+                      </span>
+                    ) : (
+                      <>
+                        {usd(t.refundCents)}
+                        {canEdit && (
+                          <button
+                            className="btn ml-2 h-8 text-xs"
+                            onClick={() => void refunded(t.tx, t.logIndex)}
+                            aria-label={`Mark ${t.tx} refunded`}
+                          >
+                            Refunded
+                          </button>
+                        )}
+                      </>
+                    )
+                  ) : (
+                    "—"
                   )}
                 </td>
                 <td className="font-mono text-xs">

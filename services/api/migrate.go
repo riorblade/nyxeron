@@ -216,6 +216,16 @@ var migrations = []string{
 		FROM buyback b JOIN users u ON u.id = b.user_id WHERE b.np > 0;
 	DELETE FROM shop_stock;
 	DROP TABLE buyback;`,
+	// 7 — money owed back to senders, in cents: an unknown sender's transfer, a rejected top-up, or the part of a
+	// credited one over the caps. It sits in the Agentic Wallet but backs nobody's credits, so reconciliation counts
+	// it as owed until the back office marks it refunded (refunded_at). Existing rows: what their reason says
+	// ("N cents …"; a seed's reason is "seed", so 0), or the whole amount while the sender is unknown.
+	`ALTER TABLE topups ADD COLUMN refund_cents INTEGER NOT NULL DEFAULT 0 CHECK (refund_cents >= 0);
+	ALTER TABLE topups ADD COLUMN refunded_at INTEGER NOT NULL DEFAULT 0;
+	UPDATE topups SET refund_cents = CASE
+		WHEN status = 'unknown' THEN usd_cents
+		WHEN status IN ('rejected', 'credited') THEN MAX(0, CAST(reason AS INTEGER))
+		ELSE 0 END;`,
 }
 
 func migrate(db *sql.DB) error {

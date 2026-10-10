@@ -112,6 +112,7 @@ Every change requires `reason` (except announcement/admin role changes) and is w
 | POST | `/api/admin/sales/{id}/void` | `{reason}` (a held party sale: credits back, units released) | admin |
 | GET | `/api/admin/payments` | — (paused?, reconciliation history, top-ups incl. unknown senders, sales) | viewer |
 | POST | `/api/admin/reconcile` | `{reason}` (check now against BSC; a match resumes paused payments) | admin |
+| POST | `/api/admin/topups/refund` | `{tx, logIndex, reason}` (what a top-up transfer is owed back was paid back by hand: reconciliation stops counting it as owed; once; an unknown transfer can't be claimed after) | admin |
 | POST | `/api/admin/seed` | `{tx, reason}` (book USDC/USDT the team sent to the Agentic Wallet as the platform's own money; read on BSC, once) | admin |
 | GET | `/api/admin/audit?target&before&limit` | — | viewer |
 | GET/PUT | `/api/admin/announcement` | `{text, active}` | viewer / admin |

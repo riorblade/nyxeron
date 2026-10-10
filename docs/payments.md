@@ -90,7 +90,7 @@ from guest, units from the warehouse, wholesale to the platform, margin to the t
 - Before credits: Privy token verified; tx hash + log index unused; chain 56, success, ≥ 15 confirmations; Transfer
   log from the locked USDC/USDT contract; recipient = Agentic Wallet; sender = the player's stored wallet; amount
   from the log ≥ $3 and within the player's caps (credited up to the room left; what isn't credited is recorded as
-  `rejected`, or in the row's reason, for the back office to refund); two RPCs agree.
+  `rejected`, or as the row's `refund_cents`, for the back office to refund and then mark refunded); two RPCs agree.
 - Before restock units: as above for the bStock transfer into the Agentic Wallet; USDC spent ≤ the agent's limits.
 - Before a sale: credits and warehouse checked and held in the same transaction; prices from the server, never from
   the browser.
@@ -99,7 +99,10 @@ from guest, units from the warehouse, wholesale to the platform, margin to the t
 
 ## Reconciliation (hourly; a mismatch pauses top-ups, sales and restocks and alerts the back office)
 
-1. Credits are backed: Σ player credits (including held) ÷ 100 ≤ USDC + USDT in the Agentic Wallet − platform funds.
+1. Credits are backed: Σ player credits (including held) ÷ 100 + money owed back to senders ≤ USDC + USDT in the
+   Agentic Wallet − platform funds. Money owed back = unknown senders' transfers, rejected top-ups and the part of a
+   top-up over the caps, until the back office marks it refunded (`POST /api/admin/topups/refund`). It is in the
+   wallet but belongs to its senders, so it never backs credits.
 2. Units are backed, per token: (warehouse on hand + reserved + Σ players' real units) × 0.001 ≤ bStock held.
 
 Balances are read from BSC, never from the database.

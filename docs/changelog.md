@@ -3,6 +3,15 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-10 · Refunds owed count against the wallet
+
+- **Reconciliation no longer counts money owed back as backing:** USDC/USDT from unknown senders, rejected top-ups
+  and the part of a top-up over the caps now count as owed to their senders, next to players' credits. Before, it
+  counted as backing, so up to that much unbacked credit could pass the hourly check (issue #55, M1).
+- **Back office, Payments:** top-ups show what they owe back; once you have paid it back by hand, press
+  **Refunded** (with a reason: the audit log) so the check stops counting it. Until then a paid-out refund makes the
+  check come up short and pauses payments.
+
 ## 2026-10-10 · A paid band always plays
 
 - **Booking a DJ at night no longer cancels the band:** a band booked by day plays its slot even if the CEO books a DJ
