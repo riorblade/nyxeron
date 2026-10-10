@@ -77,6 +77,7 @@ Vite proxies `/api` and `/ws` to the local services, so no CORS setup is needed 
 | `pnpm dev` / `dev:admin`     | Game / back office dev servers                                   |
 | `pnpm dev:api` / `dev:relay` | Go services (`go run`)                                           |
 | `pnpm test`                  | Vitest: core rules, persistence, balance guard rail, web units   |
+| `pnpm test:brutal`           | Full hostile fuzz of the sim (smoke-sized in `pnpm test`)        |
 | `pnpm test:go`               | Go tests with the race detector (relay + api)                    |
 | `pnpm lint`                  | Typecheck (core, web, admin) + ESLint + Prettier check           |
 | `pnpm build`                 | Production builds                                                |

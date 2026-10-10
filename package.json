@@ -12,6 +12,7 @@
     "build:web": "pnpm --filter web build",
     "build:admin": "pnpm --filter admin build",
     "test": "vitest run",
+    "test:brutal": "NYX_BRUTAL=1 vitest run packages/core/test/brutal.test.ts",
     "test:go": "cd services/relay && test -z \"$(gofmt -l .)\" && go test -race ./... && cd ../api && test -z \"$(gofmt -l .)\" && go test -race ./...",
     "lint": "tsc -p packages/core && tsc -p apps/web && tsc -p apps/admin && tsc -p apps/agent && eslint . && prettier --check .",
     "format": "prettier --write .",

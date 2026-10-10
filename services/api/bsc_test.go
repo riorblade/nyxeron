@@ -22,15 +22,16 @@ const (
 )
 
 type fakeRPC struct {
-	chainID  string
-	head     uint64
-	receipts map[string]string // tx → receipt JSON
-	balance  string
-	balances map[string]string // per token contract (lower case), else balance
-	down     bool              // answers HTTP 503, like a provider having an outage
-	mu       sync.Mutex
-	methods  []string
-	callTags []string // the block tag of each eth_call
+	chainID   string
+	head      uint64
+	receipts  map[string]string // tx → receipt JSON
+	balance   string
+	balances  map[string]string // per token contract (lower case), else balance
+	staleOnce string            // if set, the next eth_call answers this (an older block), then it is cleared
+	down      bool              // answers HTTP 503, like a provider having an outage
+	mu        sync.Mutex
+	methods   []string
+	callTags  []string // the block tag of each eth_call
 }
 
 func fixture(t *testing.T, name string) string {
@@ -111,9 +112,14 @@ func (f *fakeRPC) serve(t *testing.T) string {
 			f.mu.Lock()
 			f.callTags = append(f.callTags, tag)
 			bal, ok := f.balances[strings.ToLower(call.To)]
+			stale := f.staleOnce
+			f.staleOnce = ""
 			f.mu.Unlock()
 			if !ok {
 				bal = f.balance
+			}
+			if stale != "" {
+				bal = stale
 			}
 			result = strconv.Quote(bal)
 		}

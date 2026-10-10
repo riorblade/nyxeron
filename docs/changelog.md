@@ -19,6 +19,39 @@ teammate would notice.
 - **Cutover (migration 6) on fresh databases:** reserved units count against verified stock, and shelves without a
   positive price buy nothing back.
 
+## 2026-10-10 · Tougher sim: closed doors stay closed
+
+- **Cover you can't pay = you go home:** a guest whose budget is below the cover is turned away instead of handing
+  over the whole wallet. A huge cover now empties the club rather than out-earning a stocked bar. Balance moves a
+  hair (only the poorest Level 5 locals are below the standard 2,500 cover).
+- **Price ceiling:** a list price can be at most 100× the venue's default (`economy.json → maxPriceMultiple`); a
+  huge price used to turn into Infinity after moving up and break the save. Old saves with a broken price load with
+  a valid one.
+- **After closing time** guest players can't walk in or buy (and not in a sealed venue), and the door can't be
+  forced after 04:00. Once a career is over, nothing spends Coin or moves stock.
+- **Moving up** never overfills the new stock room: what doesn't fit (old storage tiers stay behind) is left behind, and the office feed
+  says how much of each token stayed (`stockTrimmed` event).
+- Unknown ids, a bad dress code / happy-hour slot, or a NaN avatar are refused cleanly instead of writing NaN or
+  bricking every later night; the AI CEO no longer hangs when handed a night. A house-rules change that leaves a
+  field undefined keeps that rule, and an old save with a broken house rule loads with the default for that rule.
+- **Tests:** `pnpm test` runs a smoke-sized fuzz of the sim (a few seconds); `pnpm test:brutal` runs the full
+  hostile fuzz (80 seeds × 350 steps + 30 hostile-id runs, about a minute) and CI runs both.
+
+## 2026-10-10 · Every real swap goes on the books
+
+- **No more pauses from a swap the api refused:** a swap of less than one unit (0.001 share), or one bought while
+  units were already short on chain, used to be refused after the USDC had left the Agentic Wallet, so the next
+  hourly check paused payments for every player. Now any verified swap is booked once: the USDC always, and the
+  whole units it bought. Fractions of a unit are carried per token and booked once they add up to a unit.
+- **A missing unit still stops payments:** if the wallet holds fewer units than the books count when the agent
+  reports a swap, the swap is booked but payments pause at once and the reconciliation keeps flagging the missing
+  units until the team writes them off. An admin reporting the swap writes them off in the same step, as an
+  explicit `loss` stock move with its reason, audited.
+- **One tx, one booking:** a tx booked as a restock can't also be booked as the team's seed, or the other way round.
+  A tx in which the Agentic Wallet sent anything out is never accepted as the seed, and neither is a player's
+  transfer, even a rejected one (#38).
+- **Multi-token swaps:** a swap that bought two whitelisted bStocks adds both in one report.
+
 ## 2026-10-10 · A clear message when the 3D club can't start
 
 - **No WebGL, no silent failure:** on a browser without WebGL (hardware acceleration off, some VMs and work

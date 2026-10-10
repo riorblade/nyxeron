@@ -1,4 +1,11 @@
-import { legal, night, permits, requiredPermits, type PermitId } from "../data";
+import {
+  isId,
+  legal,
+  night,
+  permits,
+  requiredPermits,
+  type PermitId,
+} from "../data";
 import { fail, type ActionResult } from "../result";
 import type { GameState } from "../state";
 
@@ -11,6 +18,8 @@ export const missingPermits = (s: GameState) =>
 
 /** Apply or renew: an active permit is extended from its current expiry. */
 export function applyPermit(s: GameState, permit: PermitId): ActionResult {
+  if (s.outcome) return fail("wrongPhase"); // the game is over: the books are closed
+  if (!isId(permits, permit)) return fail("invalidTarget");
   const p = permits[permit];
   if (s.level < p.minLevel) return fail("levelLocked");
   if (s.coin < p.cost) return fail("notEnoughCoin", p.cost - s.coin);

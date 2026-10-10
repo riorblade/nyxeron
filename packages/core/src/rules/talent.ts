@@ -2,6 +2,7 @@ import {
   bands,
   djs,
   economy,
+  isId,
   night,
   type BandId,
   type Genre,
@@ -12,6 +13,8 @@ import { clamp, type GameState, type Guest } from "../state";
 
 /** R3: book DJ if coin ≥ fee and level ≥ DJ requirement → hype + fanbase share. */
 export function r03_bookDj(s: GameState, dj: TalentId): ActionResult {
+  if (s.outcome) return fail("wrongPhase");
+  if (!isId(djs, dj)) return fail("invalidTarget");
   const d = djs[dj];
   if (s.level < d.minLevel) return fail("levelLocked");
   // Too late once tonight's set slot has passed.
@@ -58,8 +61,9 @@ export function r04_djMultiplier(
 
 /** Book tonight's live band (one per night): costs its fee, brings its fans (hype). */
 export function bookBand(s: GameState, band: BandId): ActionResult {
-  const b = bands[band];
   if (s.phase !== "day") return fail("wrongPhase");
+  if (!isId(bands, band)) return fail("invalidTarget");
+  const b = bands[band];
   if (s.level < b.minLevel) return fail("levelLocked");
   if (s.bookedBand) return fail("alreadyBooked");
   if (s.coin < b.fee) return fail("notEnoughCoin", b.fee - s.coin);
