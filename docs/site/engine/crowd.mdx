@@ -151,7 +151,7 @@ where $w_s$ are tonight's segment weights (promos included) and $G_s$ the segmen
 
 ## Live bands
 
-A band is booked by day, one per night. Its set depends on whether a DJ follows:
+A band is booked by day, one per night. Its set is fixed when the night opens, from whether a DJ is booked by then:
 
 $$
 \text{set} = \begin{cases}
@@ -159,6 +159,8 @@ $$
 [30, 180) & \text{no DJ: main act, 22:30–01:00}
 \end{cases}
 $$
+
+A DJ booked later in the night doesn't move the band: a paid act always plays its slot, and the two simply overlap.
 
 When the set starts, the band reads the room with the same R4 rule, giving $m^{\text{band}} \in \lbrace 1.2, 0.85 \rbrace$. While it plays, it adds $15\, m^{\text{band}}$ to the energy target and dancers use $\max(m^{\text{DJ}}, m^{\text{band}})$, so a band rescues the pre-DJ hour from the 0.5 playlist factor.
 
