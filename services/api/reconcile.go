@@ -270,12 +270,27 @@ type AdminSale struct {
 	SettledAt int64  `json:"settledAt,omitempty"`
 }
 
+// ScanRetry: something the top-up scanner moved past unread (scan_retries): a block's Transfer logs for one token
+// ("logs", ref = the token) or a player's receipt ("receipt", ref = the tx). "open" is read again on later passes;
+// "given_up" is the back office's: check the block on an explorer and credit or refund by hand.
+type ScanRetry struct {
+	Kind      string `json:"kind"`
+	Ref       string `json:"ref"`
+	Block     int64  `json:"block"`
+	Reason    string `json:"reason"`
+	Attempts  int    `json:"attempts"`
+	Status    string `json:"status"`
+	CreatedAt int64  `json:"createdAt"`
+	UpdatedAt int64  `json:"updatedAt"`
+}
+
 // Payments: what the back office's Payments page shows.
 type Payments struct {
 	Paused          []string         `json:"paused"`
 	Reconciliations []map[string]any `json:"reconciliations"`
 	Topups          []AdminTopup     `json:"topups"`
 	Sales           []AdminSale      `json:"sales"`
+	ScanRetries     []ScanRetry      `json:"scanRetries"` // not "done": still being read, or given up
 }
 
 // bookedTxs: the txs the platform booked as a restock or as the team's seed. Stablecoin coming back to the Agentic
@@ -293,7 +308,7 @@ func (s *store) Payments(ctx context.Context) (Payments, error) {
 		return p, err
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT t.tx, t.log_index, t.token, t.usd_cents, t.fee, t.credits, t.status,
-		t.created_at, t.user_id, COALESCE(u.email, ''), t.sender,
+		t.reason, t.created_at, t.user_id, COALESCE(u.email, ''), t.sender,
 		CASE WHEN t.refunded_at = 0 AND t.tx IN `+bookedTxs+` THEN 0 ELSE t.refund_cents END, t.refunded_at
 		FROM topups t LEFT JOIN users u ON u.id = t.user_id
 		ORDER BY t.id DESC LIMIT 200`)
@@ -303,12 +318,27 @@ func (s *store) Payments(ctx context.Context) (Payments, error) {
 	p.Topups = []AdminTopup{}
 	for rows.Next() {
 		var x AdminTopup
-		if err := rows.Scan(&x.Tx, &x.LogIndex, &x.Token, &x.USDCents, &x.Fee, &x.Credits, &x.Status, &x.At,
+		if err := rows.Scan(&x.Tx, &x.LogIndex, &x.Token, &x.USDCents, &x.Fee, &x.Credits, &x.Status, &x.Reason, &x.At,
 			&x.UserID, &x.Email, &x.Sender, &x.RefundCents, &x.RefundedAt); err != nil {
 			rows.Close()
 			return p, err
 		}
 		p.Topups = append(p.Topups, x)
+	}
+	rows.Close()
+	rows, err = s.db.QueryContext(ctx, `SELECT kind, ref, block, reason, attempts, status, created_at, updated_at
+		FROM scan_retries WHERE status != 'done' ORDER BY status = 'given_up' DESC, block DESC LIMIT 200`)
+	if err != nil {
+		return p, err
+	}
+	p.ScanRetries = []ScanRetry{}
+	for rows.Next() {
+		var x ScanRetry
+		if err := rows.Scan(&x.Kind, &x.Ref, &x.Block, &x.Reason, &x.Attempts, &x.Status, &x.CreatedAt, &x.UpdatedAt); err != nil {
+			rows.Close()
+			return p, err
+		}
+		p.ScanRetries = append(p.ScanRetries, x)
 	}
 	rows.Close()
 	rows, err = s.db.QueryContext(ctx, `SELECT id, party_id, lease_id, buyer, seller, token, qty, price, wholesale,

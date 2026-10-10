@@ -5,17 +5,20 @@ teammate would notice.
 
 ## 2026-10-10 · Payments survive the brutal tests (#38)
 
-- **The top-up scanner can't be wedged:** a stranger could send a 0-value transfer from a player's wallet in a tx
-  padded to a > 4 MB receipt and stop the scanner for good. Zero-value transfers are now skipped before any receipt
-  is read, and a transfer whose receipt both RPCs fail to read is recorded for the back office (no credits) while
-  the scan moves on.
+- **The top-up scanner can't be wedged:** a stranger could stop it for good with a 0-value transfer from a player's
+  wallet padded to a > 4 MB receipt, or with ~10k zero-value transfers to the Agentic Wallet in one block (a > 4 MB
+  `eth_getLogs` answer). Zero-value transfers are skipped; a receipt, or one block's logs, that both RPCs refuse is
+  recorded for the back office (no credits) and the scan moves on, at most 5 blocks per pass. Those are read again
+  for about 4 hours (10 reads) and credited if they read; the Payments page lists what is still unread
+  ("Unread on chain") and shows each top-up's reason.
 - **Daily cap holds for late claims:** transfers seen before the player's wallet was stored, claimed a day later,
   could credit $100 at once. The $20/day cap now counts by when a top-up is credited.
 - **Seed and top-up can't count the same dollars:** a tx booked as the team's seed is never credited to a player,
-  and a tx a player's wallet sent is never booked as the seed.
+  and a tx a player's wallet sent (stored now, or on any of the tx's top-up rows) is never booked as the seed.
 - **Pause is final:** a sale or top-up credit that was in flight when payments paused no longer commits.
 - **Shop prices stay within 3× wholesale at sale time:** after the market falls, an over-cap shop price doesn't sell
-  until the tenant reprices. Wholesale is rounded up per share, so a unit never sells below its cost.
+  until the tenant reprices. Wholesale is rounded up exactly (integer math on the quote), so a unit never sells
+  below its cost.
 - **Cutover (migration 6) on fresh databases:** reserved units count against verified stock, and shelves without a
   positive price buy nothing back.
 

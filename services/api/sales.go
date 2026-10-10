@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"math/big"
 	"net/http"
 	"strconv"
 	"time"
@@ -45,16 +46,18 @@ func wholesaleOf(token string, quotes map[string]float64) (int64, error) {
 	if !(price > 0) || math.IsInf(price, 0) {
 		return 0, errNoPrice
 	}
-	// Whole numbers: the price in credits per share (cents today) rounded up, then up to whole credits per unit, so
-	// a unit never wholesales below what it costs. Float math alone rounds one credit too many at some prices
-	// ($70.00 × 0.001 × 100 = 7.000…01 → 8): float noise under a millionth of a cent isn't rounded up.
+	// Exact: the quote (a float64 is an exact binary fraction) × creditsPerUsd ÷ units per share as a rational,
+	// rounded up to whole credits, so a unit never wholesales below what it costs and never a credit above (float
+	// math rounds $70.00 × 0.001 × 100 to 7.000…01 → 8; no slack lets $70.0000000049 through at 7 either).
 	per := int64(math.Round(1 / game.payments.SharesPerUnit))
-	perShare := price * float64(game.payments.CreditsPerUSD)
-	if perShare > float64(maxWholesale*per) { // an absurd quote is no price (and keeps price × qty far from overflowing)
+	if price*float64(game.payments.CreditsPerUSD) > float64(maxWholesale*per) { // an absurd quote is no price (and keeps price × qty far from overflowing)
 		return 0, errNoPrice
 	}
-	c := int64(math.Ceil(perShare - 1e-6))
-	return max(1, (c+per-1)/per), nil
+	cost := new(big.Rat).SetFloat64(price)
+	cost.Mul(cost, big.NewRat(int64(game.payments.CreditsPerUSD), per))
+	c := new(big.Int).Add(cost.Num(), new(big.Int).Sub(cost.Denom(), big.NewInt(1)))
+	c.Quo(c, cost.Denom()) // ceil(num / denom), both positive
+	return max(1, c.Int64()), nil
 }
 
 // maxWholesale: one unit (0.001 share) above $10,000 means a broken feed, not a stock.

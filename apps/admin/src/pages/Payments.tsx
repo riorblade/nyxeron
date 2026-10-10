@@ -1,4 +1,4 @@
-import { tokens, type TokenId } from "@nyxeron/core";
+import { payments, tokens, type TokenId } from "@nyxeron/core";
 import { RefreshCw } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { api, fmt, when, type Payments as Data } from "../api";
@@ -18,6 +18,11 @@ const short = (s: string) =>
   s.length > 14 ? `${s.slice(0, 8)}…${s.slice(-4)}` : s;
 const ticker = (t: string) => tokens[t as TokenId]?.ticker ?? t.toUpperCase();
 const bscscan = (tx: string) => `https://bscscan.com/tx/${tx}`;
+const bscBlock = (n: number) => `https://bscscan.com/block/${n}`;
+const stable = (addr: string) =>
+  Object.entries(payments.topup.tokens).find(
+    ([, a]) => a.toLowerCase() === addr.toLowerCase(),
+  )?.[0] ?? short(addr);
 const player = (id: string) => (
   <a className="hover:underline" href={`#/users/${encodeURIComponent(id)}`}>
     {short(id)}
@@ -226,6 +231,65 @@ export function Payments({ canEdit }: { canEdit: boolean }) {
         )}
       </Section>
 
+      <Section
+        title={`Unread on chain (${data.scanRetries?.length ?? 0})`}
+        className="mt-4"
+      >
+        {data.scanRetries?.length ? (
+          <>
+            <p className="mb-2 text-sm text-white/60">
+              Blocks or receipts the top-up scanner couldn&apos;t read (both
+              providers refused them) and moved past. Open ones are read again
+              for about 4 hours; players&apos; own reports still credit their
+              deposits. Given up: check the block on BscScan and credit or
+              refund by hand.
+            </p>
+            <Table
+              head={["Block", "What", "Status", "Reads", "Last read", "Why"]}
+            >
+              {data.scanRetries.map((r) => (
+                <tr key={`${r.kind}-${r.ref}-${r.block}`}>
+                  <td className="font-mono text-xs">
+                    <a
+                      className="hover:underline"
+                      href={bscBlock(r.block)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {r.block}
+                    </a>
+                  </td>
+                  <td className="font-mono text-xs">
+                    {r.kind === "logs" ? (
+                      `${stable(r.ref)} transfers`
+                    ) : (
+                      <a
+                        className="hover:underline"
+                        href={bscscan(r.ref)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        receipt {short(r.ref)}
+                      </a>
+                    )}
+                  </td>
+                  <td>
+                    {r.status === "open" ? "retrying" : <Badge>given up</Badge>}
+                  </td>
+                  <td className="font-mono tabular-nums">{r.attempts}</td>
+                  <td className="whitespace-nowrap text-white/60">
+                    {when(r.updatedAt)}
+                  </td>
+                  <td className="text-xs text-white/70">{r.reason}</td>
+                </tr>
+              ))}
+            </Table>
+          </>
+        ) : (
+          <Empty>None: the scanner read every block.</Empty>
+        )}
+      </Section>
+
       <Section title="Top-ups (last 200)" className="mt-4">
         {owedBack.length > 0 && (
           <p className="mb-2 text-sm text-white/60">
@@ -267,6 +331,11 @@ export function Payments({ canEdit }: { canEdit: boolean }) {
                   ) : (
                     <Badge>{t.status}</Badge>
                   )}
+                  {t.reason ? (
+                    <div className="max-w-64 text-xs text-white/60">
+                      {t.reason}
+                    </div>
+                  ) : null}
                 </td>
                 <td className="font-mono text-xs tabular-nums">
                   {t.refundCents > 0 ? (

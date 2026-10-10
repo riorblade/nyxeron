@@ -34,6 +34,10 @@ var (
 	// both rpcs say so: then it is the transaction itself (e.g. a receipt padded with logs), not a provider that is
 	// down, and asking again won't help.
 	errUnreadable = errors.New("bsc: answer too big or malformed")
+	// errRefused: both rpcs answered the request with a JSON-RPC error, or one with that and the other unreadable
+	// (e.g. one block's logs: "response size exceeded" from one, over rpcMaxBytes from the other). Both are up and
+	// answering; the question itself is what they won't answer. Returned by both() only when both rpcs say so.
+	errRefused = errors.New("bsc: both rpcs refused the request")
 
 	hashRe  = regexp.MustCompile(`^0x[0-9a-fA-F]{64}$`)
 	addrRe  = regexp.MustCompile(`^0x[0-9a-fA-F]{40}$`)
@@ -375,10 +379,14 @@ func both[T any](ctx context.Context, b *bsc, method string, params []any, parse
 	if errors.Is(errs[0], errUnreadable) && errors.Is(errs[1], errUnreadable) {
 		return zero, fmt.Errorf("%w: %w", errUnreadable, errors.Join(errs[0], errs[1]))
 	}
+	answered := func(err error) bool { return errors.Is(err, errUnreadable) || errors.Is(err, errRefused) }
+	if answered(errs[0]) && answered(errs[1]) {
+		return zero, fmt.Errorf("%w: %w", errRefused, errors.Join(errs[0], errs[1]))
+	}
 	var down []error
 	for _, err := range errs {
 		if err != nil && !errors.Is(err, errNoTx) {
-			if errors.Is(err, errUnreadable) { // one provider alone: maybe it is the broken one, not the tx
+			if answered(err) { // one provider alone: maybe it is the broken one, not the request
 				err = errors.New(err.Error())
 			}
 			down = append(down, err)
@@ -445,7 +453,7 @@ func (b *bsc) post(ctx context.Context, i int, method string, params []any, out 
 		return fmt.Errorf("bsc rpc %d: %w: %w", i+1, errUnreadable, err)
 	}
 	if reply.Error != nil {
-		return fmt.Errorf("bsc rpc %d: %s", i+1, reply.Error.Message)
+		return fmt.Errorf("bsc rpc %d: %w", i+1, rpcRefusal(reply.Error.Message))
 	}
 	if raw, ok := out.(*json.RawMessage); ok {
 		*raw = reply.Result
@@ -453,6 +461,12 @@ func (b *bsc) post(ctx context.Context, i int, method string, params []any, out 
 	}
 	return json.Unmarshal(reply.Result, out)
 }
+
+// rpcRefusal: a JSON-RPC error answer (its message); errors.Is(it, errRefused).
+type rpcRefusal string
+
+func (e rpcRefusal) Error() string        { return string(e) }
+func (e rpcRefusal) Is(target error) bool { return target == errRefused }
 
 // rpcMaxBytes: the largest rpc answer read (a receipt or a block range of logs).
 const rpcMaxBytes = 4 << 20

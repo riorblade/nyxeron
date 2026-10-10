@@ -240,9 +240,27 @@ var migrations = []string{
 	// 8 — when a top-up was credited. The 24 h cap counts credits by this, not by created_at (when the transfer was
 	// first recorded): a transfer recorded "unknown" and claimed days later counts on the day it is credited (#38).
 	// Existing credited rows were credited when last updated.
+	// scan_retries: what the top-up scanner couldn't read and moved past (a block's Transfer logs for one token, or a
+	// player's receipt: both rpcs answered too big, malformed or refused). Read again on later passes, a bounded
+	// number of times; the back office sees what is still open (Payments). Players' own reports credit those
+	// deposits meanwhile.
+	// platform_ledger_ref: the "booked already?" lookups (seed, restock) match lower(ref); one row per credited
+	// top-up (its fee) lands there, so they'd scan the table.
 	`ALTER TABLE topups ADD COLUMN credited_at INTEGER NOT NULL DEFAULT 0;
 	UPDATE topups SET credited_at = updated_at WHERE status = 'credited' AND credited_at = 0;
-	CREATE INDEX IF NOT EXISTS topups_credited ON topups(user_id, credited_at);`,
+	CREATE INDEX IF NOT EXISTS topups_credited ON topups(user_id, credited_at);
+	CREATE TABLE IF NOT EXISTS scan_retries (
+		kind TEXT NOT NULL CHECK (kind IN ('logs', 'receipt')),
+		ref TEXT NOT NULL,                  -- logs: the token contract; receipt: the tx
+		block INTEGER NOT NULL,
+		reason TEXT NOT NULL,
+		attempts INTEGER NOT NULL DEFAULT 1,
+		status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'done', 'given_up')),
+		created_at INTEGER NOT NULL,
+		updated_at INTEGER NOT NULL,
+		PRIMARY KEY (kind, ref, block)
+	);
+	CREATE INDEX IF NOT EXISTS platform_ledger_ref ON platform_ledger(lower(ref));`,
 }
 
 func migrate(db *sql.DB) error {
@@ -281,8 +299,13 @@ var addColumnRe = regexp.MustCompile(`(?i)ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN\s
 // adds them.
 const onceMark = "-- once: backfill of the new columns"
 
-// withoutColumnsPresent drops a migration's ADD COLUMN statements for columns the table already has, so a
-// migration runs again on a database that has it (SQLite has no ADD COLUMN IF NOT EXISTS; a test harness may
+// rerunnable: the only columns whose ADD COLUMN may be skipped when the table has them already (migrations 7 and 8).
+// Any other ADD COLUMN runs as written, so a column that exists where it shouldn't (schema drift) fails the
+// migration instead of being hidden.
+var rerunnable = map[string]bool{"topups.refund_cents": true, "topups.refunded_at": true, "topups.credited_at": true}
+
+// withoutColumnsPresent drops a migration's ADD COLUMN statements for rerunnable columns the table already has, so
+// a migration runs again on a database that has it (SQLite has no ADD COLUMN IF NOT EXISTS; a test harness may
 // rewind user_version). If it had them all, it ran before: its backfill after onceMark is dropped too (columns are
 // added in the same transaction as the backfill, so having them means it was done).
 func withoutColumnsPresent(t *sql.Tx, m string) (string, error) {
@@ -291,6 +314,9 @@ func withoutColumnsPresent(t *sql.Tx, m string) (string, error) {
 	out := addColumnRe.ReplaceAllStringFunc(m, func(stmt string) string {
 		added++
 		g := addColumnRe.FindStringSubmatch(stmt)
+		if !rerunnable[strings.ToLower(g[1]+"."+g[2])] {
+			return stmt
+		}
 		var n int
 		if e := t.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`, g[1], g[2]).Scan(&n); e != nil {
 			err = e

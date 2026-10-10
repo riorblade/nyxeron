@@ -112,7 +112,7 @@ Every change requires `reason` (except announcement/admin role changes) and is w
 | GET | `/api/admin/stock` | — | viewer |
 | PUT | `/api/admin/stock/{token}` | `{tx, reason}` (a swap, verified on BSC) or `{delta < 0, reason}` (take units out) | admin |
 | POST | `/api/admin/sales/{id}/void` | `{reason}` (a held party sale: credits back, units released) | admin |
-| GET | `/api/admin/payments` | — (paused?, reconciliation history, top-ups incl. unknown senders, sales) | viewer |
+| GET | `/api/admin/payments` | — (paused?, reconciliation history, top-ups incl. unknown senders with their `reason`, sales, `scanRetries`: blocks or receipts the top-up scanner moved past unread, `open` while it reads them again, `given_up` after 10 reads) | viewer |
 | POST | `/api/admin/reconcile` | `{reason}` (check now against BSC; a match resumes paused payments) | admin |
 | POST | `/api/admin/topups/refund` | `{tx, logIndex, reason}` (what a top-up transfer is owed back was paid back by hand: reconciliation stops counting it as owed; once; an unknown transfer can't be claimed after; 422 `nothing_owed` when nothing is owed on it, a swap's change in a booked restock or seed tx included) | admin |
 | POST | `/api/admin/seed` | `{tx, reason}` (book USDC/USDT the team sent to the Agentic Wallet as the platform's own money; read on BSC, once; 409 `credited_to_a_player` for a player's transfer (credited or rejected) or one refunded by hand; 422 `not_a_seed` if the wallet sent anything out in the tx) | admin |

@@ -57,12 +57,23 @@ Fund the embedded wallet (Privy `useFundWallet`, card via MoonPay) → send USDC
 sponsorship → the browser posts **only the tx hash** to `POST /api/topups` → the api verifies on BSC (checks below)
 → in one database transaction: record the top-up (tx hash + log index unique), add `credits` (amount − 1% fee) ×
 100, write the ledger. A scanner picks up top-ups whose browser closed. Unknown senders get no credits (flagged in
-the back office). The scanner skips zero-value transfers, and a transfer whose receipt neither RPC can read (too big,
-malformed) is recorded `unknown` with the reason, without credits, for the back office, and the scan moves on; one
-RPC failing alone still stops it, so an outage never skips a transfer. A transfer recorded `unknown` and claimed
-later counts against the daily cap when it is credited (`credited_at`; `created_at` stays when it was first seen).
-A tx booked as the team's seed is never credited to a player (recorded `rejected`, reason `seed`), and a tx a
-player's stored wallet sent is never booked as the seed.
+the back office). No single transaction or block can stop the scanner:
+
+- Zero-value transfers are skipped.
+- A player's transfer whose receipt both RPCs refuse (over 4 MB, malformed, or a JSON-RPC error from each) is
+  recorded `unknown` with the reason, owed back in full, without credits.
+- One block whose Transfer logs for a token both RPCs refuse (anyone can fill a block with ~10k zero-value transfers
+  to the Agentic Wallet for a few dollars) is passed: at most 5 such blocks per pass, so a shared outage isn't swept
+  away in one go.
+
+Both are recorded in `scan_retries` and read again on later passes: right away, then after 1, 2, 4 … 128 minutes,
+10 reads in all (about 4 h). What reads is credited like any scanned transfer; what never reads is `given_up`. The back
+office's Payments page lists the open and given-up ones ("Unread on chain") and each top-up's reason; a player's own
+report (`POST /api/topups`) still credits such a deposit meanwhile. One RPC failing alone still stops the scan, so an
+outage never skips a transfer. A transfer recorded `unknown` and claimed later counts against the daily cap when it is
+credited (`credited_at`; `created_at` stays when it was first seen). A tx booked as the team's seed is never credited
+to a player (recorded `rejected`, reason `seed`), and a tx a player's wallet sent is never booked as the seed: neither
+the wallet stored now nor any of the tx's own top-up rows with a player (credited or rejected, so owed back).
 
 ### 3. Warehouse restock (platform; replaces "CEO orders")
 
@@ -154,6 +165,10 @@ WHERE status = 'unknown'
   AND lower(tx) NOT IN (SELECT lower(ref) FROM platform_ledger WHERE kind IN ('restock', 'seed'))
 ORDER BY created_at;
 ```
+
+**Migration 8** (`credited_at`, `scan_retries`, the `platform_ledger(lower(ref))` index) needs no data check: it
+backfills `credited_at` for credited rows from `updated_at` and only adds a table and an index. After deploying it,
+`GET /api/admin/payments` answers `scanRetries` (empty at first).
 
 Balances are read from BSC, never from the database.
 

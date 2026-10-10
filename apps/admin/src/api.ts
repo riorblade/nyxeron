@@ -182,6 +182,8 @@ export interface Payments {
     fee: number;
     credits: number;
     status: "pending" | "credited" | "unknown" | "rejected";
+    /** Why it wasn't credited in full (over the caps, seed, an unreadable receipt…). */
+    reason?: string;
     at: number;
     userId: string;
     email?: string;
@@ -204,5 +206,17 @@ export interface Payments {
     seller: string;
     createdAt: number;
     settledAt?: number;
+  }[];
+  /** What the top-up scanner moved past unread: a block's logs for one token ("logs", ref = token) or a player's
+   * receipt ("receipt", ref = tx). "open" is read again for a while; "given_up" is for the back office. */
+  scanRetries: {
+    kind: "logs" | "receipt";
+    ref: string;
+    block: number;
+    reason: string;
+    attempts: number;
+    status: "open" | "given_up";
+    createdAt: number;
+    updatedAt: number;
   }[];
 }
