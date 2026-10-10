@@ -16,3 +16,7 @@ apps/web/assets-src/
 *.db
 *.db-shm
 *.db-wal
+
+# Go build output (`go build` inside services/*)
+services/api/api
+services/relay/relay

@@ -21,6 +21,21 @@ teammate would notice.
 - **Tests:** `pnpm test` runs a smoke-sized fuzz of the sim (a few seconds); `pnpm test:brutal` runs the full
   hostile fuzz (80 seeds × 350 steps + 30 hostile-id runs, about a minute) and CI runs both.
 
+## 2026-10-10 · Every real swap goes on the books
+
+- **No more pauses from a swap the api refused:** a swap of less than one unit (0.001 share), or one bought while
+  units were already short on chain, used to be refused after the USDC had left the Agentic Wallet, so the next
+  hourly check paused payments for every player. Now any verified swap is booked once: the USDC always, and the
+  whole units it bought. Fractions of a unit are carried per token and booked once they add up to a unit.
+- **A missing unit still stops payments:** if the wallet holds fewer units than the books count when the agent
+  reports a swap, the swap is booked but payments pause at once and the reconciliation keeps flagging the missing
+  units until the team writes them off. An admin reporting the swap writes them off in the same step, as an
+  explicit `loss` stock move with its reason, audited.
+- **One tx, one booking:** a tx booked as a restock can't also be booked as the team's seed, or the other way round.
+  A tx in which the Agentic Wallet sent anything out is never accepted as the seed, and neither is a player's
+  transfer, even a rejected one (#38).
+- **Multi-token swaps:** a swap that bought two whitelisted bStocks adds both in one report.
+
 ## 2026-10-10 · A clear message when the 3D club can't start
 
 - **No WebGL, no silent failure:** on a browser without WebGL (hardware acceleration off, some VMs and work
