@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -25,6 +26,7 @@ const (
 	refillBelow = startWallet / 10 // a broke guest may claim the starter wallet again
 	maxGigFee   = 12_000           // highest djFee in scenarios.json → events
 	gigEvery    = 5 * time.Minute  // a gig takes ~10 real minutes; this stops fee farming
+	nightEvery  = time.Minute      // one settled night out per minute: stops replays and the spend → refill loop
 	maxImport   = 10_000_000       // ceiling for a wallet brought over from before accounts
 	maxName     = 20
 )
@@ -353,11 +355,26 @@ func (s *store) Refill(ctx context.Context, id string) (p Profile, err error) {
 	return
 }
 
+// nightValueCap: the most the tokens a guest bought can be worth by the end of the night. The desk sells at
+// max(1, round(list × m)) and marks holdings the same way, with m within strategy.json's market range [lo, hi], so a
+// unit bought at b is worth at most (hi/lo)·b + (hi/(2·lo) + ½) by closing (the second term covers the rounding).
+func nightValueCap(bought map[string]Holding) int64 {
+	lo, hi := game.strategy.Market.Range[0], game.strategy.Market.Range[1]
+	var v int64
+	for _, h := range bought {
+		v += int64(math.Ceil(float64(h.Cost)*hi/lo + float64(h.Qty)*(hi/(2*lo)+0.5)))
+	}
+	return v
+}
+
 // Night settles a night out as a guest. Guests only spend (door + tokens), so the wallet can't grow, and the tokens
-// taken home can't have cost more than what was spent. It is play money everywhere: since the cutover a city
-// party's real sales go through the api in credits (sales.go), so nobody is paid Coin for a guest's night.
-func (s *store) Night(ctx context.Context, id string, cash int64, bought map[string]Holding, pnl int64, room string) (p Profile, err error) {
-	if cash < 0 || !validHoldings(bought) {
+// taken home can't have cost more than what was spent. Every unit cost at least 1 (the desk's floor price), the
+// P&L can't beat what the market range lets those tokens be worth, `room` is a relay code or empty, and an account
+// settles at most one night per nightEvery. It is play money everywhere: since the cutover a city party's real sales
+// go through the api in credits (sales.go), so nobody is paid Coin for a guest's night.
+func (s *store) Night(ctx context.Context, id string, cash int64, bought map[string]Holding, pnl int64, room string, now time.Time) (p Profile, err error) {
+	room = strings.ToUpper(strings.TrimSpace(room))
+	if cash < 0 || !validHoldings(bought) || (room != "" && !validRoom(room)) {
 		return p, errBad
 	}
 	err = s.tx(ctx, id, func(t *sql.Tx) error {
@@ -365,12 +382,23 @@ func (s *store) Night(ctx context.Context, id string, cash int64, bought map[str
 		if e != nil {
 			return e
 		}
+		var last int64
+		if e := t.QueryRow(`SELECT COALESCE(MAX(at), 0) FROM ledger WHERE user_id = ? AND kind = 'night'`, id).
+			Scan(&last); e != nil {
+			return e
+		}
+		if last > 0 && now.Sub(time.Unix(last, 0)) < nightEvery {
+			return errConflict
+		}
 		var cost int64
 		for _, h := range bought {
+			if h.Cost < h.Qty {
+				return errRejected // under the desk's floor price of 1 a unit
+			}
 			cost += h.Cost
 		}
 		spent := cur.Wallet - cash
-		if cash > cur.Wallet || cost > spent || pnl > cur.Wallet || pnl < -cur.Wallet {
+		if cash > cur.Wallet || cost > spent || pnl > nightValueCap(bought)-spent || pnl < -cur.Wallet {
 			return errRejected
 		}
 		best := pnl
@@ -381,7 +409,10 @@ func (s *store) Night(ctx context.Context, id string, cash int64, bought map[str
 			cash, pnl, best, id); e != nil {
 			return e
 		}
-		if e := ledger(t, id, cash-cur.Wallet, "night", "", room); e != nil {
+		// Written even when nothing was spent: the row is also when this account last settled a night.
+		if _, e := t.Exec(`INSERT INTO ledger (user_id, delta, balance, kind, actor, reason, at)
+			SELECT id, ?, wallet, 'night', '', ?, ? FROM users WHERE id = ?`,
+			cash-cur.Wallet, room, now.Unix(), id); e != nil {
 			return e
 		}
 		if e := addHoldings(t, id, bought); e != nil {

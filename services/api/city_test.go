@@ -186,7 +186,7 @@ func TestParties(t *testing.T) {
 	// A guest settles their night at the live party: play money, nobody is paid Coin for it.
 	host := wallet(t, s, "host")
 	s.Get(ctx, "guest")
-	if _, err := s.Night(ctx, "guest", startWallet-1500, map[string]Holding{"tsla": {Qty: 1, Cost: 1000}}, 0, "ABC123"); err != nil {
+	if _, err := s.Night(ctx, "guest", startWallet-1500, map[string]Holding{"tsla": {Qty: 1, Cost: 1000}}, 0, "ABC123", now); err != nil {
 		t.Fatal(err)
 	}
 	if wallet(t, s, "host") != host {
@@ -208,7 +208,7 @@ func TestCityPartyPaysNoCoin(t *testing.T) {
 	}
 	host := wallet(t, s, "host")
 	s.Get(ctx, "guest")
-	if _, err := s.Night(ctx, "guest", startWallet-1500, nil, 0, "live01"); err != nil {
+	if _, err := s.Night(ctx, "guest", startWallet-1500, nil, -1500, "live01", now); err != nil {
 		t.Fatal(err)
 	}
 	if wallet(t, s, "host") != host {
