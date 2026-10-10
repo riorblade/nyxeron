@@ -19,14 +19,16 @@ export function Objectives({ s, bare }: { s: GameState; bare?: boolean }) {
           <li
             key={o.id}
             className={cn(
-              "flex items-start gap-2.5",
-              o.done && "text-white/60",
+              "flex items-start gap-2.5 text-[15px]",
+              o.done ? "text-white/60" : "text-white/95",
             )}
           >
             <span
               className={cn(
-                "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded border transition-colors",
-                o.done ? "border-white bg-white text-black" : "border-white/35",
+                "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md border transition-colors",
+                o.done
+                  ? "border-emerald-300 bg-emerald-400 text-night shadow-[0_0_10px_#34d399]"
+                  : "border-violet/60 bg-violet/10",
               )}
             >
               {o.done && <Check className="size-3" strokeWidth={3} />}

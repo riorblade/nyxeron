@@ -5,7 +5,7 @@ import {
   missingPermits,
   type GameState,
 } from "@nyxeron/core";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Brand, HomeButton } from "@/components/Brand";
 import { SettingsButton } from "@/components/SettingsDialog";
 import { clock, en, fmt } from "@/i18n/en";
@@ -38,6 +38,7 @@ function Stat({
   warn,
   dense,
   tier = 0,
+  hue = 300,
   roomy,
   info,
   s,
@@ -57,12 +58,14 @@ function Stat({
   tier?: 0 | 1 | 2;
   /** Night HUD shares the bar with the controls, so its secondary stats need more room before they show. */
   roomy?: boolean;
+  /** The stat's neon colour (oklch hue) for its icon chip and meter. */
+  hue?: number;
 }) {
   const shown = open === info;
   return (
     <div
       className={cn(
-        "relative flex shrink-0 items-center border-l border-white/10 pl-4 first-of-type:border-0 first-of-type:pl-0",
+        "relative flex shrink-0 items-center border-l border-violet/25 pl-4 first-of-type:border-0 first-of-type:pl-0",
         !warn && tier === 1 && (roomy ? "hidden 2xl:flex" : "hidden xl:flex"),
         !warn &&
           tier === 2 &&
@@ -85,20 +88,21 @@ function Stat({
         {!dense && (
           <span
             className={cn(
-              "flex size-8 shrink-0 items-center justify-center rounded-lg border border-white/12 bg-white/[0.04]",
-              warn && "border-white/50 bg-white/10",
+              "chip flex size-9 shrink-0 items-center justify-center rounded-xl",
+              warn && "animate-pulse",
             )}
+            style={{ "--hue": warn ? 25 : hue } as CSSProperties}
           >
-            <Icon className="size-4" strokeWidth={1.75} />
+            <Icon className="size-[18px]" strokeWidth={2} />
           </span>
         )}
         <div className="flex flex-col gap-0.5 leading-tight">
-          <span className="text-[10px] tracking-[0.2em] whitespace-nowrap text-white/60 uppercase">
+          <span className="text-[10px] font-semibold tracking-[0.2em] whitespace-nowrap text-white/70 uppercase">
             {label}
           </span>
           <span
             className={cn(
-              "font-mono text-sm tabular-nums",
+              "font-mono text-[15px] font-semibold tabular-nums",
               warn &&
                 "animate-pulse underline decoration-dotted underline-offset-4",
             )}
@@ -112,17 +116,27 @@ function Stat({
   );
 }
 
-/** 0–100 as a thin meter; the number stays readable next to it. */
-function Meter({ value, warn }: { value: number; warn?: boolean }) {
+/** 0–100 as a thin neon meter; the number stays readable next to it. */
+function Meter({
+  value,
+  warn,
+  hue = 210,
+}: {
+  value: number;
+  warn?: boolean;
+  hue?: number;
+}) {
+  const h = warn ? 25 : hue;
   return (
     <span className="flex items-center gap-2">
-      <span className="h-1 w-12 overflow-hidden rounded-full bg-white/10">
+      <span className="h-1.5 w-14 overflow-hidden rounded-full bg-white/10">
         <span
-          className={cn(
-            "block h-full rounded-full bg-white transition-[width] duration-500",
-            warn && "bg-white/50",
-          )}
-          style={{ width: `${Math.max(0, Math.min(100, value))}%` }}
+          className="block h-full rounded-full transition-[width] duration-500"
+          style={{
+            width: `${Math.max(0, Math.min(100, value))}%`,
+            background: `linear-gradient(90deg, oklch(0.6 0.2 ${h}), oklch(0.85 0.15 ${h}))`,
+            boxShadow: `0 0 8px oklch(0.75 0.2 ${h} / 0.7)`,
+          }}
         />
       </span>
       {value}
@@ -172,6 +186,7 @@ export function TopBar({
         icon={statIcon.coin}
         label={en.hud.coin}
         info="coin"
+        hue={75}
         {...stat}
         warn={s.coin < 0}
       >
@@ -183,9 +198,10 @@ export function TopBar({
         icon={statIcon.rep}
         label={en.hud.rep}
         info="rep"
+        hue={85}
         {...stat}
       >
-        <span className="tracking-tighter text-white/80">
+        <span className="text-gold tracking-tighter">
           {stars(s.reputation)}
         </span>{" "}
         {s.reputation}
@@ -197,9 +213,10 @@ export function TopBar({
         icon={statIcon.hype}
         label={en.hud.hype}
         info="hype"
+        hue={330}
         {...stat}
       >
-        <Meter value={s.hype} />
+        <Meter value={s.hype} hue={330} />
       </Stat>
       <Stat
         roomy={dense}
@@ -208,10 +225,11 @@ export function TopBar({
         icon={statIcon.safety}
         label={en.hud.safety}
         info="safety"
+        hue={210}
         {...stat}
         warn={s.safety < 40}
       >
-        <Meter value={s.safety} warn={s.safety < 40} />
+        <Meter value={s.safety} warn={s.safety < 40} hue={210} />
       </Stat>
       <Stat
         roomy={dense}
@@ -220,6 +238,7 @@ export function TopBar({
         icon={statIcon.energy}
         label={en.hud.energy}
         info="energy"
+        hue={150}
         {...stat}
       >
         {"●".repeat(s.ceoEnergy)}
@@ -234,6 +253,7 @@ export function TopBar({
         icon={statIcon.violations}
         label={en.hud.violations}
         info="violations"
+        hue={45}
         {...stat}
         warn={s.violations > 0}
       >
@@ -246,6 +266,7 @@ export function TopBar({
         icon={statIcon.permits}
         label={en.hud.permits}
         info="permits"
+        hue={160}
         {...stat}
         warn={missing.length > 0}
       >

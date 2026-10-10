@@ -11,8 +11,11 @@
 - Anything that moves Coin, tokens or access is settled in services/api, never trusted from the client. Schema
   changes are new migrations at the end of services/api/migrate.go.
 - Back-office mutations need a reason and write an audit row in the same transaction.
-- UI style: UI chrome (panels, HUD, menus, back office) stays black and white, shadcn/ui, subtle glow, no
-  gradients. Game art and the venue scene are full colour (owner decision, 2026-09-29).
+- UI style: the game is a neon nightclub (owner decision, 2026-10-10, replaces the black-and-white chrome of
+  2026-09-29): violet glass panels (`glass`), magenta/violet neon, gold for what matters most (`gold`: active tab,
+  Open Club, primary actions), hued icon chips (`chip`), tiles (`tile`); tokens in `apps/web/src/index.css`. Game art
+  is generated (art/ui, venue-*), never taken from other people's work. shadcn/ui underneath; the back office stays
+  plain.
 - Smart contracts: Foundry + OpenZeppelin only. Never Hardhat.
 - Pull requests follow .github/pull_request_template.md and a `type(scope): summary` title (see CONTRIBUTING.md);
   the PR checks workflow enforces it.

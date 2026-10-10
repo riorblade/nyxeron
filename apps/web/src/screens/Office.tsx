@@ -45,6 +45,17 @@ const TABS = [
   { id: "events", minLevel: 1, C: EventsTab },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
+/** Each tab's neon colour (an oklch hue) for its icon chip. */
+const tabHue: Record<TabId, number> = {
+  stock: 75,
+  talent: 300,
+  promo: 330,
+  staff: 265,
+  rules: 210,
+  permits: 160,
+  build: 45,
+  events: 15,
+};
 const d = (ms: number) => ({ "--d": `${ms}ms` }) as CSSProperties;
 
 function tutorial(s: GameState): string | null {
@@ -62,20 +73,45 @@ function Card({
   children,
   className,
   delay = 0,
+  deco,
 }: {
   title: string;
   icon: typeof Target;
   children: ReactNode;
   className?: string;
   delay?: number;
+  /** Game art in the card: an icon in the top-right corner (the reward chest), or a portrait behind the right side. */
+  deco?: { src: string; as: "icon" | "portrait" };
 }) {
   return (
     <section
-      className={cn("glass enter rounded-xl p-4", className)}
+      className={cn(
+        "glass enter relative overflow-hidden rounded-xl p-4",
+        className,
+      )}
       style={d(delay)}
     >
-      <h3 className="mb-3 flex items-center gap-2 text-[10px] tracking-[0.22em] text-white/55 uppercase">
-        <Icon className="size-3.5" strokeWidth={1.75} />
+      {deco?.as === "icon" && (
+        <Img
+          src={deco.src}
+          alt=""
+          className="pointer-events-none absolute -top-1 -right-1 w-24 drop-shadow-[0_0_16px_oklch(0.8_0.16_75/0.5)]"
+        />
+      )}
+      {deco?.as === "portrait" && (
+        <Img
+          src={deco.src}
+          alt=""
+          className="pointer-events-none absolute inset-y-0 right-0 h-full w-1/2 object-cover object-top opacity-45 [mask-image:linear-gradient(to_left,black_30%,transparent)]"
+        />
+      )}
+      <h3 className="mb-3 flex items-center gap-2.5 text-[11px] font-semibold tracking-[0.22em] text-white/85 uppercase">
+        <span
+          className="chip flex size-7 items-center justify-center rounded-full"
+          style={{ "--hue": 75 } as CSSProperties}
+        >
+          <Icon className="size-3.5" strokeWidth={2} />
+        </span>
         {title}
       </h3>
       {children}
@@ -135,13 +171,13 @@ export function Office({ s }: { s: GameState }) {
     atNight && (id === "talent" || id === "build" || id === "rules");
 
   return (
-    <div className="fixed inset-0 overflow-x-hidden overflow-y-auto bg-black lg:overflow-hidden">
-      {/* The office itself, dimmed, behind every panel. */}
+    <div className="bg-night fixed inset-0 overflow-x-hidden overflow-y-auto lg:overflow-hidden">
+      {/* The club itself, blurred, behind every panel. */}
       <Img
-        src={art.office}
-        className="absolute inset-0 size-full scale-105 object-cover opacity-30 blur-[3px]"
+        src={art.ui.hero}
+        className="absolute inset-0 size-full scale-110 object-cover opacity-45 blur-[10px]"
       />
-      <div className="absolute inset-0 bg-black/55" />
+      <div className="from-night/40 via-night/70 to-night absolute inset-0 bg-gradient-to-b" />
       <div className="grain" />
 
       <div className="relative flex min-h-full flex-col gap-3 p-3 lg:h-full">
@@ -191,18 +227,17 @@ export function Office({ s }: { s: GameState }) {
                   className={cn(
                     "group flex shrink-0 items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors",
                     on
-                      ? "bg-white text-black shadow-[0_0_24px_rgba(255,255,255,.18)]"
-                      : "text-white/75 hover:bg-white/8 hover:text-white",
+                      ? "gold"
+                      : "border border-transparent text-white/80 hover:border-violet/40 hover:bg-violet/15 hover:text-white",
                     locked && "opacity-40",
                   )}
                 >
                   <span
                     className={cn(
-                      "flex size-9 items-center justify-center rounded-lg border",
-                      on
-                        ? "border-black/15 bg-black/5"
-                        : "border-white/12 bg-white/[0.04]",
+                      "flex size-9 items-center justify-center rounded-lg",
+                      on ? "border border-black/15 bg-black/10" : "chip",
                     )}
+                    style={{ "--hue": tabHue[t.id] } as CSSProperties}
                   >
                     <Icon className="size-[18px]" strokeWidth={1.75} />
                   </span>
@@ -213,7 +248,7 @@ export function Office({ s }: { s: GameState }) {
                     <span
                       className={cn(
                         "truncate text-[11px]",
-                        on ? "text-black/55" : "text-white/60",
+                        on ? "text-black/60" : "text-white/55",
                       )}
                     >
                       {nightLock(t.id)
@@ -228,7 +263,7 @@ export function Office({ s }: { s: GameState }) {
               );
             })}
 
-            <div className="mt-auto hidden overflow-hidden rounded-lg border border-white/10 lg:block">
+            <div className="tile mt-auto hidden overflow-hidden rounded-lg lg:block">
               <div className="relative aspect-[16/9]">
                 <Img
                   src={art.venue(s.level)}
@@ -237,8 +272,8 @@ export function Office({ s }: { s: GameState }) {
                     <Building2 className="absolute inset-0 m-auto size-7 text-white/25" />
                   }
                 />
-                <div className="absolute inset-0 bg-black/35" />
-                <span className="absolute top-2 left-2 rounded bg-black/60 px-1.5 py-0.5 font-mono text-[10px]">
+                <div className="from-night/80 absolute inset-0 bg-gradient-to-t to-transparent" />
+                <span className="gold absolute top-2 left-2 rounded px-1.5 py-0.5 font-mono text-[10px] font-bold">
                   LV {s.level}
                 </span>
               </div>
@@ -249,6 +284,12 @@ export function Office({ s }: { s: GameState }) {
                 <div className="text-[11px] text-white/60">
                   {en.office.capacity(capacityOf(s))}
                 </div>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-gold-deep to-gold"
+                    style={{ width: `${(s.level / 5) * 100}%` }}
+                  />
+                </div>
               </div>
             </div>
           </nav>
@@ -258,33 +299,33 @@ export function Office({ s }: { s: GameState }) {
             className="glass enter flex min-h-[60dvh] flex-col overflow-hidden rounded-xl lg:min-h-0"
             style={d(100)}
           >
-            <header className="relative h-28 shrink-0 overflow-hidden border-b border-white/10 xl:h-36">
+            <header className="relative h-28 shrink-0 overflow-hidden border-b border-violet/30 xl:h-40">
               <Img
-                src={art.office}
-                className="absolute inset-0 size-full object-cover object-[50%_65%]"
+                src={art.ui.hero}
+                className="absolute inset-0 size-full object-cover object-[60%_50%]"
               />
-              <div className="absolute inset-0 bg-black/50" />
+              <div className="from-night/95 via-night/55 absolute inset-0 bg-gradient-to-r to-transparent" />
               <div
                 key={tab}
                 className="relative flex h-full items-end justify-between gap-6 p-4 sm:p-6"
               >
                 <div className="enter">
-                  <div className="text-[10px] tracking-[0.3em] text-white/60 uppercase">
+                  <div className="text-cyan text-[10px] font-semibold tracking-[0.3em] uppercase">
                     {en.hud.day(s.day)} ·{" "}
                     {atNight
                       ? `${en.office.nightTime} · ${clock(s.night!.minute)}`
                       : en.office.daytime}
                   </div>
-                  <h1 className="mt-1 text-2xl font-medium tracking-[-0.03em] sm:text-4xl">
+                  <h1 className="mt-1 text-2xl font-bold tracking-[-0.03em] drop-shadow-[0_2px_12px_rgba(0,0,0,.6)] sm:text-4xl xl:text-5xl">
                     {info.title}
                   </h1>
-                  <p className="mt-1 text-sm text-white/70">{info.desc}</p>
+                  <p className="mt-1 text-sm text-white/80">{info.desc}</p>
                 </div>
                 {(() => {
                   const Icon = tabIcon[tab];
                   return (
                     <Icon
-                      className="enter size-16 text-white/15"
+                      className="enter text-neon/40 size-16 drop-shadow-[0_0_18px_currentColor]"
                       strokeWidth={1}
                       style={d(80)}
                     />
@@ -313,11 +354,23 @@ export function Office({ s }: { s: GameState }) {
 
           {/* Right column */}
           <aside className="flex min-h-0 flex-col gap-3">
-            <Card title={en.night.objectives} icon={Target} delay={140}>
-              <Objectives s={s} bare />
+            <Card
+              title={en.night.objectives}
+              icon={Target}
+              delay={140}
+              deco={{ src: art.ui.chest, as: "icon" }}
+            >
+              <div className="relative pr-16">
+                <Objectives s={s} bare />
+              </div>
             </Card>
-            <Card title={en.office.tonight} icon={Moon} delay={180}>
-              <div className="space-y-1.5 text-sm">
+            <Card
+              title={en.office.tonight}
+              icon={Moon}
+              delay={180}
+              deco={dj ? { src: art.dj(dj), as: "portrait" } : undefined}
+            >
+              <div className="relative space-y-1.5 text-sm">
                 <Row label="DJ">
                   {dj
                     ? `${djs[dj].name} · ${genres[djs[dj].genre]}`
@@ -346,32 +399,21 @@ export function Office({ s }: { s: GameState }) {
             </div>
             <button
               onClick={openClub}
-              className="glow enter group relative h-28 shrink-0 overflow-hidden rounded-xl border border-white/25 text-left"
+              className="glow enter group border-gold/50 relative h-36 shrink-0 overflow-hidden rounded-xl border text-left shadow-[0_0_30px_oklch(0.65_0.27_315/0.35)] xl:h-44"
               style={d(260)}
             >
               <Img
-                src={art.door}
-                className="absolute inset-0 size-full object-cover opacity-70 transition-transform duration-700 ease-(--ease-out-expo) group-hover:scale-105"
+                src={art.ui.openClub}
+                className="absolute inset-0 size-full object-cover object-[50%_30%] transition-transform duration-700 ease-(--ease-out-expo) group-hover:scale-105"
               />
-              <div className="absolute inset-0 bg-black/35" />
-              <div className="relative flex h-full items-end justify-between p-4">
-                <div>
-                  <div className="text-[10px] tracking-[0.3em] text-white/70 uppercase">
-                    {atNight ? en.office.backKicker : en.office.openKicker}
-                  </div>
-                  <div
-                    className={cn(
-                      "font-semibold whitespace-nowrap uppercase",
-                      atNight
-                        ? "text-xl tracking-[0.1em]"
-                        : "text-2xl tracking-[0.14em]",
-                    )}
-                  >
-                    {atNight ? en.office.back : en.office.open}
-                  </div>
+              <div className="from-night via-night/40 absolute inset-0 bg-gradient-to-t to-transparent" />
+              <div className="relative flex h-full flex-col items-center justify-end gap-2 p-3 text-center">
+                <div className="text-[10px] font-semibold tracking-[0.3em] text-white/80 uppercase">
+                  {atNight ? en.office.backKicker : en.office.openKicker}
                 </div>
-                <span className="flex size-11 items-center justify-center rounded-lg bg-white text-black transition-transform group-hover:translate-x-0.5">
+                <span className="gold flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-lg font-extrabold tracking-[0.12em] uppercase transition-transform group-hover:scale-[1.02]">
                   <DoorOpen className="size-5" />
+                  {atNight ? en.office.back : en.office.open}
                 </span>
               </div>
             </button>
@@ -394,18 +436,32 @@ function Banner({
   return (
     <p
       className={cn(
-        "enter mb-3 flex items-start gap-3 rounded-lg border px-4 py-3 text-sm leading-relaxed",
+        "enter mb-3 flex items-center gap-3 rounded-xl border px-4 py-3 text-sm leading-relaxed",
         warn
-          ? "border-white/40 bg-white/[0.07]"
-          : "border-white/15 bg-white/[0.03] text-white/85",
+          ? "border-gold/45 bg-gold/[0.08] text-white"
+          : "tile text-white/90",
       )}
     >
+      {badge === "CEO" && (
+        <Img
+          src={art.ui.ceo}
+          alt=""
+          className="border-neon/60 size-11 shrink-0 rounded-full border object-cover shadow-[0_0_14px_oklch(0.65_0.27_315/0.5)]"
+        />
+      )}
       {badge && (
-        <span className="shrink-0 rounded-full border border-white/30 px-2 py-0.5 text-[10px] font-semibold tracking-[0.2em]">
+        <span className="border-gold/60 text-gold shrink-0 rounded-full border px-2.5 py-0.5 text-[10px] font-bold tracking-[0.2em]">
           {badge}
         </span>
       )}
-      {warn && <span className="shrink-0 font-semibold">!</span>}
+      {warn && (
+        <span
+          className="chip flex size-8 shrink-0 items-center justify-center rounded-full font-bold"
+          style={{ "--hue": 75 } as CSSProperties}
+        >
+          !
+        </span>
+      )}
       <span>{children}</span>
     </p>
   );
@@ -414,7 +470,7 @@ function Banner({
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex justify-between gap-3">
-      <span className="text-white/50">{label}</span>
+      <span className="text-white/60">{label}</span>
       <span className="truncate font-mono text-[13px]">{children}</span>
     </div>
   );
