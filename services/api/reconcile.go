@@ -146,6 +146,24 @@ func (s *store) Reconcile(ctx context.Context, c *bsc, actor, reason string, now
 // centsOf: credits as cents of USD (100 credits = $1 today, so the same number).
 func centsOf(credits int64) int64 { return credits * 100 / int64(game.payments.CreditsPerUSD) }
 
+// pauseFor pauses payments now with these problems (kept with any already standing), as a mismatch would. The
+// next reconciliation that matches resumes them.
+func pauseFor(t *sql.Tx, problems []string, now time.Time) error {
+	var v string
+	err := t.QueryRow(`SELECT value FROM settings WHERE key = ?`, pauseKey).Scan(&v)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	var why []string
+	_ = json.Unmarshal([]byte(v), &why)
+	why = append(why, problems...)
+	b, _ := json.Marshal(why)
+	_, err = t.Exec(`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+		ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+		pauseKey, string(b), now.Unix())
+	return err
+}
+
 // Paused: the problems that paused payments, or nil while they run.
 func (s *store) Paused(ctx context.Context) ([]string, error) {
 	var v string
@@ -292,9 +310,29 @@ func (s *store) Payments(ctx context.Context) (Payments, error) {
 	return p, rows.Err()
 }
 
+// errNotASeed: the Agentic Wallet sent something out in the tx (a swap, a payout): the seed only ever comes in.
+var errNotASeed = errors.New("seed: the Agentic Wallet sent tokens out in this tx")
+
+// paidOut: the Agentic Wallet sent tokens (any, stablecoin or bStock) to someone else in a successful tx. Read from
+// the Transfer logs' topics alone, so a token we don't decode still counts.
+func paidOut(rc Receipt) bool {
+	for _, l := range rc.Logs {
+		if len(l.Topics) < 3 || l.Topics[0] != transferTopic || !topicRe.MatchString(l.Topics[1]) {
+			continue
+		}
+		from, to := topicAddr(l.Topics[1]), l.Topics[2]
+		if strings.EqualFold(from, game.payments.AgenticWallet) &&
+			!(topicRe.MatchString(to) && strings.EqualFold(topicAddr(to), game.payments.AgenticWallet)) {
+			return true
+		}
+	}
+	return false
+}
+
 // RecordSeed books USDC/USDT the team sent to the Agentic Wallet as the platform's own money (the first stock is
-// bought with it). The api reads the tx on BSC itself; a tx is booked once, and never one a player was credited
-// for. Its transfers, recorded "unknown" by the top-up scanner, are marked as the seed.
+// bought with it). The api reads the tx on BSC itself; a tx is booked once, never one a player sent (credited
+// or rejected: theirs either way), and never one in which the wallet sent anything out (a swap is a restock).
+// Its transfers, recorded "unknown" by the top-up scanner, are marked as the seed.
 func (s *store) RecordSeed(ctx context.Context, c *bsc, actor, tx, reason string, now time.Time) (int64, error) {
 	tx = strings.ToLower(tx)
 	if !hashRe.MatchString(tx) || strings.TrimSpace(reason) == "" || len(reason) > 200 {
@@ -322,18 +360,22 @@ func (s *store) RecordSeed(ctx context.Context, c *bsc, actor, tx, reason string
 	if cents <= 0 {
 		return 0, errNoStock // nothing came into the wallet
 	}
+	if paidOut(rc) {
+		return 0, errNotASeed
+	}
 	return cents, s.inTx(ctx, func(t *sql.Tx) error {
-		var booked, credited int
-		if err := t.QueryRow(`SELECT (SELECT COUNT(*) FROM platform_ledger WHERE kind = 'seed' AND ref = ?1),
-			(SELECT COUNT(*) FROM topups WHERE tx = ?1 AND (status = 'credited' OR refunded_at > 0))`, tx).Scan(&booked,
-			&credited); err != nil {
+		var booked, players int
+		// Booked already, as the seed or as anything else (a restock's refund leg is not seed money: issue #55).
+		if err := t.QueryRow(`SELECT (SELECT COUNT(*) FROM platform_ledger WHERE lower(ref) = ?1) +
+			(SELECT COUNT(*) FROM stock_moves WHERE lower(tx) = ?1 AND kind = 'restock'),
+			(SELECT COUNT(*) FROM topups WHERE tx = ?1 AND (user_id != '' OR refunded_at > 0))`, tx).Scan(&booked, &players); err != nil {
 			return err
+		}
+		if players > 0 {
+			return errRejected // a player's top-up, credited or to refund: never the platform's
 		}
 		if booked > 0 {
 			return errTxUsed
-		}
-		if credited > 0 {
-			return errRejected // a player's top-up (it backs their credits), or refunded: it isn't the platform's
 		}
 		if err := platformLedger(t, toCredits(cents), "seed", tx, reason); err != nil {
 			return err

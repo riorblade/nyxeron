@@ -384,7 +384,9 @@ function Seed({ done }: { done: (msg: string) => void }) {
     not_a_restock:
       "No USDC/USDT reached the Agentic Wallet in that transaction.",
     credited_to_a_player:
-      "That transfer was a player's top-up: it backs their Credit.",
+      "That transfer was a player's top-up: it backs their Credit (or is owed back to them).",
+    not_a_seed:
+      "The Agentic Wallet sent tokens out in that transaction: it's a swap, report it on the Stock page.",
     not_configured: "BNB Chain isn't configured on the api (BSC_RPC_1/2).",
     bad_request: "Check the tx hash and give a reason.",
   };
