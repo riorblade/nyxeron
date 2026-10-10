@@ -168,6 +168,8 @@ export interface NightState {
   visitors?: Record<string, Visitor>;
   /** Live band's dance multiplier while its set runs (null = not playing). */
   bandMultiplier: number | null;
+  /** Tonight's band slot in night minutes [start, end), fixed when the night starts (absent in older saves). */
+  bandSlot?: [number, number] | null;
   inspectionMinute: number | null;
   doorForced: boolean;
   /** CEO Call "Close Door": no more admissions tonight. */
