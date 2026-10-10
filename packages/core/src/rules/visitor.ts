@@ -1,4 +1,4 @@
-import { tokens, type TokenId } from "../data";
+import { isId, night, tokens, type TokenId } from "../data";
 import { fail, type ActionResult } from "../result";
 import type { GameState, NightState } from "../state";
 import { marketPrice } from "./market";
@@ -32,7 +32,18 @@ const withVisitor = (
 });
 
 /** The player `id` if they are in tonight's club. */
-export const visitorOf = (s: GameState, id: string) => s.night?.visitors?.[id];
+export const visitorOf = (s: GameState, id: string): Visitor | undefined => {
+  const vs = s.night?.visitors;
+  return vs && isId(vs, id) ? vs[id] : undefined;
+};
+
+/** The desk and the door only work while the club is open: tonight, before 04:00, and not sealed (R16). */
+const clubOpen = (s: GameState) =>
+  s.phase === "night" &&
+  !!s.night &&
+  s.night.minute < night.minutes &&
+  !s.night.sealed &&
+  !s.outcome;
 const onMenu = (s: GameState, t: TokenId) => tokens[t].minLevel <= s.level;
 
 /** Walk in: pay the club's cover from the wallet. `id` names the player (multiplayer: their relay id). */
@@ -44,13 +55,15 @@ export function visitorJoin(
   avatar = 1,
 ): ActionResult {
   const n = s.night;
-  if (s.phase !== "night" || !n || n.visitors?.[id]) return fail("wrongPhase");
+  if (!clubOpen(s) || !n || visitorOf(s, id)) return fail("wrongPhase");
   if (!Number.isFinite(cash) || cash < 0) return fail("invalidQty");
   const cover = coverPrice(s);
   if (cash < cover) return fail("notEnoughCoin", cover - cash);
   const v: Visitor = {
     name: name.slice(0, 24),
-    avatar: Math.min(10, Math.max(1, Math.round(avatar))),
+    avatar: Number.isFinite(avatar)
+      ? Math.min(10, Math.max(1, Math.round(avatar)))
+      : 1,
     cash: cash - cover,
     holdings: {},
     startCash: cash,
@@ -70,9 +83,9 @@ export function visitorBuy(
   qty: number,
 ): ActionResult {
   const n = s.night;
-  const v = n?.visitors?.[id];
-  if (!n || !v) return fail("wrongPhase");
-  if (!tokens[t]) return fail("invalidTarget");
+  const v = visitorOf(s, id);
+  if (!clubOpen(s) || !n || !v) return fail("wrongPhase");
+  if (!isId(tokens, t)) return fail("invalidTarget");
   if (!onMenu(s, t)) return fail("levelLocked");
   if (!Number.isInteger(qty) || qty <= 0 || qty > s.stock[t])
     return fail("invalidQty");
@@ -118,7 +131,7 @@ export function visitorPnl(s: GameState, id: string) {
 /** The player goes home (their tokens go with them; the club keeps what they paid). */
 export function visitorLeave(s: GameState, id: string): GameState {
   const n = s.night;
-  if (!n?.visitors?.[id]) return s;
+  if (!n?.visitors || !visitorOf(s, id)) return s;
   const visitors = { ...n.visitors };
   delete visitors[id];
   return { ...s, night: { ...n, visitors } };

@@ -1,10 +1,11 @@
-import { night, staffRoles, type StaffRole } from "../data";
+import { isId, night, staffRoles, type StaffRole } from "../data";
 import { fail, type ActionResult } from "../result";
 import type { GameState } from "../state";
 
 // Staffing is a day decision: wages are paid at the new day for whoever is on the books, so no hiring for one night.
 export function hireStaff(s: GameState, role: StaffRole): ActionResult {
   if (s.phase !== "day") return fail("wrongPhase");
+  if (!isId(staffRoles, role)) return fail("invalidTarget");
   if (s.level < staffRoles[role].minLevel) return fail("levelLocked");
   return {
     ok: true,
@@ -14,6 +15,7 @@ export function hireStaff(s: GameState, role: StaffRole): ActionResult {
 
 export function fireStaff(s: GameState, role: StaffRole): ActionResult {
   if (s.phase !== "day") return fail("wrongPhase");
+  if (!isId(staffRoles, role)) return fail("invalidTarget");
   if (s.staff[role] <= 0) return fail("noStaff");
   return {
     ok: true,
@@ -44,7 +46,9 @@ export function r09_fightChance(
 
 /** R10: door closes at capacity unless the player forces it open (which is a violation, applied once). */
 export function r10_forceDoorOpen(s: GameState): ActionResult {
-  if (!s.night) return fail("wrongPhase");
+  // Only while the door is working: after 04:00 it would cost a violation for nothing.
+  if (s.phase !== "night" || !s.night || s.night.minute >= night.minutes)
+    return fail("wrongPhase");
   if (s.night.doorForced) return fail("alreadyActive");
   return {
     ok: true,

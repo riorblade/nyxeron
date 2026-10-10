@@ -12,6 +12,7 @@
   "maxDays": 60,
   "djHypeFactor": 0.3,
   "maxDjsPerNight": 1,
+  "maxPriceMultiple": 100,
   "difficulty": {
     "easy": {
       "coinMultiplier": 1.5

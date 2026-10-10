@@ -1,10 +1,12 @@
-import { channels, legal, type ChannelId } from "../data";
+import { channels, isId, legal, type ChannelId } from "../data";
 import { fail, type ActionResult } from "../result";
 import { createRng } from "../rng";
 import { clamp, type GameState } from "../state";
 
 /** R5: promo if coin ≥ cost and energy ≥ 1 → hype up; the channel's segment is boosted tonight. */
 export function r05_promote(s: GameState, channel: ChannelId): ActionResult {
+  if (s.outcome) return fail("wrongPhase"); // the game is over: the books are closed
+  if (!isId(channels, channel)) return fail("invalidTarget");
   const c = channels[channel];
   if (s.level < c.minLevel) return fail("levelLocked");
   if (s.activePromos.includes(channel)) return fail("alreadyActive");

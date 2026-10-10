@@ -60,5 +60,13 @@ export const levelData = (level: Level) => levels[level];
 export const priceScale = (level: Level) => levels[level].priceScale;
 export const defaultPrice = (drink: TokenId, level: Level) =>
   Math.round(tokens[drink].defaultPrice * priceScale(level));
+/** Highest list price a CEO may set: a multiple of the venue's default (keeps prices finite through level-ups). */
+export const maxPrice = (drink: TokenId, level: Level) =>
+  Math.round(
+    tokens[drink].defaultPrice * priceScale(level) * economy.maxPriceMultiple,
+  );
+/** `id` is one of the table's own keys: not a typo, nor an Object.prototype key such as "constructor" or "__proto__". */
+export const isId = <T extends object>(table: T, id: unknown): id is keyof T =>
+  typeof id === "string" && Object.hasOwn(table, id);
 export const requiredPermits = (level: Level) =>
   levels[level].requiredPermits as PermitId[];
