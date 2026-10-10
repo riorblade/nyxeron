@@ -837,6 +837,8 @@ export const en = {
     forceDoor: "Force door open",
     forceDoorDesc: "Violation! Lets guests in over capacity",
     skip: "Skip to 04:00",
+    noWebgl:
+      "The 3D club needs WebGL (turn on hardware acceleration in your browser). The night still runs: use the panels.",
     skipTitle: "Skip to 04:00?",
     skipWarn:
       "The rest of the night plays out instantly: no more crowd moves, restocks or dealing with trouble. The report opens straight away.",
