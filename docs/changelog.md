@@ -3,6 +3,12 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-10 · Sign-in that doesn't stall
+
+- **Signing in no longer waits on Privy:** a key refresh runs in the background, one at a time, so a slow Privy (or
+  someone sending made-up keys) can't freeze every signed-in request. Keys are refreshed every hour, so a key Privy
+  retires stops working; and if Privy blips while the api starts, sign-ins work again within seconds, not a minute.
+
 ## 2026-10-10 · Relay: signed-in players only
 
 - **Live clubs know who you are:** the api now hands signed-in players a short pass for the multiplayer relay, and the

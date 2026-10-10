@@ -7,9 +7,12 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -203,7 +206,7 @@ func TestJWKSRefetchRateLimitedWithoutKeys(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		fetches++
 		w.WriteHeader(http.StatusServiceUnavailable)
-		_, _ = w.Write([]byte(`{"error":"unavailable"}`))
+		_, _ = w.Write([]byte("unavailable")) // not JSON: nothing for an old decoder to turn into an empty key set
 	}))
 	t.Cleanup(srv.Close)
 	p := newPrivy(appID, "secret", srv.Client())
@@ -222,5 +225,129 @@ func TestJWKSRefetchRateLimitedWithoutKeys(t *testing.T) {
 	_, _ = p.verify(signJWT(t, key, head, good(later.Add(time.Hour))), later)
 	if fetches != 2 {
 		t.Fatalf("after a minute: %d fetches, want 2", fetches)
+	}
+}
+
+// jwksServer: the app's JWKS with these keys; `slow` delays every answer after the first, `down` fails them.
+func jwksServer(t *testing.T, keys ...*ecdsa.PrivateKey) (*privy, *atomic.Int32, *atomic.Bool, *atomic.Bool) {
+	var fetches atomic.Int32
+	var slow, down atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		n := fetches.Add(1)
+		if n > 1 && slow.Load() {
+			time.Sleep(time.Second)
+		}
+		if down.Load() {
+			http.Error(w, "down", http.StatusServiceUnavailable)
+			return
+		}
+		set := []map[string]string{}
+		for i, k := range keys {
+			x, y := make([]byte, 32), make([]byte, 32)
+			k.PublicKey.X.FillBytes(x)
+			k.PublicKey.Y.FillBytes(y)
+			set = append(set, map[string]string{"kid": fmt.Sprintf("k%d", i+1), "kty": "EC", "crv": "P-256",
+				"x": base64.RawURLEncoding.EncodeToString(x), "y": base64.RawURLEncoding.EncodeToString(y)})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"keys": set})
+	}))
+	t.Cleanup(srv.Close)
+	p := newPrivy(appID, "secret", srv.Client())
+	p.base = srv.URL
+	return p, &fetches, &slow, &down
+}
+
+func TestJWKSSlowRefetchDoesNotStallKnownKeys(t *testing.T) {
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	p, fetches, slow, _ := jwksServer(t, key)
+	now := time.Now()
+	k1 := map[string]any{"alg": "ES256", "kid": "k1", "typ": "JWT"}
+	if _, err := p.verify(signJWT(t, key, k1, good(now.Add(time.Hour))), now); err != nil {
+		t.Fatal(err)
+	}
+	slow.Store(true)
+	later := now.Add(2 * jwksMinGap)
+	// A made-up kid starts a slow refetch; 50 more join it instead of starting their own.
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = p.verify(signJWT(t, key, map[string]any{"alg": "ES256", "kid": "made-up"}, good(later.Add(time.Hour))), later)
+		}()
+	}
+	time.Sleep(100 * time.Millisecond)
+	start := time.Now()
+	if _, err := p.verify(signJWT(t, key, k1, good(later.Add(time.Hour))), later); err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Since(start); d > 200*time.Millisecond {
+		t.Fatalf("a valid sign-in waited %v on someone else's refetch", d)
+	}
+	wg.Wait()
+	if n := fetches.Load(); n != 2 {
+		t.Fatalf("fetches %d, want 2 (one at start, one shared refetch)", n)
+	}
+}
+
+func TestJWKSBootBlipRetriesSoon(t *testing.T) {
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	p, _, _, down := jwksServer(t, key)
+	down.Store(true)
+	now := time.Now()
+	k1 := map[string]any{"alg": "ES256", "kid": "k1", "typ": "JWT"}
+	if _, err := p.verify(signJWT(t, key, k1, good(now.Add(time.Hour))), now); err == nil {
+		t.Fatal("accepted with Privy down")
+	}
+	down.Store(false)
+	soon := now.Add(jwksBootGap + time.Second)
+	if _, err := p.verify(signJWT(t, key, k1, good(soon.Add(time.Hour))), soon); err != nil {
+		t.Fatalf("still refused %v after Privy came back: %v", jwksBootGap+time.Second, err)
+	}
+}
+
+func TestJWKSRotatedKeyExpires(t *testing.T) {
+	old, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	p, _, _, _ := jwksServer(t, old)
+	now := time.Now()
+	k1 := map[string]any{"alg": "ES256", "kid": "k1", "typ": "JWT"}
+	if _, err := p.verify(signJWT(t, old, k1, good(now.Add(time.Hour))), now); err != nil {
+		t.Fatal(err)
+	}
+	// Privy rotates: k1 is now a different key. Nobody sends an unknown kid, so only the max age notices.
+	rotated, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	p2, _, _, _ := jwksServer(t, rotated)
+	p.base = p2.base
+	later := now.Add(jwksMaxAge + time.Minute)
+	if _, err := p.verify(signJWT(t, old, k1, good(later.Add(time.Hour))), later); err != nil {
+		t.Fatal("the stale key should still serve while the refresh runs:", err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := p.verify(signJWT(t, old, k1, good(later.Add(time.Hour))), later); err != nil {
+			return // the removed key stopped working
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("a key Privy removed was still accepted after the max age")
+}
+
+func TestJWKSKeysNotTrustedPastADayWhilePrivyIsDown(t *testing.T) {
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	p, _, _, down := jwksServer(t, key)
+	now := time.Now()
+	k1 := map[string]any{"alg": "ES256", "kid": "k1", "typ": "JWT"}
+	if _, err := p.verify(signJWT(t, key, k1, good(now.Add(time.Hour))), now); err != nil {
+		t.Fatal(err)
+	}
+	down.Store(true)
+	hours := now.Add(10 * time.Hour) // an outage: the cached key keeps everyone signed in
+	if _, err := p.verify(signJWT(t, key, k1, good(hours.Add(time.Hour))), hours); err != nil {
+		t.Fatal("cached key dropped during a short outage:", err)
+	}
+	time.Sleep(50 * time.Millisecond) // let the background refresh fail
+	day := now.Add(jwksMaxKeep + time.Hour)
+	if _, err := p.verify(signJWT(t, key, k1, good(day.Add(time.Hour))), day); err == nil {
+		t.Fatal("a day-old key accepted without Privy confirming it")
 	}
 }
