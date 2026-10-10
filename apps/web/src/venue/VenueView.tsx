@@ -37,6 +37,7 @@ export function VenueView({
   const el = useRef<HTMLDivElement>(null);
   const r = useRef<VenueScene | null>(null);
   const [selected, setSelected] = useState(-1);
+  const [noGl, setNoGl] = useState(false);
   // The scene loads async (after the first effects ran), so init reads the latest guest DJ from here.
   const guestRef = useRef<{ name: string; avatar: number } | null>(null);
   const meRef = useRef("me");
@@ -53,19 +54,27 @@ export function VenueView({
     v.onSelect = setSelected;
     v.onTokenClick = setDrink;
     v.onBurst = (cue) => shareShow({ t: "fx", cue });
-    v.init(el.current!).then(() => {
-      // StrictMode mounts twice; a renderer torn down before init finished must not become current.
-      if (cancelled) return;
-      r.current = v;
-      const { clips, ads, pyro } = useSettings.getState();
-      v.setScreenPrefs({ clips, ads });
-      const n = useNet.getState().role;
-      v.setPyroAuto(pyro === "auto" && n !== "guest" && n !== "dj");
-      v.setGuestDj(guestRef.current ?? null);
-      v.setMe(meRef.current);
-      const g = useGame.getState().game;
-      if (g) v.update(g);
-    });
+    v.init(el.current!)
+      .then(() => {
+        // StrictMode mounts twice; a renderer torn down before init finished must not become current.
+        if (cancelled) return;
+        r.current = v;
+        const { clips, ads, pyro } = useSettings.getState();
+        v.setScreenPrefs({ clips, ads });
+        const n = useNet.getState().role;
+        v.setPyroAuto(pyro === "auto" && n !== "guest" && n !== "dj");
+        v.setGuestDj(guestRef.current ?? null);
+        v.setMe(meRef.current);
+        const g = useGame.getState().game;
+        if (g) v.update(g);
+      })
+      .catch((e: unknown) => {
+        // No WebGL (hardware acceleration off, an old GPU, some VMs): the night still runs on the panels, so say
+        // why the room is empty instead of failing silently.
+        if (cancelled) return;
+        console.warn("venue: 3D view unavailable", e);
+        setNoGl(true);
+      });
     return () => {
       cancelled = true;
       r.current = null;
@@ -125,6 +134,16 @@ export function VenueView({
   return (
     <>
       <div ref={el} className="absolute inset-0" />
+      {noGl && (
+        <div
+          role="status"
+          className="absolute inset-0 flex items-center justify-center p-6 text-center"
+        >
+          <p className="glass max-w-sm rounded-xl p-4 text-sm text-white/70">
+            {en.night.noWebgl}
+          </p>
+        </div>
+      )}
       {drink && <TokenDetail s={s} id={drink} onClose={() => setDrink(null)} />}
       {editing && (
         <div className="glass enter absolute inset-x-3 bottom-3 z-20 flex max-h-[45dvh] flex-col gap-2 overflow-y-auto rounded-xl p-3 lg:inset-x-auto lg:left-1/2 lg:-translate-x-1/2">
