@@ -54,6 +54,10 @@ export const reasonText = (r: FailReason, short?: number) => reasons[r](short);
 export const en = {
   /** Classic mode's play currency (farmed now, for the token launch later). Real money is Credit. */
   unit: "NP",
+  crash: {
+    title: "Something went wrong. Reloading usually fixes it.",
+    reload: "Reload",
+  },
   title: "NYXERON",
   subtitle: "Nightclub Empire",
   tagline: "Plan by day. Survive the night.",

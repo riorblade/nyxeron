@@ -9,6 +9,12 @@ teammate would notice.
   someone sending made-up keys) can't freeze every signed-in request. Keys are refreshed every hour, so a key Privy
   retires stops working; and if Privy blips while the api starts, sign-ins work again within seconds, not a minute.
 
+## 2026-10-10 · No blank screen after an update
+
+- **A tab left open across an update recovers by itself:** if it asks for a part of the game that the new version
+  replaced, it reloads once into the new version. Anything else that breaks while drawing a screen now shows "Something
+  went wrong" with a Reload button instead of a blank page.
+
 ## 2026-10-10 · Relay: signed-in players only
 
 - **Live clubs know who you are:** the api now hands signed-in players a short pass for the multiplayer relay, and the
