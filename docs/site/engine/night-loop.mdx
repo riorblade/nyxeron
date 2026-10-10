@@ -3,6 +3,14 @@ title: "The night loop"
 description: "How NYXERON's deterministic engine turns one game state into the next: seeded randomness, day and night phases, and the minute-by-minute step order."
 ---
 
+<div className="nyx-hero nyx-banner">
+  <img src="/images/sections/mechanics.webp" alt="" noZoom />
+  <div className="nyx-hero-text">
+    <div className="nyx-hero-kicker">Game mechanics</div>
+    <div className="nyx-hero-title">Every rule is a formula you can read.</div>
+  </div>
+</div>
+
 NYXERON's simulation lives in one pure TypeScript package. It has no clock, no network and no DOM. Every rule is a function that takes a game state and returns a new one. **Why:** the same code runs the browser game, the balance bot and the tests, and any night can be replayed exactly from its seed.
 
 ## State in, state out
@@ -46,6 +54,7 @@ Every random decision in the game is built from a uniform draw $u \in [0, 1)$:
 A game day has three phases. The player plans by day, watches the club run by night, and reads the result in the report.
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'background':'#090319','primaryColor':'#1e0f3b','primaryBorderColor':'#b078ff','primaryTextColor':'#f3e8ff','secondaryColor':'#140a2b','tertiaryColor':'#120826','lineColor':'#914dff','textColor':'#f3e8ff','edgeLabelBackground':'#120826','clusterBkg':'#140a2b','clusterBorder':'#4b2a85','actorBkg':'#1e0f3b','actorBorder':'#b078ff','actorTextColor':'#f3e8ff','signalColor':'#c9a8ff','signalTextColor':'#f3e8ff','noteBkgColor':'#2a1650','noteTextColor':'#f3e8ff','noteBorderColor':'#914dff','fontSize':'15px'}}}%%
 stateDiagram-v2
     direction LR
     day --> night: startNight (Open Club)
@@ -85,6 +94,7 @@ If the venue is sealed (a penalty from a failed inspection), no guests are gener
 Each tick runs the same steps in the same order. The order matters: a guest admitted at the door this minute already counts toward the crowd check, the escorts and the energy update of that same minute.
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'background':'#090319','primaryColor':'#1e0f3b','primaryBorderColor':'#b078ff','primaryTextColor':'#f3e8ff','secondaryColor':'#140a2b','tertiaryColor':'#120826','lineColor':'#914dff','textColor':'#f3e8ff','edgeLabelBackground':'#120826','clusterBkg':'#140a2b','clusterBorder':'#4b2a85','actorBkg':'#1e0f3b','actorBorder':'#b078ff','actorTextColor':'#f3e8ff','signalColor':'#c9a8ff','signalTextColor':'#f3e8ff','noteBkgColor':'#2a1650','noteTextColor':'#f3e8ff','noteBorderColor':'#914dff','fontSize':'15px'}}}%%
 flowchart TD
     A[Arrivals: pending guests whose minute has come join the queue] --> B[Door: up to 3 per minute. Capacity, ID check, dress code, cover charge, promoter commission]
     B --> C{More than 150 inside and no crowd permit?}

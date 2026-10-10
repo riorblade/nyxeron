@@ -3,6 +3,15 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-11 · The public docs look like the game
+
+- **Neon theme:** docs.nyxeron.xyz now uses the game's violet glass, magenta neon and gold (`docs/site/style.css`,
+  `docs.json`), with section banners, themed Mermaid diagrams and scrollable wide tables.
+- **New pages:** Catalog (venue ladder, DJ and band cards, staff, tokens, numbers from `packages/core/src/data`) and
+  FAQ (10 player questions). The "Game engine" group is now "Game mechanics".
+- **Art:** venue images are the neon art from `apps/web/public/art`; DJ, band, staff and token portraits come from
+  the game. Section banners are cut from game art, with no text in the image.
+
 ## 2026-10-11 · The agent stocks the warehouse on its own
 
 - **Warehouse floor:** `/api/agent/demand` now suggests a restock whenever a whitelisted bStock has fewer than

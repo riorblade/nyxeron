@@ -1,0 +1,660 @@
+/* NYXERON docs: the game's neon nightclub look (apps/web/src/index.css, owner decision 2026-10-10).
+   Violet glass panels, magenta/violet neon, cyan for live data. Gold only for what matters most: "Play now", the page
+   you are on, and the top tier of a list. Dark only (docs.json appearance.strict). */
+
+:root {
+  --nyx-neon: #dd47fc;
+  --nyx-violet: #914dff;
+  --nyx-lilac: #c9a8ff;
+  --nyx-gold: #fabb41;
+  --nyx-gold-deep: #e18600;
+  --nyx-cyan: #00d5ef;
+  --nyx-night: #090319;
+  --nyx-panel: rgba(30, 15, 59, 0.55);
+  --nyx-edge: rgba(176, 120, 255, 0.32);
+  --nyx-text: #e6dcf5;
+  --nyx-muted: rgba(235, 225, 255, 0.82);
+}
+
+/* ---------- page ---------- */
+
+html,
+body {
+  background: var(--nyx-night);
+}
+
+#background-color {
+  background:
+    radial-gradient(
+      1200px 600px at 85% -10%,
+      rgba(221, 71, 252, 0.16),
+      transparent 60%
+    ),
+    radial-gradient(
+      900px 500px at -10% 30%,
+      rgba(145, 77, 255, 0.14),
+      transparent 60%
+    ),
+    var(--nyx-night);
+}
+
+#navbar {
+  border-bottom: 1px solid var(--nyx-edge);
+  box-shadow: 0 0 24px rgba(145, 77, 255, 0.12);
+}
+
+/* ---------- type ---------- */
+
+#page-title,
+.mdx-content h1 {
+  text-shadow:
+    0 0 18px rgba(221, 71, 252, 0.45),
+    0 0 2px rgba(255, 255, 255, 0.25);
+}
+
+/* Section headings: a neon rule above, drawn the same way everywhere. */
+.mdx-content > h2 {
+  position: relative;
+  padding-top: 0.9rem;
+  border: 0;
+}
+
+.mdx-content > h2::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    var(--nyx-neon),
+    var(--nyx-violet) 40%,
+    transparent
+  );
+  box-shadow: 0 0 8px rgba(221, 71, 252, 0.5);
+}
+
+.eyebrow {
+  color: var(--nyx-neon) !important;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* ---------- glass panels: cards, callouts, accordions, code ---------- */
+
+.card,
+.callout,
+.accordion,
+.accordion-group,
+.code-block {
+  background: var(--nyx-panel) !important;
+  border: 1px solid var(--nyx-edge) !important;
+  box-shadow:
+    0 0 28px rgba(145, 77, 255, 0.12),
+    inset 0 0 24px rgba(145, 77, 255, 0.08);
+  backdrop-filter: blur(14px);
+}
+
+/* Inside a group the rows share one panel: no glass per row, just a divider. */
+.accordion-group > .accordion {
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(176, 120, 255, 0.18) !important;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.accordion-group > .accordion:last-child {
+  border-bottom: 0 !important;
+}
+
+.accordion summary:hover {
+  background: rgba(145, 77, 255, 0.12) !important;
+}
+
+/* Callouts in the palette: lilac text, a cyan icon. */
+.callout {
+  color: var(--nyx-text) !important;
+}
+
+.callout [data-component-part="callout-icon"] svg {
+  color: var(--nyx-cyan) !important;
+}
+
+.callout a {
+  color: #fff !important;
+}
+
+.card {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.card:hover {
+  border-color: rgba(221, 71, 252, 0.75) !important;
+  box-shadow:
+    0 0 24px rgba(221, 71, 252, 0.35),
+    inset 0 0 24px rgba(145, 77, 255, 0.1);
+  transform: translateY(-2px);
+}
+
+[data-component-part="card-icon"] {
+  color: var(--nyx-neon) !important;
+  filter: drop-shadow(0 0 6px rgba(221, 71, 252, 0.6));
+}
+
+[data-component-part="card-title"],
+.card h2,
+.card h3 {
+  letter-spacing: 0.01em;
+  padding-top: 0 !important;
+  border: 0 !important;
+  text-shadow: none !important;
+}
+
+.card h2::before,
+.card h3::before {
+  content: none !important;
+}
+
+/* Card art at one height, whatever the source's shape. */
+.card img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  object-position: center 30%;
+}
+
+/* ---------- tables read as a stat sheet ---------- */
+
+.mdx-content table {
+  border: 1px solid var(--nyx-edge);
+  border-radius: 12px;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: rgba(30, 15, 59, 0.35);
+}
+
+.mdx-content th,
+.mdx-content td {
+  padding: 0.6rem 0.9rem !important;
+}
+
+.mdx-content thead th {
+  color: var(--nyx-lilac);
+  background: rgba(145, 77, 255, 0.14);
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+}
+
+.mdx-content td {
+  color: #d9d0ec;
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.mdx-content tbody tr:nth-child(even) td {
+  background: rgba(145, 77, 255, 0.04);
+}
+
+.mdx-content tbody tr:hover td {
+  background: rgba(221, 71, 252, 0.08);
+}
+
+/* Wide formulas scroll inside the column instead of running off it. */
+.mdx-content .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25rem 0;
+}
+
+/* ---------- gold for what matters most ---------- */
+
+/* The navbar's "Play now": the span under the label is its fill. */
+#topbar-cta-button a > span:first-child {
+  background: linear-gradient(
+    180deg,
+    #ffd77a,
+    var(--nyx-gold) 55%,
+    var(--nyx-gold-deep)
+  ) !important;
+  border: 1px solid #ffe7a8;
+  box-shadow: 0 0 22px rgba(250, 187, 65, 0.45);
+}
+
+#topbar-cta-button a span.text-white,
+#topbar-cta-button a svg {
+  color: #1a0b00 !important;
+  font-weight: 700;
+}
+
+#sidebar a[data-active="true"],
+#sidebar [data-active="true"] {
+  color: var(--nyx-gold) !important;
+  text-shadow: 0 0 10px rgba(250, 187, 65, 0.45);
+}
+
+.sidebar-group > :first-child,
+.sidebar-title {
+  color: var(--nyx-neon);
+  letter-spacing: 0.08em;
+}
+
+/* ---------- hero and section banners ---------- */
+
+.nyx-hero {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 1.5rem;
+  border-radius: 1rem;
+  border: 1px solid var(--nyx-edge);
+  box-shadow: 0 0 40px rgba(221, 71, 252, 0.25);
+}
+
+.nyx-hero img,
+.nyx-hero video {
+  display: block;
+  width: 100%;
+  margin: 0 !important;
+  border-radius: 0 !important;
+}
+
+.nyx-banner img {
+  aspect-ratio: 3 / 1;
+  object-fit: cover;
+}
+
+.nyx-hero-text {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 1.5rem 1.75rem;
+  background: linear-gradient(0deg, rgba(9, 3, 25, 0.92), rgba(9, 3, 25, 0));
+}
+
+.nyx-hero-kicker {
+  color: var(--nyx-cyan);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+/* The home page's kicker is the one gold line on it. */
+.nyx-hero:not(.nyx-banner) .nyx-hero-kicker {
+  color: var(--nyx-gold);
+}
+
+.nyx-hero-title {
+  color: #fff;
+  font-size: clamp(1.15rem, 3.2vw, 1.6rem);
+  font-weight: 800;
+  line-height: 1.15;
+  text-shadow: 0 0 18px rgba(221, 71, 252, 0.7);
+  animation: nyx-flicker 7s infinite;
+}
+
+@keyframes nyx-flicker {
+  0%,
+  92%,
+  100% {
+    opacity: 1;
+  }
+  93% {
+    opacity: 0.55;
+  }
+  94% {
+    opacity: 1;
+  }
+  96% {
+    opacity: 0.75;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nyx-hero-title {
+    animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .nyx-hero img {
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+  }
+
+  .nyx-hero-text {
+    padding: 1rem;
+  }
+}
+
+/* A looping clip or render framed like a club screen. */
+.nyx-screen {
+  overflow: hidden;
+  margin: 1rem 0 1.5rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(0, 213, 239, 0.45);
+  box-shadow:
+    0 0 30px rgba(0, 213, 239, 0.25),
+    0 0 60px rgba(221, 71, 252, 0.15);
+}
+
+.nyx-screen video,
+.nyx-screen img {
+  display: block;
+  width: 100%;
+  margin: 0 !important;
+  border-radius: 0 !important;
+}
+
+/* ---------- trading-card roster ---------- */
+
+.nyx-roster {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+  margin: 1rem 0 1.5rem;
+}
+
+/* Five of a kind sit in one row. */
+.nyx-roster:has(> :nth-child(5):last-child) {
+  grid-template-columns: repeat(5, 1fr);
+}
+
+.nyx-char {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 0.9rem;
+  background: var(--nyx-panel);
+  border: 1px solid var(--nyx-edge);
+  box-shadow: 0 0 18px rgba(145, 77, 255, 0.15);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.nyx-char:hover {
+  transform: translateY(-3px);
+  border-color: rgba(221, 71, 252, 0.75);
+  box-shadow: 0 0 22px rgba(221, 71, 252, 0.35);
+}
+
+/* The top of a list: a gold edge, the only gold in the catalog. */
+.nyx-char.legendary,
+.nyx-rung.legendary {
+  border-color: rgba(250, 187, 65, 0.8);
+  box-shadow:
+    0 0 22px rgba(250, 187, 65, 0.3),
+    inset 0 0 18px rgba(250, 187, 65, 0.08);
+}
+
+.nyx-char img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  object-position: center 20%;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  mask-image: linear-gradient(180deg, #000 70%, transparent);
+}
+
+.nyx-char-body {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 0.3rem;
+  margin-top: -1.6rem;
+  padding: 0 0.7rem 0.75rem;
+  position: relative;
+}
+
+.nyx-char-name,
+.nyx-char-note,
+.nyx-stat {
+  flex-basis: 100%;
+}
+
+.nyx-char-name {
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.92rem;
+  line-height: 1.2;
+  text-shadow: 0 0 10px rgba(9, 3, 25, 0.9);
+}
+
+.nyx-char-note {
+  margin-top: auto;
+  padding-top: 0.2rem;
+  color: var(--nyx-muted);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.nyx-chip {
+  display: inline-block;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #f5d8ff;
+  background: rgba(221, 71, 252, 0.18);
+  border: 1px solid rgba(221, 71, 252, 0.45);
+}
+
+.nyx-chip.price {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--nyx-edge);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+/* A stat as a meter: label, bar, value. */
+.nyx-stat {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.7rem;
+  color: var(--nyx-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.nyx-stat b {
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.nyx-meter {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.nyx-meter i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--nyx-violet), var(--nyx-neon));
+  box-shadow: 0 0 8px rgba(221, 71, 252, 0.7);
+}
+
+/* ---------- venue ladder ---------- */
+
+.nyx-ladder {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.75rem;
+  margin: 1rem 0 1.5rem;
+}
+
+.nyx-ladder::before {
+  content: "";
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  top: 34%;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    var(--nyx-violet),
+    var(--nyx-neon),
+    var(--nyx-gold)
+  );
+  box-shadow: 0 0 12px rgba(221, 71, 252, 0.7);
+  z-index: 0;
+}
+
+.nyx-rung {
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  border-radius: 0.9rem;
+  background: var(--nyx-panel);
+  border: 1px solid var(--nyx-edge);
+}
+
+.nyx-rung img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  margin: 0 !important;
+  border-radius: 0 !important;
+}
+
+.nyx-rung-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.55rem 0.65rem 0.7rem;
+}
+
+.nyx-level {
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  margin-top: -1.35rem;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 0.8rem;
+  color: #fff;
+  background: var(--nyx-night);
+  border: 2px solid var(--nyx-neon);
+  box-shadow: 0 0 10px rgba(221, 71, 252, 0.8);
+}
+
+.nyx-rung.legendary .nyx-level {
+  border-color: var(--nyx-gold);
+  box-shadow: 0 0 10px rgba(250, 187, 65, 0.8);
+}
+
+.nyx-rung .nyx-char-name {
+  flex-basis: 100%;
+  font-size: 0.82rem;
+}
+
+/* ---------- token tiles ---------- */
+
+.nyx-tokens {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+  margin: 1rem 0 1.5rem;
+}
+
+.nyx-token {
+  text-align: center;
+  padding: 0.9rem 0.5rem 0.75rem;
+  border-radius: 0.9rem;
+  background: var(--nyx-panel);
+  border: 1px solid var(--nyx-edge);
+  transition: border-color 0.2s ease;
+}
+
+.nyx-token:hover {
+  border-color: rgba(0, 213, 239, 0.6);
+}
+
+.nyx-token img {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 0.45rem !important;
+  border-radius: 999px !important;
+  box-shadow: 0 0 18px rgba(0, 213, 239, 0.35);
+}
+
+.nyx-token-name {
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.nyx-token-ticker {
+  color: var(--nyx-cyan);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+}
+
+.nyx-token-level {
+  margin-top: 0.2rem;
+  color: var(--nyx-muted);
+  font-size: 0.75rem;
+}
+
+/* ---------- small screens ---------- */
+
+@media (max-width: 900px) {
+  .nyx-roster,
+  .nyx-roster:has(> :nth-child(5):last-child) {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  /* The ladder becomes a swipeable strip. */
+  .nyx-ladder {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    padding-bottom: 0.5rem;
+  }
+
+  .nyx-ladder::before {
+    display: none;
+  }
+
+  .nyx-rung {
+    flex: 0 0 62%;
+    scroll-snap-align: start;
+  }
+}
+
+@media (max-width: 640px) {
+  .nyx-roster,
+  .nyx-roster:has(> :nth-child(5):last-child),
+  .nyx-tokens {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* An odd one out spans the row instead of standing alone. */
+  .nyx-roster > :last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  .nyx-roster > :last-child:nth-child(odd) img {
+    aspect-ratio: 16 / 9;
+  }
+}
