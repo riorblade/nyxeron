@@ -791,6 +791,10 @@ func (a *admin) route(mux *http.ServeMux) {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "credited_to_a_player"})
 			return
 		}
+		if errors.Is(err, errNotASeed) {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "not_a_seed"})
+			return
+		}
 		if err != nil {
 			restockError(w, err) // pending, tx_used, not_a_restock (nothing came in), bad_request, not_configured…
 			return
