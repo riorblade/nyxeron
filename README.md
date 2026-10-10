@@ -8,7 +8,7 @@ stock agent keeps the warehouse filled on chain by itself.
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
 | ▶️ **Demo video (2:41)** | **[youtu.be/0ZWkMoz8P5Q](https://youtu.be/0ZWkMoz8P5Q)**                                                                            |
 | 🎮 **Play**              | **[nyxeron.xyz](https://nyxeron.xyz)** (landing page → _Enter_ → sign in with email or Google)                                      |
-| 📚 **Docs**              | **[nyxeron.mintlify.app](https://nyxeron.mintlify.app)** (the game, the engine as formulas, the on-chain economy)                   |
+| 📚 **Docs**              | **[docs.nyxeron.xyz](https://docs.nyxeron.xyz)** (the game, the engine as formulas, the on-chain economy)                           |
 | 𝕏 **Updates**            | **[@nyxeron_xyz](https://x.com/nyxeron_xyz)**                                                                                       |
 | 🛠️ Back office           | [admin.nyxeron.xyz](https://admin.nyxeron.xyz) (team only)                                                                          |
 | 🔌 Public API            | [api.nyxeron.xyz/api/quotes](https://api.nyxeron.xyz/api/quotes) (live spot prices) · [/api/city](https://api.nyxeron.xyz/api/city) |
@@ -181,16 +181,16 @@ Vite proxies `/api` and `/ws` to the local services, so no CORS setup is needed 
 
 ### Documentation
 
-| Doc                                                  | For                                                                 |
-| ---------------------------------------------------- | ------------------------------------------------------------------- |
-| [nyxeron.mintlify.app](https://nyxeron.mintlify.app) | Public docs: the game, the engine as formulas, the on-chain economy |
-| [docs/PRD.md](docs/PRD.md)                           | Product: vision, users, features, economy, success                  |
-| [docs/architecture.md](docs/architecture.md)         | System design, data flow, trust model                               |
-| [docs/game-design.md](docs/game-design.md)           | Rules (R1–R19), levels, night simulation, the city, balance         |
-| [docs/payments.md](docs/payments.md)                 | Top-ups, Credits, the warehouse, the agent, reconciliation          |
-| [docs/api.md](docs/api.md)                           | HTTP API: player, city, back office, agent                          |
-| [docs/multiplayer.md](docs/multiplayer.md)           | Relay protocol and live session sync                                |
-| [docs/roadmap.md](docs/roadmap.md)                   | What's next                                                         |
-| [docs/changelog.md](docs/changelog.md)               | What shipped, when, and the numbers behind it                       |
-| [deploy/README.md](deploy/README.md)                 | Running it on a VPS and Vercel                                      |
-| [CONTRIBUTING.md](CONTRIBUTING.md)                   | Workflow, conventions, definition of done                           |
+| Doc                                          | For                                                                 |
+| -------------------------------------------- | ------------------------------------------------------------------- |
+| [docs.nyxeron.xyz](https://docs.nyxeron.xyz) | Public docs: the game, the engine as formulas, the on-chain economy |
+| [docs/PRD.md](docs/PRD.md)                   | Product: vision, users, features, economy, success                  |
+| [docs/architecture.md](docs/architecture.md) | System design, data flow, trust model                               |
+| [docs/game-design.md](docs/game-design.md)   | Rules (R1–R19), levels, night simulation, the city, balance         |
+| [docs/payments.md](docs/payments.md)         | Top-ups, Credits, the warehouse, the agent, reconciliation          |
+| [docs/api.md](docs/api.md)                   | HTTP API: player, city, back office, agent                          |
+| [docs/multiplayer.md](docs/multiplayer.md)   | Relay protocol and live session sync                                |
+| [docs/roadmap.md](docs/roadmap.md)           | What's next                                                         |
+| [docs/changelog.md](docs/changelog.md)       | What shipped, when, and the numbers behind it                       |
+| [deploy/README.md](deploy/README.md)         | Running it on a VPS and Vercel                                      |
+| [CONTRIBUTING.md](CONTRIBUTING.md)           | Workflow, conventions, definition of done                           |
