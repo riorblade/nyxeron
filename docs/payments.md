@@ -94,6 +94,14 @@ open, not ended) is checked inside that same transaction; a banned tenant's shop
   log from the locked USDC/USDT contract; recipient = Agentic Wallet; sender = the player's stored wallet; amount
   from the log ≥ $3 and within the player's caps (credited up to the room left; what isn't credited is recorded as
   `rejected`, or in the row's reason, for the back office to refund); two RPCs agree.
+- Top-up reports can't burn the shared paid RPC quota: one report per player per 2 s (`429 too_soon`); at most
+  20 *misses* per player per 10 minutes, then `429 too_many_misses` until they age out, while the scanner still
+  credits a real transfer. A miss is any report whose receipt the RPCs couldn't show to hold a USDC/USDT transfer
+  from the player's wallet to the Agentic Wallet: no transaction yet, a failed one, someone else's (final or still
+  confirming), and any RPC error (oversized receipt, mismatch, provider down). A settled refusal (`tx_failed`,
+  `not_a_topup`) is answered again for 10 minutes without RPC calls. The player's own transfer still confirming
+  (`202`) is never a miss: it is in the receipt from its first block. Stale limiter entries are swept every 10
+  minutes. Constants in `services/api/topups.go`.
 - Before restock units: as above for the bStock transfer into the Agentic Wallet; USDC spent ≤ the agent's limits.
 - Before a sale: credits and warehouse checked and held in the same transaction; prices from the server, never from
   the browser.
