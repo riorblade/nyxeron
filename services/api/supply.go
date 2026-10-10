@@ -30,7 +30,7 @@ type SupplyRow struct {
 	Sold24h   int64   `json:"sold24h"`   // to players, at parties and shops
 	Sold7d    int64   `json:"sold7d"`    // to players, at parties and shops
 	DaysLeft  float64 `json:"daysLeft"`  // at the last 7 days' pace (-1: no demand yet)
-	Suggested int64   `json:"suggested"` // to cover coverDays at that pace
+	Suggested int64   `json:"suggested"` // to cover coverDays at that pace, and at least agent.minUnits (whitelisted)
 }
 
 type StockMove struct {
@@ -87,6 +87,11 @@ func (s *store) Supply(ctx context.Context, now time.Time) (Supply, error) {
 		if perDay := float64(r.Sold7d) / 7; perDay > 0 {
 			r.DaysLeft = float64(r.OnHand) / perDay
 			r.Suggested = max(0, int64(perDay*coverDays+0.999)-r.OnHand)
+		}
+		// A floor for what the agent can buy (whitelisted bStock): an empty warehouse sells nothing, so it would
+		// never see demand. Below the floor the agent restocks on its own.
+		if _, ok := game.payments.Tokens[tok]; ok {
+			r.Suggested = max(r.Suggested, game.payments.Agent.MinUnits-r.OnHand)
 		}
 		out.Tokens = append(out.Tokens, r)
 	}

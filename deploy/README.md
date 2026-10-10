@@ -117,5 +117,16 @@ $C run --rm --entrypoint baw agent auth signin          # QR/link → the owner 
 $C run --rm --entrypoint baw agent auth verify --qrCodeId <id>
 $C run --rm --entrypoint baw agent wallet address       # must be payments.json → agenticWallet
 $C run --rm agent --token tsla                          # quote only, no money moves
-$C run --rm agent --token tsla --buy                    # a real swap: only after the wallet owner's go
+$C run --rm agent --token tsla --buy                    # one swap by hand (not needed once the schedule runs)
+```
+
+**The schedule (the agent buying on its own).** Every 10 minutes the agent reads demand and buys only when a
+whitelisted token is below what the api suggests (at least `agent.minUnits` on hand, more when players buy fast),
+within `agent.maxUsdPerSwap` / `maxUsdPerDay`. Nothing to buy: it does nothing. Turning it on starts real spending
+from the Agentic Wallet, so the owner does it:
+
+```sh
+( crontab -l 2>/dev/null; echo '*/10 * * * * cd /opt/nyxeron && docker compose -f deploy/compose.yml -f deploy/compose.backend.yml --profile agent run --rm -T agent --buy >> /var/log/nyxeron-agent.log 2>&1' ) | crontab -
+crontab -l | grep -v 'agent --buy' | crontab -      # off
+tail -f /var/log/nyxeron-agent.log                    # what it did
 ```

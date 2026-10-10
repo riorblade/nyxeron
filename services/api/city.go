@@ -73,6 +73,7 @@ var game struct {
 		SharesPerUnit float64          `json:"sharesPerUnit"`
 		RentCredits   map[string]int64 `json:"rentCredits"` // weekly rent per venue level, in credits
 		Agent         struct {
+			MinUnits      int64 `json:"minUnits"` // the warehouse floor per whitelisted token: below it, restock
 			MaxUsdPerSwap int64 `json:"maxUsdPerSwap"`
 			MaxUsdPerDay  int64 `json:"maxUsdPerDay"`
 		} `json:"agent"`
