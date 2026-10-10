@@ -20,10 +20,17 @@ export type Supply = {
   paused?: boolean;
 };
 
+/**
+ * How long one api request may take before it is aborted: a hung request would hold the run lock indefinitely.
+ * An aborted report is retried like a network error (main.ts); the record stays until the api counts the tx.
+ */
+export const FETCH_TIMEOUT_MS = 30_000;
+
 /** What the warehouse holds and what CEOs are buying. */
 export async function fetchDemand(base: string, key: string): Promise<Supply> {
   const res = await fetch(`${base}/api/agent/demand`, {
     headers: { Authorization: `Bearer ${key}` },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
@@ -40,16 +47,27 @@ export type Restocked = {
   tx: string;
 };
 
+/** The api answered no to a report. `retry`: worth asking again (5xx); a 4xx won't change by itself. */
+export class ReportError extends Error {
+  constructor(
+    message: string,
+    readonly retry: boolean,
+  ) {
+    super(message);
+  }
+}
+
 /**
  * Reports a swap to the api, which reads it on BSC and adds the units it bought. "pending": not final yet
- * (15 confirmations), report it again later.
+ * (15 confirmations), report it again later. "counted": the api already counted this tx (409 tx_used). A network
+ * error is thrown as is (worth retrying).
  */
 export async function reportRestock(
   base: string,
   key: string,
   token: string,
   tx: string,
-): Promise<Restocked | "pending"> {
+): Promise<Restocked | "pending" | "counted"> {
   const res = await fetch(`${base}/api/agent/restock`, {
     method: "POST",
     headers: {
@@ -57,12 +75,45 @@ export async function reportRestock(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ token, tx, note: "agent swap" }),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
-  const body = (await res.json().catch(() => ({}))) as Restocked & {
-    error?: string;
-  };
+  const body = ((await res.json().catch(() => ({}))) ?? {}) as Partial<
+    Restocked & { error: string }
+  >;
   if (res.status === 202) return "pending";
+  if (res.status === 409 && body.error === "tx_used") return "counted";
   if (!res.ok)
-    throw new Error(`restock ${res.status} ${body.error ?? ""}`.trim());
-  return body;
+    throw new ReportError(
+      `restock ${res.status} ${body.error ?? ""}`.trim(),
+      res.status >= 500,
+    );
+  // Only the api's own answer for this tx counts (a proxy's page or a stray body is a 200 too): retried, the
+  // record stays until it does.
+  if (
+    typeof body.tx !== "string" ||
+    body.tx.toLowerCase() !== tx.toLowerCase() ||
+    typeof body.units !== "number" ||
+    !Number.isFinite(body.units)
+  )
+    throw new ReportError(
+      `restock ${res.status}: the answer doesn't confirm ${tx}`,
+      true,
+    );
+  return body as Restocked;
+}
+
+/** GET /api/quotes: spot USD prices per underlying ticker (services/api/quotes.go). */
+export type Quotes = {
+  quotes: Record<string, number>;
+  source: string;
+  at: number;
+  error?: string;
+};
+
+export async function fetchQuotes(base: string): Promise<Quotes> {
+  const res = await fetch(`${base}/api/quotes`, {
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`quotes ${res.status}`);
+  return (await res.json()) as Quotes;
 }

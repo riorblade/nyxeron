@@ -68,6 +68,23 @@ ssh root@<vps> 'cp -p /opt/nyxeron/deploy/.env /opt/nyxeron.new/deploy/ && rm -r
   docker compose -f deploy/compose.yml -f deploy/compose.backend.yml up -d --build relay api'
 ```
 
+## Stock agent (`apps/agent`)
+
+The agent is not a compose service: it runs from a checkout on the machine where the Binance Agentic Wallet is
+signed in (`apps/agent/README.md`). Its outstanding-swap record must live **outside the repo**, or a fresh clone,
+a `git archive` deploy or `git clean -fdX` deletes it silently and the next `--buy` buys a swap the api hasn't
+counted yet a second time:
+
+```sh
+sudo install -d -o <agent-user> -m 700 /var/lib/nyxeron-agent
+AGENT_STATE=/var/lib/nyxeron-agent/state.json AGENT_KEY=… NYXERON_API=https://api.nyxeron.xyz \
+  pnpm agent --token tsla --buy
+```
+
+`--buy` and `--report` refuse to start without `AGENT_STATE`: set the same path for cron and for every manual run
+(`apps/agent/.env.example` has it). Every `--buy`/`--report` run also holds `/var/lib/nyxeron-agent/state.json.lock`;
+a run killed with SIGKILL leaves it behind and later runs stop until a person removes it.
+
 ## Update
 
 ```sh
