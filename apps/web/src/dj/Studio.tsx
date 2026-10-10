@@ -57,11 +57,14 @@ function useEngine() {
 export function DjStudio({
   live,
   crateOnly,
+  hotkeys = true,
   onClose,
 }: {
   live?: boolean;
   /** Live DJ in someone else's club: only crate tracks (the other players can't play a file from this computer). */
   crateOnly?: boolean;
+  /** Off while a dialog sits over the studio, so its keys (Esc, pads) go to the dialog. */
+  hotkeys?: boolean;
   onClose: () => void;
 }) {
   const engine = useEngine();
@@ -70,7 +73,7 @@ export function DjStudio({
   useEffect(() => {
     // Capture phase: the studio's keys win over the night screen's (1–3 speed, Esc menu…).
     const onKey = (e: KeyboardEvent) => {
-      if (!engine || e.target instanceof HTMLInputElement) return;
+      if (!engine || !hotkeys || e.target instanceof HTMLInputElement) return;
       const n = Number(e.key);
       if (n >= 1 && n <= 8) {
         e.stopImmediatePropagation();
@@ -82,7 +85,7 @@ export function DjStudio({
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [engine, onClose]);
+  }, [engine, hotkeys, onClose]);
 
   return (
     <section

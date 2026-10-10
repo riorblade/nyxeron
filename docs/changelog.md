@@ -3,6 +3,11 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-10 · Esc closes the Leave dialog
+
+- **Esc works both ways on guest and gig nights:** Esc opens Leave and Esc again closes it (Stay); on a gig the
+  decks' own keys pause while the dialog is up, and Esc with the decks collapsed now opens Leave too.
+
 ## 2026-10-10 · The office comes alive (neon UI)
 
 - **A real game look:** the office is now a neon nightclub instead of black and white: violet glass panels, magenta
