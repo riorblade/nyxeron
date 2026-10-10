@@ -4,9 +4,32 @@
   "name": "NYXERON",
   "description": "NYXERON · Nightclub Empire: a multiplayer nightclub game on BNB Chain where the drinks are tokenized stocks.",
   "colors": {
-    "primary": "#111111",
-    "light": "#FFFFFF",
-    "dark": "#111111"
+    "primary": "#DD47FC",
+    "light": "#E58CFF",
+    "dark": "#914DFF"
+  },
+  "appearance": {
+    "default": "dark",
+    "strict": true
+  },
+  "background": {
+    "color": {
+      "light": "#120826",
+      "dark": "#090319"
+    }
+  },
+  "fonts": {
+    "family": "Geist",
+    "heading": {
+      "family": "Inter Tight",
+      "weight": 700
+    },
+    "body": {
+      "family": "Geist"
+    }
+  },
+  "styling": {
+    "codeblocks": "dark"
   },
   "logo": {
     "light": "/logo/mark-black.svg",
@@ -15,18 +38,54 @@
   },
   "favicon": "/favicon.svg",
   "navbar": {
-    "links": [{ "label": "X", "href": "https://x.com/nyxeron_xyz" }],
-    "primary": { "type": "button", "label": "Play now", "href": "https://nyxeron.xyz" }
+    "links": [
+      {
+        "label": "@nyxeron_xyz",
+        "icon": "x-twitter",
+        "href": "https://x.com/nyxeron_xyz"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Play now",
+      "href": "https://nyxeron.xyz"
+    }
   },
   "navigation": {
     "groups": [
-      { "group": "Get started", "pages": ["index", "how-to-play"] },
       {
-        "group": "Game engine",
-        "pages": ["engine/night-loop", "engine/guests", "engine/crowd", "engine/market", "engine/economy"]
+        "group": "Get started",
+        "pages": [
+          "index",
+          "how-to-play",
+          "catalog",
+          "faq"
+        ]
       },
-      { "group": "On-chain", "pages": ["economy/real-money"] },
-      { "group": "Technology", "pages": ["architecture", "multiplayer-live", "tech-stack"] }
+      {
+        "group": "Game mechanics",
+        "pages": [
+          "engine/night-loop",
+          "engine/guests",
+          "engine/crowd",
+          "engine/market",
+          "engine/economy"
+        ]
+      },
+      {
+        "group": "On-chain",
+        "pages": [
+          "economy/real-money"
+        ]
+      },
+      {
+        "group": "Technology",
+        "pages": [
+          "architecture",
+          "multiplayer-live",
+          "tech-stack"
+        ]
+      }
     ]
   },
   "footer": {

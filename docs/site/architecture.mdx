@@ -3,6 +3,14 @@ title: "Architecture"
 description: "How NYXERON is split between the browser, two small Go services and BNB Chain, and why value is only ever settled on the server."
 ---
 
+<div className="nyx-hero nyx-banner">
+  <img src="/images/sections/technology.webp" alt="" noZoom />
+  <div className="nyx-hero-text">
+    <div className="nyx-hero-kicker">Technology</div>
+    <div className="nyx-hero-title">One simulation, every client, synced live.</div>
+  </div>
+</div>
+
 NYXERON is built so that the fun part runs in the browser and the money part runs on the server. The club simulation
 is a pure TypeScript library that every browser runs locally; two small Go services connect players and settle
 anything of value; BNB Chain is the source of truth for real deposits and real stock.
@@ -10,6 +18,7 @@ anything of value; BNB Chain is the source of truth for real deposits and real s
 ## System diagram
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'background':'#090319','primaryColor':'#1e0f3b','primaryBorderColor':'#b078ff','primaryTextColor':'#f3e8ff','secondaryColor':'#140a2b','tertiaryColor':'#120826','lineColor':'#914dff','textColor':'#f3e8ff','edgeLabelBackground':'#120826','clusterBkg':'#140a2b','clusterBorder':'#4b2a85','actorBkg':'#1e0f3b','actorBorder':'#b078ff','actorTextColor':'#f3e8ff','signalColor':'#c9a8ff','signalTextColor':'#f3e8ff','noteBkgColor':'#2a1650','noteTextColor':'#f3e8ff','noteBorderColor':'#914dff','fontSize':'15px'}}}%%
 flowchart LR
   subgraph Browser["Player's browser (Vercel)"]
     WEB["Game client<br/>React 19 · three.js · Web Audio"]
@@ -115,6 +124,7 @@ the api holds the Credits and the stock until the party is settled, then pays th
 </Steps>
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'background':'#090319','primaryColor':'#1e0f3b','primaryBorderColor':'#b078ff','primaryTextColor':'#f3e8ff','secondaryColor':'#140a2b','tertiaryColor':'#120826','lineColor':'#914dff','textColor':'#f3e8ff','edgeLabelBackground':'#120826','clusterBkg':'#140a2b','clusterBorder':'#4b2a85','actorBkg':'#1e0f3b','actorBorder':'#b078ff','actorTextColor':'#f3e8ff','signalColor':'#c9a8ff','signalTextColor':'#f3e8ff','noteBkgColor':'#2a1650','noteTextColor':'#f3e8ff','noteBorderColor':'#914dff','fontSize':'15px'}}}%%
 sequenceDiagram
   autonumber
   participant C as CEO browser (core sim)

@@ -6,6 +6,7 @@ description: "Where a club's coin comes from and goes each night and day, how ta
 A career is a loop of **day** (plan, buy, hire), **night** (360 in-game minutes, 22:00 to 04:00) and **report**. Money moves at three points: during the night as sales happen, at the night report when tax and penalties settle, and the next morning when the bills are paid.
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'background':'#090319','primaryColor':'#1e0f3b','primaryBorderColor':'#b078ff','primaryTextColor':'#f3e8ff','secondaryColor':'#140a2b','tertiaryColor':'#120826','lineColor':'#914dff','textColor':'#f3e8ff','edgeLabelBackground':'#120826','clusterBkg':'#140a2b','clusterBorder':'#4b2a85','actorBkg':'#1e0f3b','actorBorder':'#b078ff','actorTextColor':'#f3e8ff','signalColor':'#c9a8ff','signalTextColor':'#f3e8ff','noteBkgColor':'#2a1650','noteTextColor':'#f3e8ff','noteBorderColor':'#914dff','fontSize':'15px'}}}%%
 flowchart LR
   D[Day: orders, staff, permits, upgrades] --> N[Night: cover, bar, tables, fines]
   N --> R[Report: tax, shutdown penalty, reputation, win or lose check]

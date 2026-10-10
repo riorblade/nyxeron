@@ -11,6 +11,7 @@ In NYXERON the drinks are tokenized stocks. Every price a player sees comes from
 4. **The in-club market.** During the night each token trades on a live multiplier that moves with the crowd's energy and the DJ.
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'background':'#090319','primaryColor':'#1e0f3b','primaryBorderColor':'#b078ff','primaryTextColor':'#f3e8ff','secondaryColor':'#140a2b','tertiaryColor':'#120826','lineColor':'#914dff','textColor':'#f3e8ff','edgeLabelBackground':'#120826','clusterBkg':'#140a2b','clusterBorder':'#4b2a85','actorBkg':'#1e0f3b','actorBorder':'#b078ff','actorTextColor':'#f3e8ff','signalColor':'#c9a8ff','signalTextColor':'#f3e8ff','noteBkgColor':'#2a1650','noteTextColor':'#f3e8ff','noteBorderColor':'#914dff','fontSize':'15px'}}}%%
 flowchart LR
   B[Binance RWA spot] -->|spot factor f| C[Supplier cost per lot]
   B -->|spot factor f| S[Standard price]
@@ -29,6 +30,49 @@ All randomness in the market comes from a seeded deterministic pseudo-random gen
 ## Tokens on the menu
 
 A token is either a single stock (one ticker at weight 100) or a **basket** of weighted legs. A venue can only sell tokens whose minimum level is at or below its own level.
+
+<div className="nyx-tokens">
+  <div className="nyx-token">
+    <img src="/images/token/tsla.webp" alt="Tesla" noZoom />
+    <div className="nyx-token-name">Tesla</div>
+    <div className="nyx-token-ticker">TSLA</div>
+  </div>
+  <div className="nyx-token">
+    <img src="/images/token/us500.webp" alt="US Broad Market" noZoom />
+    <div className="nyx-token-name">US Broad Market</div>
+    <div className="nyx-token-ticker">US500</div>
+  </div>
+  <div className="nyx-token">
+    <img src="/images/token/nvda.webp" alt="NVIDIA" noZoom />
+    <div className="nyx-token-name">NVIDIA</div>
+    <div className="nyx-token-ticker">NVDA</div>
+  </div>
+  <div className="nyx-token">
+    <img src="/images/token/bigtech.webp" alt="Big Tech" noZoom />
+    <div className="nyx-token-name">Big Tech</div>
+    <div className="nyx-token-ticker">BIGT</div>
+  </div>
+  <div className="nyx-token">
+    <img src="/images/token/aisemis.webp" alt="AI Semis" noZoom />
+    <div className="nyx-token-name">AI Semis</div>
+    <div className="nyx-token-ticker">AISEMI</div>
+  </div>
+  <div className="nyx-token">
+    <img src="/images/token/dividend.webp" alt="Dividend Blue Chips" noZoom />
+    <div className="nyx-token-name">Dividend Blue Chips</div>
+    <div className="nyx-token-ticker">DIVI</div>
+  </div>
+  <div className="nyx-token">
+    <img src="/images/token/skhy.webp" alt="SK Hynix" noZoom />
+    <div className="nyx-token-name">SK Hynix</div>
+    <div className="nyx-token-ticker">SKHY</div>
+  </div>
+  <div className="nyx-token">
+    <img src="/images/token/spcx.webp" alt="SpaceX" noZoom />
+    <div className="nyx-token-name">SpaceX</div>
+    <div className="nyx-token-ticker">SPCX</div>
+  </div>
+</div>
 
 | Token | Kind | Legs (ticker, weight) | Buy cost | Default price | Volatility $\sigma$ | Tilt per buy | Min level |
 |---|---|---|---|---|---|---|---|
