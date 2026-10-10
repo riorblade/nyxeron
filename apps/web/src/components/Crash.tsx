@@ -6,23 +6,24 @@ const RELOADED = "nyxeron:reloaded-at";
 
 /**
  * After a deploy, a tab still running the old build asks for chunks that no longer exist. Reload once to get the
- * new build; a second failure within a minute falls through to the boundary below (no reload loop).
+ * new build (`beforeReload` saves the club first); a second failure within a minute falls through to the boundary
+ * below. Without sessionStorage there is no guard against a loop, so no automatic reload: the boundary's button.
  */
-export function reloadOnStaleChunks() {
+export function reloadOnStaleChunks(beforeReload: () => void = () => {}) {
   window.addEventListener("vite:preloadError", (e) => {
-    let last = 0;
     try {
-      last = Number(sessionStorage.getItem(RELOADED)) || 0;
-    } catch {
-      /* storage blocked: reload anyway, the boundary stops a loop */
-    }
-    if (Date.now() - last < 60_000) return; // just reloaded: let the error reach the boundary
-    try {
+      const last = Number(sessionStorage.getItem(RELOADED)) || 0;
+      if (Date.now() - last < 60_000) return; // just reloaded: let the error reach the boundary
       sessionStorage.setItem(RELOADED, String(Date.now()));
     } catch {
-      /* ignore */
+      return; // storage blocked: can't tell a loop apart
     }
     e.preventDefault();
+    try {
+      beforeReload();
+    } catch {
+      /* reload anyway: a stale build can't go on */
+    }
     location.reload();
   });
 }
