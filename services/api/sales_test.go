@@ -10,6 +10,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 )
@@ -281,6 +282,14 @@ func TestSalesEndpoints(t *testing.T) {
 	if code, out := do("POST", "/api/events/"+pid+"/buy", map[string]any{"token": "tsla", "qty": 20, "maxPrice": 50}); code != 422 {
 		t.Fatalf("overspend %d %v", code, out)
 	}
+	// A private party's price list and stock are its invited guests' only.
+	c.s.db.Exec(`UPDATE parties SET private = 1 WHERE id = ?`, c.party)
+	if code, out := do("GET", "/api/events/prices/"+pid, nil); code != 404 {
+		t.Fatalf("private prices, uninvited %d %v", code, out)
+	}
+	if code, out := do("POST", "/api/events/"+pid+"/buy", map[string]any{"token": "tsla", "qty": 1, "maxPrice": 50}); code != 404 {
+		t.Fatalf("private buy, uninvited %d %v", code, out)
+	}
 }
 
 func jsonInt(n int64) string { b, _ := json.Marshal(n); return string(b) }
@@ -345,3 +354,138 @@ func TestNoSaleWithoutAFreshSanePrice(t *testing.T) {
 type roundTrip func(*http.Request) (*http.Response, error)
 
 func (f roundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// A private party is its host's and its invited guests' (the players who opened its invite link): nobody else
+// may read its price list or buy at it, even knowing its (sequential) id. Public parties stay open to everyone.
+func TestPrivatePartyNeedsAnInvite(t *testing.T) {
+	c := newCity(t)
+	c.s.db.Exec(`UPDATE parties SET private = 1 WHERE id = ?`, c.party)
+	if err := c.s.SetPartyPrices(ctx, "ceo", c.party, map[string]int64{"tsla": 50}, market, c.now); err != nil {
+		t.Fatal(err)
+	}
+	c.run(func(tx *sql.Tx) error { return creditLedger(tx, "g2", 500, "topup", "", "0xt2") })
+	if _, err := c.s.BuyAtParty(ctx, "g2", c.party, "tsla", 1, 50, market, c.at(5)); !errors.Is(err, errNotFound) {
+		t.Fatalf("uninvited buy at a private party: %v", err)
+	}
+	if _, err := c.s.PartyPrices(ctx, "g2", c.party); !errors.Is(err, errNotFound) {
+		t.Fatalf("uninvited read of a private price list: %v", err)
+	}
+	if _, err := c.s.PartyPrices(ctx, "", c.party); !errors.Is(err, errNotFound) {
+		t.Fatalf("anonymous read of a private price list: %v", err)
+	}
+	if p, err := c.s.PartyPrices(ctx, "ceo", c.party); err != nil || p["tsla"] != 50 {
+		t.Fatalf("the host's own price list: %v %v", p, err)
+	}
+	if credits(t, c.s, "g2") != 500 || count(t, c.s, `SELECT COUNT(*) FROM sales`) != 0 {
+		t.Fatal("the refused buy left a trace")
+	}
+	// Opening the invite link is what lets a guest in, the same as for joining.
+	if _, err := c.s.Invite(ctx, "g2", "inv1", c.now); err != nil {
+		t.Fatal(err)
+	}
+	if p, err := c.s.PartyPrices(ctx, "g2", c.party); err != nil || p["tsla"] != 50 {
+		t.Fatalf("invited read: %v %v", p, err)
+	}
+	if _, err := c.s.BuyAtParty(ctx, "g2", c.party, "tsla", 1, 50, market, c.at(5)); err != nil {
+		t.Fatalf("invited buy: %v", err)
+	}
+	// A public party needs no invite.
+	c.s.db.Exec(`UPDATE parties SET private = 0 WHERE id = ?`, c.party)
+	if _, err := c.s.PartyPrices(ctx, "", c.party); err != nil {
+		t.Fatalf("public price list: %v", err)
+	}
+	if _, err := c.s.BuyAtParty(ctx, "g", c.party, "tsla", 1, 50, market, c.at(5)); err != nil {
+		t.Fatalf("public buy: %v", err)
+	}
+}
+
+// An event's lease is a venue id (> 0) or none (0, a practice club): a negative one isn't a city party.
+func TestEventLeaseMustNotBeNegative(t *testing.T) {
+	c := newCity(t)
+	if _, err := c.s.Event(ctx, "ceo", EventInput{Lease: -1, Club: "Fake", Level: 3, StartsAt: c.now.Unix() + 600, Minutes: 10}, c.now); !errors.Is(err, errBad) {
+		t.Fatalf("negative lease: %v", err)
+	}
+	if n := count(t, c.s, `SELECT COUNT(*) FROM parties WHERE lease_id < 0`); n != 0 {
+		t.Fatalf("%d parties stored with a negative lease", n)
+	}
+	// An old row pointing at no venue: setting its prices is a 404, not a raw database error.
+	res, _ := c.s.db.Exec(`INSERT INTO parties (lease_id, host_id, starts_at, minutes, created_at, invite)
+		VALUES (-1, 'ceo', ?, 60, ?, 'inv2')`, c.now.Unix()+3600, c.now.Unix())
+	pid, _ := res.LastInsertId()
+	if err := c.s.SetPartyPrices(ctx, "ceo", pid, map[string]int64{"tsla": 50}, market, c.now); !errors.Is(err, errNotFound) {
+		t.Fatalf("prices at a party with no venue: %v", err)
+	}
+}
+
+// A banned tenant changes nothing, so their shop and parties stop selling (and earning them a margin).
+func TestBannedSellerSellsNothing(t *testing.T) {
+	c := newCity(t)
+	c.s.SetShopPrices(ctx, "ceo", c.lease, map[string]int64{"tsla": 45}, market, c.now)
+	c.s.SetPartyPrices(ctx, "ceo", c.party, map[string]int64{"tsla": 50}, market, c.now)
+	c.s.db.Exec(`UPDATE users SET banned = 1 WHERE id = 'ceo'`)
+	if _, err := c.s.BuyAtShop(ctx, "g", c.lease, "tsla", 1, 45, market, c.now); !errors.Is(err, errNotFound) {
+		t.Fatalf("shop of a banned tenant: %v", err)
+	}
+	if _, err := c.s.BuyAtParty(ctx, "g", c.party, "tsla", 1, 50, market, c.at(5)); !errors.Is(err, errNotLive) {
+		t.Fatalf("party of a banned host: %v", err)
+	}
+	if credits(t, c.s, "g") != 1000 {
+		t.Fatal("charged anyway")
+	}
+}
+
+// Shop buys racing an eviction: once EndLease commits, no buy at that shop may settle (the margin would go to the
+// evicted tenant). The lease check runs inside the buy's transaction.
+func TestShopBuyRacingEviction(t *testing.T) {
+	for range 40 {
+		c := newCity(t)
+		c.run(func(tx *sql.Tx) error { return moveStock(tx, "tsla", 500, "restock", "", "agent", "test", "0xswap2") })
+		c.run(func(tx *sql.Tx) error { return creditLedger(tx, "g2", 100000, "topup", "", "0xt2") })
+		c.s.SetShopPrices(ctx, "ceo", c.lease, map[string]int64{"tsla": 45}, market, c.now)
+		var wg sync.WaitGroup
+		for _, g := range []string{"g", "g2"} {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for range 10 {
+					c.s.BuyAtShop(ctx, g, c.lease, "tsla", 1, 45, market, c.now)
+				}
+			}()
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c.s.EndLease(ctx, "admin", c.lease, "fraud", c.now)
+		}()
+		wg.Wait()
+		if n := count(t, c.s, `SELECT COUNT(*) FROM audit WHERE action = 'sale-settle'
+			AND id > (SELECT id FROM audit WHERE action = 'end-lease')`); n != 0 {
+			t.Fatalf("%d shop sales settled after the eviction", n)
+		}
+	}
+}
+
+// Settlement racing an admin cancel: once the cancel commits, the party's held sales are voided, never settled.
+// The cancelled flag is read inside each party's settle transaction.
+func TestSettleRacingAdminCancel(t *testing.T) {
+	for range 40 {
+		c := newCity(t)
+		c.s.SetPartyPrices(ctx, "ceo", c.party, map[string]int64{"tsla": 50}, market, c.now)
+		if _, err := c.s.BuyAtParty(ctx, "g", c.party, "tsla", 2, 50, market, c.at(5)); err != nil {
+			t.Fatal(err)
+		}
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() { defer wg.Done(); c.s.SettleParties(ctx, c.at(200)) }()
+		go func() { defer wg.Done(); c.s.AdminCancelParty(ctx, "admin", c.party, "fraud") }()
+		wg.Wait()
+		c.s.SettleParties(ctx, c.at(200))
+		if n := count(t, c.s, `SELECT COUNT(*) FROM audit WHERE action = 'sale-settle'
+			AND id > (SELECT id FROM audit WHERE action = 'cancel-party')`); n != 0 {
+			t.Fatal("a sale settled after the admin cancelled its party")
+		}
+		if n := count(t, c.s, `SELECT COUNT(*) FROM sales WHERE status = 'held'`); n != 0 {
+			t.Fatalf("%d sales still held", n)
+		}
+	}
+}

@@ -71,10 +71,12 @@ restock in the back office becomes "report a tx" (same verification); typing a n
 
 1. **Before the party**, the CEO sets a price per token for it (≤ 3× wholesale). Prices are locked for the party.
 2. **During the party**, a guest's purchase is a server call (`POST /api/events/{id}/buy {token, qty}`), not just a
-   message to the host's browser. In one transaction: check the guest's credits and the warehouse; **hold** the
+   message to the host's browser. In one transaction: check the party (live, not cancelled; a private one only for
+   its invited guests; its host not banned), the guest's credits and the warehouse; **hold** the
    credits; **reserve** the units; record the sale (`pending`) with the CEO's price and the wholesale price at that
    moment. The host's game shows the sale as it does now (the sim is the show; the server is the money).
 3. **When the party ends** (end time + `settleGraceMinutes`), one settlement job, per party, in one transaction:
+   a party cancelled by then (read inside that transaction) has its sales voided instead; otherwise
    held credits are captured, reserved units move to the guest's real units, the wholesale amount goes to the
    platform, the margin goes to the CEO's credits, every line in the ledger and the audit log.
 4. A sale can be voided by an admin before settlement (credits released, units unreserved). A host who disconnects
@@ -83,7 +85,8 @@ restock in the back office becomes "report a tx" (same verification); typing a n
 ### 5. City shops (dropship, settled at once)
 
 A shop open while the tenant is away has no "end": each purchase settles immediately with the same rules (credits
-from guest, units from the warehouse, wholesale to the platform, margin to the tenant).
+from guest, units from the warehouse, wholesale to the platform, margin to the tenant). The shop's lease (its tenant,
+open, not ended) is checked inside that same transaction; a banned tenant's shop sells nothing.
 
 ## Zero trust (unchanged from the proposal, plus)
 
