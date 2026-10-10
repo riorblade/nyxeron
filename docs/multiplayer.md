@@ -22,15 +22,22 @@ JSON control (text frames):
 
 ```
 → {"t":"create","name":"…"}                          ← {"t":"created","room":"K7QX9P","token":"…"}
-→ {"t":"resume","room":"…","token":"…"}              host reconnects within 60 s
+→ {"t":"resume","room":"…","token":"…"}              host reconnects: within 60 s the room never closed; later, the
+                                                     expired room reopens with the same code for an hour
 → {"t":"join","room":"…","name":"…","role":"guest|dj"} ← {"t":"joined","room":"…","id":N}
-→ {"t":"kick","id":N}                                host only
+→ {"t":"kick","id":N}                                host only; the peer gets {"t":"kicked"}, then is dropped
+→ {"t":"close"}                                      host only: closes the room now, peers get {"t":"closed"}
 ← {"t":"peer","id":N,"name":"…","role":"…","on":bool}  to the host
-← {"t":"host","on":bool} · {"t":"closed"} · {"t":"error","code":"…"}
+← {"t":"host","on":bool} · {"t":"closed"} · {"t":"kicked"} · {"t":"error","code":"…"}
 ```
 
+With `RELAY_TICKET_SECRET` set on the relay, `create`, `join` and `resume` also carry `"ticket":"…"`: a short-lived
+HMAC ticket from `POST /api/relay/ticket` naming the signed-in account (`services/relay/ticket.go`); a missing or
+invalid one is refused with `bad_ticket`.
+
 Error codes: `room_not_found`, `room_full`, `server_full`, `bad_request`, `already_in_room`, `rate_limited`,
-`host_busy`, `kicked`, `too_many_rooms`, `too_many_connections` (the client backs off and retries the full/busy ones).
+`host_busy`, `kicked`, `replaced` (sent to a host whose room another connection resumed, e.g. a second tab, before it
+is closed), `too_many_rooms`, `too_many_connections`, `bad_ticket` (the client backs off and retries the full/busy ones).
 
 Limits (one relay process, all in memory; env in `deploy/compose.yml`):
 
