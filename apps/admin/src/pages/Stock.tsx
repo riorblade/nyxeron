@@ -13,6 +13,7 @@ import {
   useLoad,
 } from "../ui/kit";
 import { cn } from "../ui/cn";
+import { restockMessage, type Restocked } from "./restockMessage";
 
 type Row = Supply["tokens"][number];
 const name = (t: string) => tokens[t as TokenId]?.name ?? t;
@@ -307,14 +308,13 @@ function RestockForm({ r, done }: { r: Row; done: (msg: string) => void }) {
         done(`✓ Removed ${fmt(qty)} ${ticker(r.token)}`);
         return;
       }
-      const got = await api<{ units?: number; error?: string }>(
+      const got = await api<Restocked & { error?: string }>(
         "PUT",
         `/admin/stock/${r.token}`,
         { tx: tx.trim(), reason },
       );
       if (got.error) setError(reasons[got.error] ?? got.error);
-      else
-        done(`✓ Added ${fmt(got.units ?? 0)} ${ticker(r.token)} from the swap`);
+      else done(restockMessage(got, r.token, ticker, fmt));
     } catch (err) {
       const code = (err as Error).message;
       setError(reasons[code] ?? code);
