@@ -37,6 +37,24 @@ teammate would notice.
 - **Tests:** `pnpm test` runs a smoke-sized fuzz of the sim (a few seconds); `pnpm test:brutal` runs the full
   hostile fuzz (80 seeds × 350 steps + 30 hostile-id runs, about a minute) and CI runs both.
 
+## 2026-10-10 · Refunds owed count against the wallet
+
+- **Reconciliation no longer counts money owed back as backing:** USDC/USDT from unknown senders, rejected top-ups
+  and the part of a top-up over the caps now count as owed to their senders, next to players' credits. Before, it
+  counted as backing, so up to that much unbacked credit could pass the hourly check (issue #55, M1).
+- **Back office, Payments:** top-ups show what they owe back; once you have paid it back by hand, press
+  **Refunded** (with a reason: the audit log) so the check stops counting it. Until then a paid-out refund makes the
+  check come up short and pauses payments.
+- **A swap's change is not owed back:** stablecoin a router returns to the Agentic Wallet in a swap it paid for
+  (pay $5, get $2 back) is the platform's own money, netted in the restock. The top-up scanner now records it with
+  nothing to refund, and reconciliation never counts a transfer in a booked restock or seed tx as owed, so a restock
+  with change no longer pauses payments. The back office shows such a transfer with nothing owed and won't mark it
+  refunded (a booked restock zeroes it).
+- **A stranger can't hide a refund or stall the scanner:** a zero-value "payout" from the Agentic Wallet (anyone can
+  log one) no longer makes a stranger's transfer look like a swap's change, and the scanner reads no receipt for a
+  transfer from a non-player (one log read per range instead), so an oversized receipt can't stop it crediting later
+  top-ups.
+
 ## 2026-10-10 · Every real swap goes on the books
 
 - **No more pauses from a swap the api refused:** a swap of less than one unit (0.001 share), or one bought while

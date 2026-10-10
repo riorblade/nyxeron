@@ -801,6 +801,30 @@ func (a *admin) route(mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, map[string]int64{"usdCents": cents})
 	})
+	// Mark what a top-up transfer is owed back (unknown sender, rejected, over the caps) as refunded, once it was
+	// paid back by hand: reconciliation stops counting it as owed.
+	mux.HandleFunc("POST /api/admin/topups/refund", func(w http.ResponseWriter, r *http.Request) {
+		actor, _, yes := a.who(w, r, roleAdmin)
+		var in struct {
+			Tx       string `json:"tx"`
+			LogIndex int64  `json:"logIndex"`
+			Reason   string `json:"reason"`
+		}
+		if !yes || !body(w, r, &in) {
+			return
+		}
+		cents, err := a.db.MarkRefunded(r.Context(), actor, in.Tx, in.LogIndex, in.Reason, time.Now())
+		switch {
+		case errors.Is(err, errNoTopup):
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found"})
+		case errors.Is(err, errRejected):
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "nothing_owed"})
+		case err != nil:
+			fail(w, err) // bad_request, conflict (already refunded)
+		default:
+			writeJSON(w, http.StatusOK, map[string]int64{"refundCents": cents})
+		}
+	})
 	mux.HandleFunc("POST /api/admin/sales/{id}/void", func(w http.ResponseWriter, r *http.Request) {
 		actor, _, yes := a.who(w, r, roleAdmin)
 		var in struct {

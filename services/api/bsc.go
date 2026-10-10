@@ -197,6 +197,17 @@ func decodeTransfer(l rpcLog, token string) (Transfer, bool, error) {
 // TransfersTo: every Transfer of a locked token to addr in blocks [from, to], as both rpcs report them.
 // What the top-up scanner reads to find transfers nobody reported.
 func (b *bsc) TransfersTo(ctx context.Context, token, addr string, from, to uint64) ([]Transfer, error) {
+	return b.transferLogs(ctx, token, addr, from, to, false)
+}
+
+// TransfersFrom: every Transfer of a locked token from addr in blocks [from, to], as both rpcs report them. One
+// read per range, whatever the number of transfers or the size of their transactions' receipts.
+func (b *bsc) TransfersFrom(ctx context.Context, token, addr string, from, to uint64) ([]Transfer, error) {
+	return b.transferLogs(ctx, token, addr, from, to, true)
+}
+
+// transferLogs: eth_getLogs for a locked token's Transfers to addr (or from it, sent) in blocks [from, to].
+func (b *bsc) transferLogs(ctx context.Context, token, addr string, from, to uint64, sent bool) ([]Transfer, error) {
 	if !lockedToken(token) {
 		return nil, errNotLocked
 	}
@@ -206,6 +217,9 @@ func (b *bsc) TransfersTo(ctx context.Context, token, addr string, from, to uint
 	filter := map[string]any{"address": strings.ToLower(token),
 		"fromBlock": "0x" + strconv.FormatUint(from, 16), "toBlock": "0x" + strconv.FormatUint(to, 16),
 		"topics": []any{transferTopic, nil, "0x" + strings.Repeat("0", 24) + strings.ToLower(addr[2:])}}
+	if sent {
+		filter["topics"] = []any{transferTopic, "0x" + strings.Repeat("0", 24) + strings.ToLower(addr[2:])}
+	}
 	return both(ctx, b, "eth_getLogs", []any{filter}, func(raw json.RawMessage) ([]Transfer, error) {
 		var logs []rpcLog
 		if err := json.Unmarshal(raw, &logs); err != nil {
@@ -222,7 +236,7 @@ func (b *bsc) TransfersTo(ctx context.Context, token, addr string, from, to uint
 			if err != nil || berr != nil || !hashRe.MatchString(l.TxHash) || block < from || block > to {
 				return nil, fmt.Errorf("bsc: malformed log in blocks %d-%d", from, to)
 			}
-			if ok && tr.To == strings.ToLower(addr) {
+			if ok && (!sent && tr.To == strings.ToLower(addr) || sent && tr.From == strings.ToLower(addr)) {
 				tr.Tx, tr.Block = l.TxHash, block
 				out = append(out, tr)
 			}
