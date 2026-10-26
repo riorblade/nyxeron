@@ -453,6 +453,8 @@ export const en = {
     value: "Value",
     pnl: "Tonight",
     desk: "Token desk",
+    deskHide: "Fold the desk",
+    deskShow: "Open the desk",
     deskNote:
       "Buy at the live price. What you buy is yours: it goes home to your portfolio.",
     held: (n: number) => `${n} held`,
@@ -773,15 +775,15 @@ export const en = {
     hire: "Hire",
     fire: "Fire",
     securityHint: (cap: number) =>
-      `Keep at least 1 security per 40 guests (${Math.ceil(cap / 40)} for full capacity). Security also checks IDs at the door.`,
+      `Keep at least 1 security per 40 guests (${Math.ceil(cap / 40)} for full capacity). Each guard also works the door: +2 guests let in a minute and IDs checked.`,
     bartenderHint:
-      "Each desk broker adds order capacity. A slow desk means lost sales and unhappy guests.",
+      "Each desk broker adds order capacity, and every 4 take pre-orders in the queue (+1 guest let in a minute). A slow desk means lost sales and a long line.",
     hostHint:
       "Social hosts keep the room lively: the club looks fuller, men spend more (and buy them tokens). Unlocks the 'Hosts to the floor' move.",
     relationsHint:
       "Guest relations meet every guest, keep them happy, talk up bigger orders and book tables (whale service). One covers ~60 guests.",
     mcHint:
-      "Hype man on the stage. Unlocks 'MC hype': sing-alongs and hands in the air that lift the room's energy.",
+      "Hype man on the stage. Unlocks 'MC hype': sing-alongs and hands in the air that lift the room's energy. A 2nd and 3rd MC make it 25% stronger each.",
   },
 
   permits: {
@@ -1192,6 +1194,58 @@ export const en = {
     needHost: "Hire hosts",
     needDj: "After the DJ starts",
     used: "Used tonight",
+  },
+
+  guestControls: {
+    camera: "Camera",
+    cams: { eyes: "Eyes", behind: "Behind", drone: "Drone" },
+    dance: "Dance",
+    stop: "Stop dancing",
+    hint: "WASD to walk · Shift run · drag to look · V camera · G dance · T desk",
+    hintTouch: "Stick to walk · drag to look",
+  },
+  wardrobe: {
+    title: "Wardrobe",
+    open: "Open Wardrobe",
+    card: "Your look",
+    cardNote:
+      "Mix skin, clothes, hair and accessories. Your avatar dances in every club you walk into.",
+    save: "Save look",
+    cancel: "Cancel",
+    random: "Shuffle",
+    none: "None",
+    close: "Close",
+    beta: "Gold-tagged items are in the shop: try them on, then buy with Coin when you save. Bought items are yours for good.",
+    wallet: (n: number) => `Wallet ${fmt(n)} Coin`,
+    price: (n: number) => `${fmt(n)} Coin`,
+    owned: "Owned",
+    buySave: (n: number) => `Buy & save · ${fmt(n)} Coin`,
+    floor: (n: number) =>
+      `Not enough Coin: a purchase has to leave ${fmt(n)} Coin in your wallet.`,
+    buyFailed:
+      "The purchase didn't go through. Nothing was charged for what failed.",
+    tabs: {
+      skin: "Skin",
+      shirt: "Tops",
+      pants: "Bottoms",
+      shoes: "Shoes",
+      hair: "Hair",
+      hat: "Hats",
+      glasses: "Glasses",
+      facial: "Facial hair",
+      neck: "Neck",
+    },
+    moves: {
+      auto: "Auto",
+      bounce: "Bounce",
+      pump: "Fist pump",
+      sway: "Sway",
+      handsUp: "Hands up",
+      twoStep: "Two-step",
+      groove: "Groove",
+      shuffle: "Shuffle",
+      jump: "Jump",
+    },
   },
 
   settings: {

@@ -4,7 +4,7 @@
 # services/api's TestGameDataIsTheGamesData fails until you do.
 set -e
 cd "$(dirname "$0")/.."
-for f in tokens levels city strategy payments; do
+for f in tokens levels city strategy payments wardrobe; do
   cp "packages/core/src/data/$f.json" "services/api/gamedata/$f.json"
 done
 echo "services/api/gamedata synced from packages/core/src/data"

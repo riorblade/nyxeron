@@ -13,10 +13,11 @@ import {
   type TokenId,
   type Visitor,
 } from "@nyxeron/core";
-import { Clapperboard, DoorOpen, Eye, EyeOff } from "lucide-react";
+import { ChevronDown, Clapperboard, DoorOpen, Eye, EyeOff } from "lucide-react";
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
   type ButtonHTMLAttributes,
   type CSSProperties,
@@ -34,6 +35,9 @@ import { cn, trapFocus } from "@/lib/utils";
 import { player } from "@/api/player";
 import { useGame } from "@/state/store";
 import { VenueView } from "@/venue/VenueView";
+import { CameraSwitch, EmoteBar, Joystick, nextCam } from "@/hud/GuestControls";
+import type { CamMode } from "@/avatar/camera";
+import { DANCES, type Dance } from "@/avatar/moves";
 import { useNet } from "@/net/session";
 
 const t = en.guest;
@@ -81,6 +85,18 @@ export function GuestNight({
   const [leaving, setLeaving] = useState(false);
   const [hud, setHud] = useState(true);
   const [cinematic, setCinematic] = useState(false);
+  // Walk your own avatar: the camera starts over your shoulder; the last dance you picked comes back with G.
+  const [cam, setCam] = useState<CamMode>("behind");
+  const [emote, setEmote] = useState<Dance | null>(null);
+  const lastDance = useRef<Dance>("bounce");
+  // The desk folds away (T) to free the view; open by default on wide screens.
+  const [deskOpen, setDeskOpen] = useState(
+    () => typeof innerWidth === "undefined" || innerWidth >= 900,
+  );
+  const pickEmote = (d: Dance | null) => {
+    if (d) lastDance.current = d;
+    setEmote(d);
+  };
   const endCinematic = useCallback(() => setCinematic(false), []);
   const over = online ? online.ended : nightOver(s);
   const liveDj = useNet((x) => (online ? x.dj : null));
@@ -103,6 +119,12 @@ export function GuestNight({
         setRunning(!useGame.getState().running);
       } else if ((k === "1" || k === "2" || k === "3") && !online)
         setSpeed(Number(k) as 1 | 2 | 3);
+      else if (online && /^[1-8]$/.test(k)) {
+        lastDance.current = DANCES[Number(k) - 1]!;
+        setEmote(lastDance.current);
+      } else if (k === "g") setEmote((x) => (x ? null : lastDance.current));
+      else if (k === "v") setCam(nextCam);
+      else if (k === "t") setDeskOpen((x) => !x);
       else if (k === "h") setHud((x) => !x);
       else if (k === "c") setCinematic((x) => !x);
       else if (k === "m") audio.toggleMute();
@@ -133,6 +155,7 @@ export function GuestNight({
         cinematic={cinematic}
         onCinematicEnd={endCinematic}
         active={!done}
+        steer={inside && !done ? { cam, emote } : undefined}
       />
       <div
         className={cn(
@@ -208,7 +231,13 @@ export function GuestNight({
         {/* pointer-events-none! lets the 3D canvas behind get orbit/zoom; the desk turns clicks back on for itself. */}
         <div className="flex min-h-0 flex-1 justify-end pointer-events-none!">
           {inside ? (
-            <Desk s={s} me={me} onBuy={online?.buy} />
+            <Desk
+              s={s}
+              me={me}
+              onBuy={online?.buy}
+              open={deskOpen}
+              onToggle={() => setDeskOpen((x) => !x)}
+            />
           ) : (
             online?.waiting && (
               <p className="glass enter pointer-events-auto self-start rounded-xl px-4 py-3 text-sm text-white/80 sm:max-w-[26rem]">
@@ -218,6 +247,21 @@ export function GuestNight({
           )}
         </div>
       </div>
+
+      {inside && !done && hud && !cinematic && (
+        <>
+          <div className="pointer-events-none fixed inset-x-0 bottom-3 z-20 flex flex-col items-center gap-2 px-3 [&>*]:pointer-events-auto">
+            <EmoteBar emote={emote} onEmote={pickEmote} keys={!!online} />
+            <div className="flex items-center gap-2">
+              <CameraSwitch cam={cam} onCam={setCam} />
+              <span className="glass hidden rounded-lg px-2.5 py-1.5 text-[11px] text-white/60 lg:inline">
+                {en.guestControls.hint}
+              </span>
+            </div>
+          </div>
+          <Joystick />
+        </>
+      )}
 
       {(!hud || cinematic) && (
         <button
@@ -281,10 +325,14 @@ function Desk({
   s,
   me,
   onBuy,
+  open,
+  onToggle,
 }: {
   s: GameState;
   me: string;
   onBuy?: (token: TokenId, qty: number) => void;
+  open: boolean;
+  onToggle(): void;
 }) {
   const { set, notify } = useGame();
   const v = s.night!.visitors![me]!;
@@ -305,80 +353,103 @@ function Desk({
   };
   return (
     <aside
-      className="glass enter pointer-events-auto flex max-h-full w-full flex-col rounded-xl sm:w-[26rem]"
+      className={cn(
+        "glass enter pointer-events-auto flex max-h-full flex-col self-start rounded-xl",
+        open ? "w-full sm:w-[26rem]" : "w-auto",
+      )}
       style={{ "--d": "100ms" } as CSSProperties}
     >
-      <header className="border-b border-white/10 px-4 py-3">
-        <h2 className="text-[10px] tracking-[0.3em] text-white/60 uppercase">
-          {t.desk}
-        </h2>
-        <p className="mt-0.5 text-[11px] text-white/50">{t.deskNote}</p>
-      </header>
-      <ul className="space-y-1.5 overflow-y-auto p-3">
-        {menu.map((id) => {
-          const h = v.holdings[id];
-          const price = marketPrice(s, id);
-          const change = Math.round((marketOf(s.night, id) - 1) * 1000) / 10;
-          const pl = h ? price * h.qty - h.cost : 0;
-          return (
-            <li
-              key={id}
-              className="rounded-lg border border-white/8 bg-white/[0.025] p-2.5"
-            >
-              <div className="flex items-center gap-2.5">
-                <TokenLink
-                  s={s}
-                  id={id}
-                  className="flex min-w-0 flex-1 items-center gap-2.5 text-left hover:[&_.nm]:underline"
-                >
-                  <Img
-                    src={art.token(id)}
-                    alt=""
-                    className="size-8 shrink-0 rounded-full object-cover"
-                    fallback={<span className="size-8" />}
-                  />
-                  <span className="min-w-0 leading-tight">
-                    <span className="nm block font-mono text-sm font-semibold">
-                      {tokens[id].ticker}
-                    </span>
-                    <span className="block text-[11px] text-white/55">
-                      {s.stock[id] ? t.left(s.stock[id]) : t.soldOut}
-                    </span>
-                  </span>
-                </TokenLink>
-                <span className="text-right font-mono text-sm leading-tight tabular-nums">
-                  {fmt(price)} {en.unit}
-                  <span className="block text-[11px] text-white/55">
-                    {change > 0 ? "▲" : change < 0 ? "▼" : "·"}{" "}
-                    {Math.abs(change)}%
-                  </span>
-                </span>
-              </div>
-              <div className="mt-2 flex items-center gap-1.5">
-                <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-white/60">
-                  {h ? `${t.held(h.qty)} · ${signed(pl)}` : ""}
-                </span>
-                {[1, 5, 10].map((q) => (
-                  <DeskBtn
-                    key={q}
-                    disabled={!s.stock[id] || price * q > v.cash}
-                    onClick={() =>
-                      onBuy
-                        ? onBuy(id, q)
-                        : run(
-                            (g) => visitorBuy(g, me, id, q),
-                            () => t.bought(q, tokens[id].ticker, price * q),
-                          )
-                    }
+      <button
+        className={cn(
+          "flex items-center gap-3 px-4 py-3 text-left",
+          open && "border-b border-white/10",
+        )}
+        onClick={onToggle}
+        aria-expanded={open}
+        title={`${open ? t.deskHide : t.deskShow} [T]`}
+      >
+        <span className="min-w-0 flex-1">
+          <h2 className="text-[10px] tracking-[0.3em] text-white/60 uppercase">
+            {t.desk}
+          </h2>
+          {open && (
+            <p className="mt-0.5 text-[11px] text-white/50">{t.deskNote}</p>
+          )}
+        </span>
+        <ChevronDown
+          className={cn(
+            "size-4 shrink-0 text-white/60 transition-transform",
+            !open && "-rotate-90",
+          )}
+        />
+      </button>
+      {open && (
+        <ul className="space-y-1.5 overflow-y-auto p-3">
+          {menu.map((id) => {
+            const h = v.holdings[id];
+            const price = marketPrice(s, id);
+            const change = Math.round((marketOf(s.night, id) - 1) * 1000) / 10;
+            const pl = h ? price * h.qty - h.cost : 0;
+            return (
+              <li
+                key={id}
+                className="rounded-lg border border-white/8 bg-white/[0.025] p-2.5"
+              >
+                <div className="flex items-center gap-2.5">
+                  <TokenLink
+                    s={s}
+                    id={id}
+                    className="flex min-w-0 flex-1 items-center gap-2.5 text-left hover:[&_.nm]:underline"
                   >
-                    {t.buy(q)}
-                  </DeskBtn>
-                ))}
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+                    <Img
+                      src={art.token(id)}
+                      alt=""
+                      className="size-8 shrink-0 rounded-full object-cover"
+                      fallback={<span className="size-8" />}
+                    />
+                    <span className="min-w-0 leading-tight">
+                      <span className="nm block font-mono text-sm font-semibold">
+                        {tokens[id].ticker}
+                      </span>
+                      <span className="block text-[11px] text-white/55">
+                        {s.stock[id] ? t.left(s.stock[id]) : t.soldOut}
+                      </span>
+                    </span>
+                  </TokenLink>
+                  <span className="text-right font-mono text-sm leading-tight tabular-nums">
+                    {fmt(price)} {en.unit}
+                    <span className="block text-[11px] text-white/55">
+                      {change > 0 ? "▲" : change < 0 ? "▼" : "·"}{" "}
+                      {Math.abs(change)}%
+                    </span>
+                  </span>
+                </div>
+                <div className="mt-2 flex items-center gap-1.5">
+                  <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-white/60">
+                    {h ? `${t.held(h.qty)} · ${signed(pl)}` : ""}
+                  </span>
+                  {[1, 5, 10].map((q) => (
+                    <DeskBtn
+                      key={q}
+                      disabled={!s.stock[id] || price * q > v.cash}
+                      onClick={() =>
+                        onBuy
+                          ? onBuy(id, q)
+                          : run(
+                              (g) => visitorBuy(g, me, id, q),
+                              () => t.bought(q, tokens[id].ticker, price * q),
+                            )
+                      }
+                    >
+                      {t.buy(q)}
+                    </DeskBtn>
+                  ))}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </aside>
   );
 }

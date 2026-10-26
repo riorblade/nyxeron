@@ -13,6 +13,10 @@ import {
   active as tacticActive,
   isInside,
   night as nightData,
+  decodeAvatar,
+  legacyAvatar,
+  randomAvatar,
+  type Avatar,
   type TokenId,
   type GameState,
 } from "@nyxeron/core";
@@ -56,6 +60,11 @@ import { art } from "@/lib/art";
 import { StageFx, type FlameSpot } from "./effects";
 import type { PyroCue } from "./pyro";
 import { Videotron, VIDEOTRON_ASPECT, type VideotronData } from "./videotron";
+import { avatarMaterial, buildRig, type Rig } from "@/avatar/rig";
+import { applyMove, danceAt, type Dance } from "@/avatar/moves";
+import { GuestCamera, type CamMode } from "@/avatar/camera";
+import { roomOf, stepRoam, type Roam } from "@/avatar/roam";
+import { stick } from "@/avatar/stick";
 
 /** World units: 1 floor tile = 1 unit; people ~1.15 tall. */
 const PERSON_H = 1.15;
@@ -90,7 +99,19 @@ type Task =
 
 interface Person {
   g: THREE.Group;
-  sprite: THREE.Sprite;
+  /** Staff, DJs and the MC are still painted sprites; guests and players are 3D avatars (`rig`). */
+  sprite?: THREE.Sprite;
+  rig?: Rig;
+  /** The avatar's own copy of the shared material (tint by satisfaction, fade out). */
+  mat?: THREE.MeshLambertMaterial;
+  /** Where the avatar faces (radians, eased). */
+  heading?: number;
+  /** Walking under the player's own control (or a remote player's last report). */
+  walking?: boolean;
+  /** The dance the player picked; when standing they do this one. */
+  emote?: Dance | null;
+  /** A player's name tag (hidden on my own avatar when the camera is at it). */
+  label?: THREE.Sprite;
   alert?: THREE.Sprite;
   /** Red ring on the floor under a guest at fight risk. */
   ring?: THREE.Mesh;
@@ -314,6 +335,44 @@ export class VenueScene {
     ro.observe(el);
     resize();
     this.bindClicks(r.domElement);
+    this.gcam.bind(
+      r.domElement,
+      () => this.control && this.camMode !== "drone",
+    );
+    const typing = (e: KeyboardEvent) =>
+      e.target instanceof HTMLInputElement ||
+      e.target instanceof HTMLTextAreaElement;
+    const kd = (e: KeyboardEvent) => {
+      if (!this.control || typing(e)) return;
+      const k = e.key.toLowerCase();
+      if (
+        [
+          "w",
+          "a",
+          "s",
+          "d",
+          "arrowup",
+          "arrowdown",
+          "arrowleft",
+          "arrowright",
+          "shift",
+        ].includes(k)
+      ) {
+        this.keys.add(k);
+        if (k.startsWith("arrow")) e.preventDefault();
+      }
+    };
+    const ku = (e: KeyboardEvent) => this.keys.delete(e.key.toLowerCase());
+    const blur = () => this.keys.clear();
+    window.addEventListener("keydown", kd);
+    window.addEventListener("keyup", ku);
+    window.addEventListener("blur", blur);
+    this.off.push(() => {
+      window.removeEventListener("keydown", kd);
+      window.removeEventListener("keyup", ku);
+      window.removeEventListener("blur", blur);
+      this.gcam.dispose();
+    });
     this.off.push(() => ro.disconnect());
     r.setAnimationLoop(() => this.frame());
     this.ready = true;
@@ -385,7 +444,7 @@ export class VenueScene {
       p.mode = g.state === "dance" ? "dance" : "idle";
       // Satisfaction as brightness: unhappy guests fade toward grey.
       const v = 0.6 + (g.satisfaction / 100) * 0.4;
-      (p.sprite.material as THREE.SpriteMaterial).color.setRGB(v, v, v);
+      this.tint(p, v);
       this.markRisk(p, isAtFightRisk(g));
 
       const prev = this.budgets.get(g.id);
@@ -1843,24 +1902,52 @@ export class VenueScene {
     };
   }
 
+  /** A 3D avatar: its rig scaled to height `h`, with its own material copy so it can be tinted and faded. */
+  private addAvatar(
+    look: Avatar,
+    h: number,
+    x: number,
+    z: number,
+    mode: Person["mode"],
+    seed: number,
+  ): Person {
+    const g = new THREE.Group();
+    const rig = buildRig(look);
+    const mat = avatarMaterial();
+    rig.mesh.material = mat;
+    rig.mesh.scale.setScalar(h);
+    g.add(rig.mesh);
+    g.position.set(x, 0, z);
+    this.root.add(g);
+    return {
+      g,
+      rig,
+      mat,
+      heading: hash(seed + 9) * Math.PI * 2,
+      h,
+      tx: x,
+      tz: z,
+      leaving: false,
+      fade: 1,
+      mode,
+      seed,
+      lift: 0,
+    };
+  }
+
+  private tint(p: Person, v: number) {
+    if (p.mat) p.mat.color.setRGB(v, v, v);
+    else (p.sprite!.material as THREE.SpriteMaterial).color.setRGB(v, v, v);
+  }
+
   private spawnGuest(
     id: number,
     at: [number, number],
     female?: boolean,
   ): Person {
-    // Sprites 1–5 are men, 6–10 women; match the simulated guest.
-    const all = this.assets!.guests;
-    const list =
-      all.length === 10 && female !== undefined
-        ? female
-          ? all.slice(5)
-          : all.slice(0, 5)
-        : all;
-    const tex = list.length
-      ? list[Math.floor(hash(id + 31) * list.length)]
-      : undefined;
-    const p = this.addPerson(
-      tex,
+    // A random outfit per guest, matching the simulated guest's gender.
+    const p = this.addAvatar(
+      randomAvatar(id * 2654435761, female ?? hash(id + 31) > 0.5),
       PERSON_H * (0.9 + hash(id + 5) * 0.18),
       at[0],
       at[1],
@@ -1897,9 +1984,9 @@ export class VenueScene {
       const mine = key === this.me;
       const seed = 7 + (-sid % 50);
       if (!p) {
-        const tex = this.assets.guests[v.avatar - 1];
         const at = fresh ? this.spot("dance", seed) : this.entrance();
-        p = this.addPerson(tex, PERSON_H, at[0], at[1], "dance", seed);
+        const look = decodeAvatar(v.look, legacyAvatar(v.avatar));
+        p = this.addAvatar(look, PERSON_H, at[0], at[1], "dance", seed);
         const tag = textTexture(mine ? `${en.guest.you} · ${v.name}` : v.name, {
           size: 40,
           weight: "800",
@@ -1917,6 +2004,8 @@ export class VenueScene {
         label.position.y = PERSON_H + 0.12;
         label.renderOrder = 10;
         p.g.add(label);
+        p.label = label;
+        if (mine) label.visible = this.camMode === "drone";
         if (mine) {
           // Only your own avatar gets the white ring.
           const ring = new THREE.Mesh(
@@ -1941,6 +2030,9 @@ export class VenueScene {
       const atBarUntil =
         m && m.trades !== trades ? now + 4000 : (m?.until ?? 0);
       this.playerMoves.set(key, { trades, until: atBarUntil });
+      // Steered by its player (me here, or a remote player's reports): don't send it anywhere.
+      if (mine && this.control) continue;
+      if (!mine && this.applyRemote(key, p)) continue;
       const atBar = now < atBarUntil;
       [p.tx, p.tz] = this.spot(atBar ? zoneFor.bar : "dance", seed);
       p.mode = atBar ? "idle" : "dance";
@@ -1950,6 +2042,136 @@ export class VenueScene {
   /** Which visitor is this browser's player (their avatar gets "YOU" and a ring). */
   setMe(id: string) {
     this.me = id;
+    this.roam = null;
+  }
+
+  // ---------- guest control (walk, dance, cameras) ----------
+
+  private control = false;
+  private camMode: CamMode = "drone";
+  private gcam = new GuestCamera();
+  /** My own avatar's position while I steer it. */
+  private roam: Roam | null = null;
+  private emote: Dance | null = null;
+  private keys = new Set<string>();
+  private remoteRoams: Record<string, Roam> = {};
+  private roamSent = 0;
+  private roamKey = "";
+  /** About 8×/s while I steer (and once a second standing still): my position for the other players. */
+  onRoam?: (r: Roam) => void;
+
+  /** Guest screens: the player steers their own avatar (WASD / the stick) and picks the camera. */
+  setControl(on: boolean) {
+    this.control = on;
+    if (!on) {
+      this.roam = null;
+      this.setCameraMode("drone");
+    }
+  }
+
+  setCameraMode(m: CamMode) {
+    if (m === this.camMode) return;
+    this.camMode = m;
+    if (!this.ready) return;
+    this.controls.enabled = m === "drone" && !this.cine.on;
+    const me = this.myPerson();
+    if (m !== "drone") {
+      if (this.cine.on) this.setCinematic(false);
+      this.gcam.yaw = me?.heading ?? 0;
+      this.gcam.pitch = m === "eyes" ? 0 : -0.18;
+    } else if (me) {
+      // Back to the drone: up and away, orbiting around where I stand.
+      const { x, z } = me.g.position;
+      this.controls.target.set(x, 0, z);
+      this.camera.position.set(x + 3.4, 4.2, z + 4.6);
+      this.controls.update();
+    }
+    if (me?.rig) me.rig.mesh.visible = m !== "eyes";
+    if (me?.label) me.label.visible = m === "drone";
+  }
+
+  setEmote(e: Dance | null) {
+    this.emote = e;
+    if (this.roam) this.roam = { ...this.roam, emote: e };
+  }
+
+  /** Where the other players are (host: as accepted; guests: as the host relays). */
+  setRemoteRoams(r: Record<string, Roam>) {
+    this.remoteRoams = r;
+    for (const [key, sid] of this.playerIds) {
+      const p = this.guests.get(sid);
+      if (p && key !== this.me) this.applyRemote(key, p);
+    }
+  }
+
+  private applyRemote(key: string, p: Person) {
+    const r = this.remoteRoams[key];
+    if (!r) return false;
+    [p.tx, p.tz] = [r.x, r.z];
+    p.heading = r.yaw;
+    p.emote = r.emote;
+    p.mode = r.emote ? "dance" : "idle";
+    return true;
+  }
+
+  private myPerson() {
+    const sid = this.playerIds.get(this.me);
+    return sid === undefined ? undefined : this.guests.get(sid);
+  }
+
+  /** One frame of steering my avatar, sending it on, and the eyes / behind camera. */
+  private steer(now: number, dt: number) {
+    const me = this.myPerson();
+    if (!me || !this.layout) return false;
+    if (!this.roam)
+      this.roam = {
+        x: me.g.position.x,
+        z: me.g.position.z,
+        yaw: me.heading ?? 0,
+        emote: this.emote,
+        moving: false,
+      };
+    const k = this.keys;
+    const fwd =
+      (k.has("w") || k.has("arrowup") ? 1 : 0) -
+      (k.has("s") || k.has("arrowdown") ? 1 : 0) +
+      stick.y;
+    const side =
+      (k.has("d") || k.has("arrowright") ? 1 : 0) -
+      (k.has("a") || k.has("arrowleft") ? 1 : 0) +
+      stick.x;
+    const c = this.camera.position,
+      t = this.controls.target;
+    const camYaw =
+      this.camMode === "drone"
+        ? Math.atan2(t.x - c.x, t.z - c.z)
+        : this.gcam.yaw;
+    this.roam = stepRoam(
+      this.roam,
+      { fwd, side, run: k.has("shift") || Math.hypot(stick.x, stick.y) > 0.92 },
+      camYaw,
+      dt,
+      roomOf(this.layout),
+    );
+    const r = this.roam;
+    me.g.position.x = me.tx = r.x;
+    me.g.position.z = me.tz = r.z;
+    me.heading = r.yaw;
+    me.walking = r.moving;
+    me.emote = r.emote;
+    // Walking in first person turns the view with you only by drag; behind, the view swings round to follow.
+    const key = `${r.x.toFixed(2)},${r.z.toFixed(2)},${r.yaw.toFixed(2)},${r.emote},${r.moving}`;
+    if (
+      now - this.roamSent > 125 &&
+      (key !== this.roamKey || now - this.roamSent > 1000)
+    ) {
+      this.roamSent = now;
+      this.roamKey = key;
+      this.onRoam?.(r);
+    }
+    if (this.camMode !== "drone")
+      this.gcam.place(this.camera, this.camMode, me.g.position, me.h, dt);
+    return this.camMode !== "drone";
   }
 
   /** The "!" and red ring over a tilt guest, created only when someone actually gets tilt. */
@@ -2851,9 +3073,38 @@ export class VenueScene {
       : Math.pow(1 - (now % beatMs) / beatMs, 3);
     const k = Math.min(1, dt / 250);
 
+    const beats = (now / 60000) * (this.djOn ? 124 : 100);
     const animate = (p: Person) => {
       const moving =
         Math.hypot(p.tx - p.g.position.x, p.tz - p.g.position.z) > 0.04;
+      if (p.rig) {
+        // Walk toward the target, otherwise dance (or stand) facing a seeded direction that drifts with the music.
+        // A player's pick (emote) beats the seeded dance; a steered avatar says itself whether it walks.
+        let face = p.heading!;
+        const walking = p.walking ?? moving;
+        if (p.walking !== undefined) {
+          if (walking) applyMove(p.rig, "walk", (now / 1000) * 2.2 + p.seed);
+          else if (p.emote) applyMove(p.rig, p.emote, beats, 0.85);
+          else applyMove(p.rig, "idle", beats + p.seed);
+        } else if (p.emote && !moving) {
+          applyMove(p.rig, p.emote, beats, 0.85);
+        } else if (moving) {
+          face = Math.atan2(p.tx - p.g.position.x, p.tz - p.g.position.z);
+          applyMove(p.rig, "walk", (now / 1000) * 2.2 + p.seed);
+        } else if (p.mode === "dance") {
+          const d = danceAt(p.seed, beats);
+          applyMove(p.rig, d.move, d.beat, d.energy * (0.7 + 0.3 * pulse));
+          face += Math.sin(beats / 16 + p.seed) * 0.6;
+        } else applyMove(p.rig, "idle", beats + p.seed);
+        if (moving && p.walking === undefined) p.heading = face;
+        const r = p.rig.mesh.rotation;
+        r.y +=
+          Math.atan2(Math.sin(face - r.y), Math.cos(face - r.y)) *
+          Math.min(1, dt / 160);
+        p.rig.mesh.position.y = p.lift;
+        return;
+      }
+      const sprite = p.sprite!;
       const t = tSec + p.seed * 0.37;
       let y: number,
         sy = 1,
@@ -2868,9 +3119,9 @@ export class VenueScene {
         rot = Math.sin(t * 1.8) * 0.03;
       } else if (p.mode === "work") y = Math.abs(Math.sin(t * 4)) * 0.02;
       else y = Math.sin(t * 1.6) * 0.008;
-      p.sprite.position.y = p.lift + y;
-      p.sprite.scale.y = p.h * sy;
-      (p.sprite.material as THREE.SpriteMaterial).rotation = rot;
+      sprite.position.y = p.lift + y;
+      sprite.scale.y = p.h * sy;
+      (sprite.material as THREE.SpriteMaterial).rotation = rot;
     };
 
     // Tilted-guest markers share materials, so they pulse together.
@@ -2880,11 +3131,9 @@ export class VenueScene {
     for (const [id, p] of this.guests) {
       if (p.leaving && !p.held) {
         p.fade -= dt / 800;
-        (p.sprite.material as THREE.SpriteMaterial).opacity = Math.max(
-          0,
-          p.fade,
-        );
-        (p.sprite.material as THREE.SpriteMaterial).transparent = true;
+        const m = p.mat ?? (p.sprite!.material as THREE.SpriteMaterial);
+        m.opacity = Math.max(0, p.fade);
+        m.transparent = true;
         if (p.fade <= 0) {
           this.remove(p);
           this.guests.delete(id);
@@ -3011,8 +3260,9 @@ export class VenueScene {
     const cam = this.camera.position;
     for (const w of this.walls) w.mesh.visible = w.visible(cam);
 
+    const steered = this.control && this.steer(now, dt);
     if (this.cine.on) this.cineFrame(now, dt, pulse);
-    else this.controls.update();
+    else if (!steered) this.controls.update();
     this.screenWall?.tick(now, pulse);
     this.videotron?.draw(now, pulse, this.tron);
 

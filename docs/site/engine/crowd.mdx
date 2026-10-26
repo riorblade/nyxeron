@@ -74,7 +74,7 @@ where
 
 | Move | Energy added to $E^\ast$ | Duration / cooldown (min) | Fatigue | Needs |
 |---|---|---|---|---|
-| MC hype | $25 \cdot$ power (and +0.15 · power satisfaction per minute) | 20 / 60 | 0.3 | an MC |
+| MC hype | $25 \cdot$ power, power $\times (1 + 0.25\,(\min(n_{\text{mc}}, 3) - 1))$ (and +0.15 · power satisfaction per minute) | 20 / 60 | 0.3 | an MC |
 | Hosts to the floor | $\min(40, 6\, n_{\text{host}}) \cdot \text{power} \cdot (1 - E_t/200)$ | 30 / 90 | 0.2 | a host |
 | DJ anthem | $35 \cdot$ power (and +10 · power satisfaction once, stay +45 · power min) | 20 / 360 | 1 | a DJ on the decks |
 | Sparkler parade | $15 \cdot$ power (and bottle sales to copycats) | 10 / 45 | 0.35 | booked tables, after minute 90 |

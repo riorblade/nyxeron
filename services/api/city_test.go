@@ -34,7 +34,7 @@ func wallet(t *testing.T, s *store, id string) int64 {
 
 // gamedata/ must be an exact copy of the game's data, so the server settles with the browser's numbers.
 func TestGameDataIsTheGamesData(t *testing.T) {
-	for _, name := range []string{"tokens", "levels", "city", "strategy", "payments"} {
+	for _, name := range []string{"tokens", "levels", "city", "strategy", "payments", "wardrobe"} {
 		a, _ := os.ReadFile(filepath.Join("gamedata", name+".json"))
 		b, err := os.ReadFile(filepath.Join("..", "..", "packages", "core", "src", "data", name+".json"))
 		if err != nil || !bytes.Equal(a, b) {

@@ -3,6 +3,7 @@ import { fail, type ActionResult } from "../result";
 import type { GameState, NightState } from "../state";
 import { marketPrice } from "./market";
 import { platformFee } from "./quotes";
+import { decodeAvatar, encodeAvatar, legacyAvatar } from "./avatar";
 import { coverPrice } from "./strategy";
 
 /**
@@ -13,6 +14,8 @@ export interface Visitor {
   name: string;
   /** Guest sprite 1–10 (1–5 men, 6–10 women), picked on the dashboard. Cosmetic. */
   avatar: number;
+  /** Their outfit (`encodeAvatar`); missing for older clients, which show a look derived from `avatar`. */
+  look?: string;
   cash: number;
   /** Units held and what was paid for them in total. */
   holdings: Partial<Record<TokenId, { qty: number; cost: number }>>;
@@ -53,6 +56,7 @@ export function visitorJoin(
   name: string,
   cash: number,
   avatar = 1,
+  look?: string,
 ): ActionResult {
   const n = s.night;
   if (!clubOpen(s) || !n || visitorOf(s, id)) return fail("wrongPhase");
@@ -68,6 +72,9 @@ export function visitorJoin(
     holdings: {},
     startCash: cash,
   };
+  // Re-encode what the player sent, so the club only ever holds a valid outfit.
+  if (look !== undefined)
+    v.look = encodeAvatar(decodeAvatar(look, legacyAvatar(v.avatar)));
   return ok({
     ...withVisitor(s, n, id, v),
     coin: s.coin + cover,

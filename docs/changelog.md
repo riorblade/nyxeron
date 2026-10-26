@@ -3,6 +3,33 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-26 · 3D avatars and the wardrobe
+
+- **Item shop (Coin):** 15 shop items in the wardrobe (gold, chrome, neon; 1,000–9,000 Coin, all 15 = 52,500), tried
+  on for free and bought on save. The api settles it (`POST /api/items`, migration 9: `users.look`, `owned_items`,
+  a ledger row `item`): bought once, kept for good, and a saved look may only wear what's free or owned. A purchase
+  must leave 2,000 Coin (the refill floor) so shopping never unlocks a free refill. The 45 starter items stay free
+  and NPCs only wear those, so shop items are something only players show off. Known ceiling: the look a guest
+  sends a host over the relay isn't checked against what they own (cosmetic).
+- **Roblox-style 3D avatars:** guests and players in the club are now blocky 3D characters that really dance (8
+  moves on a 12-bone rig, each guest with its own move, tempo and energy) instead of painted sprites. Built in code
+  (`apps/web/src/avatar`): one draw call per character, 500 dancing at 60 fps on a laptop. Staff and DJs stay sprites.
+- **Walk the club yourself:** as a guest you steer your own avatar (WASD, Shift to run; a touch stick on phones),
+  pick what you dance from a dance bar (keys 1–8 online, G to start/stop) and switch the camera between your eyes,
+  over your shoulder and the drone (V). Other players see where you walk and what you dance: positions go to the
+  host about 8× a second, which keeps them inside the room and no faster than running, then out to everyone. Cosmetic
+  only: nothing of it touches the game state, money or tokens.
+- **Wardrobe:** players mix skin (8 tones) and 45 items in 8 slots (tops, bottoms, shoes, hair, hats, glasses,
+  facial hair, neck) on a dancing preview; the look rides along when they walk into a club
+  (`packages/core/src/data/wardrobe.json`, `rules/avatar.ts`).
+
+## 2026-10-13 · Staff clear the line
+
+- **The door scales with staff:** it lets in 3 guests a minute, +2 per security and +1 per 4 desk brokers
+  (`night.json → doorPerSecurity, doorPerBartender`). Before, it was 3 a minute whatever the crew, so a Level 5 club
+  had a long queue in front of an empty room (7 security + 30 brokers now let in 24 a minute).
+- **More MCs, louder hype:** a 2nd and 3rd MC make MC hype 25% stronger each (`staff.json → mc.hypePerExtra`).
+
 ## 2026-10-11 · The public docs look like the game
 
 - **Neon theme:** docs.nyxeron.xyz now uses the game's violet glass, magenta neon and gold (`docs/site/style.css`,

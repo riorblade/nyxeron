@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { doorRateOf } from "../src";
 import {
   createGameState,
   createEvent,
@@ -177,6 +178,29 @@ describe("staff strategies", () => {
   });
 });
 
+describe("the door", () => {
+  const staffed = (security: number, bartender: number) =>
+    club({ staff: { bartender, security, host: 0, relations: 0, mc: 0 } });
+
+  it("lets in 3 a minute alone, +2 per security, +1 per 4 desk brokers", () => {
+    expect(doorRateOf(staffed(0, 0))).toBe(3);
+    expect(doorRateOf(staffed(7, 30))).toBe(3 + 14 + 7);
+    expect(doorRateOf(staffed(0, 3))).toBe(3); // whole lanes only
+  });
+
+  it("a staffed door clears a peak queue faster", () => {
+    const inOneMinute = (s: GameState) => {
+      const n = tickNight(at(s, 120)).night!;
+      return n.guests.filter((g) => g.admitted).length;
+    };
+    const lean = inOneMinute(staffed(0, 0));
+    const full = inOneMinute(staffed(7, 30));
+    expect(lean).toBeLessThanOrEqual(3);
+    expect(full).toBeGreaterThan(lean * 4);
+    expect(full).toBeLessThanOrEqual(doorRateOf(staffed(7, 30)));
+  });
+});
+
 describe("crowd moves", () => {
   const crew = club({
     staff: { bartender: 4, security: 6, host: 3, relations: 0, mc: 1 },
@@ -210,6 +234,19 @@ describe("crowd moves", () => {
     expect(r2.ok && r2.state.night!.tactics.mcHype!.power).toBeLessThan(
       r1.state.night!.tactics.mcHype!.power,
     );
+  });
+
+  it("a second and third MC make MC hype stronger, a fourth adds nothing", () => {
+    const power = (mc: number) => {
+      const r = crowdMove(
+        at(club({ staff: { ...crew.staff, mc } }), 120),
+        "mcHype",
+      );
+      return r.ok ? r.state.night!.tactics.mcHype!.power : 0;
+    };
+    expect(power(2)).toBeCloseTo(power(1) * 1.25);
+    expect(power(3)).toBeCloseTo(power(1) * 1.5);
+    expect(power(4)).toBe(power(3));
   });
 
   it("MC hype lifts the room's energy", () => {

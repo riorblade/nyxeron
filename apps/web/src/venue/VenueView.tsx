@@ -8,8 +8,22 @@ import { useSettings } from "@/state/settings";
 import { useGame } from "@/state/store";
 import { KINDS } from "./furniture";
 import { onPyro } from "./pyro";
-import { shareShow, useNet } from "@/net/session";
+import { sendRoam, shareShow, useNet } from "@/net/session";
+import type { CamMode } from "@/avatar/camera";
+import type { Dance } from "@/avatar/moves";
 import { VenueScene } from "./scene3d";
+
+type Steer = { cam: CamMode; emote: Dance | null };
+
+/** Guest screens: the player walks their avatar, dances what they pick, and picks the camera. */
+function applySteer(v: VenueScene, st: Steer | undefined) {
+  v.setControl(!!st);
+  if (st) {
+    v.setCameraMode(st.cam);
+    v.setEmote(st.emote);
+  }
+  v.onRoam = st ? sendRoam : undefined;
+}
 
 export function VenueView({
   s,
@@ -20,7 +34,10 @@ export function VenueView({
   onDone,
   guestDj,
   me = "me",
+  steer,
 }: {
+  /** Guest screens: the player walks their avatar, dances what they pick, and picks the camera. */
+  steer?: Steer;
   s: GameState;
   /** Which visitor is this browser's player (online: their relay id). */
   me?: string;
@@ -41,6 +58,8 @@ export function VenueView({
   // The scene loads async (after the first effects ran), so init reads the latest guest DJ from here.
   const guestRef = useRef<{ name: string; avatar: number } | null>(null);
   const meRef = useRef("me");
+  // Steering: the latest settings live in a ref, so the scene picks them up when it finishes loading too.
+  const steerRef = useRef<Steer | undefined>(undefined);
   const [drink, setDrink] = useState<TokenId | null>(null);
   const clips = useSettings((x) => x.clips);
   const ads = useSettings((x) => x.ads);
@@ -65,6 +84,8 @@ export function VenueView({
         v.setPyroAuto(pyro === "auto" && n !== "guest" && n !== "dj");
         v.setGuestDj(guestRef.current ?? null);
         v.setMe(meRef.current);
+        applySteer(v, steerRef.current);
+        v.setRemoteRoams(useNet.getState().roams);
         const g = useGame.getState().game;
         if (g) v.update(g);
       })
@@ -108,6 +129,18 @@ export function VenueView({
     meRef.current = me;
     r.current?.setMe(me);
   }, [me]);
+  const roams = useNet((n) => n.roams);
+  const cam = steer?.cam;
+  const emote = steer?.emote ?? null;
+  const steering = !!steer;
+  useEffect(() => {
+    const st = steering && cam ? { cam, emote } : undefined;
+    steerRef.current = st;
+    if (r.current) applySteer(r.current, st);
+  }, [steering, cam, emote]);
+  useEffect(() => {
+    r.current?.setRemoteRoams(roams);
+  }, [roams]);
   const gName = guestDj?.name;
   const gAvatar = guestDj?.avatar;
   useEffect(() => {

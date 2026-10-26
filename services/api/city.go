@@ -65,6 +65,15 @@ var game struct {
 			Range [2]float64 `json:"range"` // the desk price's multiplier on the list price, low to high
 		} `json:"market"`
 	}
+	// wardrobe: the look a profile may save (skins, items, required slots) and the item shop's prices in Coin.
+	wardrobe struct {
+		Skins    map[string]string `json:"skins"`
+		Required []string          `json:"required"`
+		Items    map[string]struct {
+			Slot  string `json:"slot"`
+			Price int64  `json:"price"` // 0: free for everyone
+		} `json:"items"`
+	}
 	payments struct {
 		ChainID       int              `json:"chainId"`
 		Confirmations uint64           `json:"confirmations"`
@@ -94,7 +103,7 @@ var game struct {
 func init() {
 	for name, v := range map[string]any{
 		"tokens": &game.tokens, "levels": &game.levels, "city": &game.city,
-		"payments": &game.payments, "strategy": &game.strategy,
+		"payments": &game.payments, "strategy": &game.strategy, "wardrobe": &game.wardrobe,
 	} {
 		b, err := gameFS.ReadFile("gamedata/" + name + ".json")
 		if err == nil {

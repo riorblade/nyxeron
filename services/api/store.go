@@ -46,6 +46,8 @@ type Profile struct {
 	ID        string             `json:"id"`
 	Name      string             `json:"name"`
 	Avatar    int                `json:"avatar"`
+	Look      string             `json:"look"`  // the wardrobe outfit (items.go), "" until one is saved
+	Items     []string           `json:"items"` // shop items bought (free ones aren't listed)
 	Wallet    int64              `json:"wallet"`
 	Portfolio map[string]Holding `json:"portfolio"`
 	Nights    int                `json:"nights"`
@@ -147,16 +149,19 @@ func (s *store) tx(ctx context.Context, id string, fn func(*sql.Tx) error) error
 }
 
 func read(t *sql.Tx, id string) (Profile, error) {
-	p := Profile{ID: id, Portfolio: map[string]Holding{}}
+	p := Profile{ID: id, Portfolio: map[string]Holding{}, Items: []string{}}
 	var imported, banned int
-	err := t.QueryRow(`SELECT name, avatar, wallet, nights, gigs, total_pnl, best_pnl, imported, unlock_level, banned, ban_reason
+	err := t.QueryRow(`SELECT name, avatar, look, wallet, nights, gigs, total_pnl, best_pnl, imported, unlock_level, banned, ban_reason
 		FROM users WHERE id = ?`, id).
-		Scan(&p.Name, &p.Avatar, &p.Wallet, &p.Nights, &p.Gigs, &p.TotalPnl, &p.BestPnl, &imported, &p.UnlockLevel, &banned, &p.BanReason)
+		Scan(&p.Name, &p.Avatar, &p.Look, &p.Wallet, &p.Nights, &p.Gigs, &p.TotalPnl, &p.BestPnl, &imported, &p.UnlockLevel, &banned, &p.BanReason)
 	if err != nil {
 		return p, err
 	}
 	p.Imported = imported == 1
 	p.Banned = banned == 1
+	if p.Items, err = ownedItems(t, id); err != nil {
+		return p, err
+	}
 	rows, err := t.Query(`SELECT token, qty, cost FROM portfolio WHERE user_id = ?`, id)
 	if err != nil {
 		return p, err

@@ -15,6 +15,7 @@ import scenariosJson from "./data/scenarios.json";
 import staffJson from "./data/staff.json";
 import strategyJson from "./data/strategy.json";
 import suppliersJson from "./data/suppliers.json";
+import wardrobeJson from "./data/wardrobe.json";
 
 // ponytail: ids are the JSON keys, so adding an entry to a JSON file is the whole change.
 export const tokens = tokensJson;
@@ -35,6 +36,8 @@ export const promoters = promotersJson;
 export const city = cityJson;
 /** Real money: top-up, credit, units backed by real shares, the agent's limits (BNB Chain). */
 export const payments = paymentsJson;
+/** Avatar skins and items (cosmetic). */
+export const wardrobe = wardrobeJson;
 
 export type TokenId = keyof typeof tokens;
 export type SupplierId = keyof typeof suppliers;

@@ -4,6 +4,7 @@ import {
   night,
   priceScale,
   promoters,
+  staffRoles,
   strategy,
   type DressCode,
   type PromoterId,
@@ -423,6 +424,11 @@ export function crowdMove(s: GameState, id: TacticId): ActionResult {
   const t = strategy.tactics[id];
   const uses = n.tactics[id]?.uses ?? 0;
   let power = Math.max(0.2, 1 - t.fatigue * uses);
+  // A second and third MC make the sing-along louder.
+  if (id === "mcHype") {
+    const mc = staffRoles.mc;
+    power *= 1 + mc.hypePerExtra * (Math.min(s.staff.mc, mc.maxUseful) - 1);
+  }
   if (id === "djAnthem")
     power =
       n.djMatch === true

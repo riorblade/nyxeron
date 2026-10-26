@@ -484,8 +484,8 @@ func rvbAt(t *testing.T, version int) (string, func()) {
 // Held: a v6 database (production today) with top-ups in every state ends at v8 with refund_cents, credited_at,
 // scan_retries and the ledger index as on a fresh database; re-running 7 and 8 changes nothing.
 func TestRV64bMigrations7And8OnAV6Database(t *testing.T) {
-	if len(migrations) != 8 {
-		t.Fatalf("%d migrations, want 8 (7 = #57, 8 = #64)", len(migrations))
+	if len(migrations) < 8 {
+		t.Fatalf("%d migrations, want at least 8 (7 = #57, 8 = #64)", len(migrations))
 	}
 	if !strings.Contains(migrations[6], "refund_cents") || !strings.Contains(migrations[7], "scan_retries") {
 		t.Fatal("order: 7 must be #57's refund columns, 8 this PR's")
@@ -525,7 +525,7 @@ func TestRV64bMigrations7And8OnAV6Database(t *testing.T) {
 		}
 		var v int
 		s.db.QueryRow(`PRAGMA user_version`).Scan(&v)
-		if v != 8 {
+		if v != len(migrations) {
 			t.Fatalf("user_version %d", v)
 		}
 		for tx, w := range want {
