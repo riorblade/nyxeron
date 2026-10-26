@@ -14,7 +14,8 @@ import (
 //
 //	GET   /api/profile          → Profile (created with the starter wallet on first call)
 //	POST  /api/profile/import   Profile → Profile (once: this device's pre-account data)
-//	PATCH /api/profile          {name?, avatar?} → Profile
+//	PATCH /api/profile          {name?, avatar?, look?} → Profile
+//	POST  /api/items            {item} → Profile (buy a wardrobe item with Coin; items.go)
 //	POST  /api/wallet/refill    → Profile (only when the wallet is nearly empty)
 //	POST  /api/nights           {cash, bought, pnl, room?} → Profile (a night out as a guest)
 //	POST  /api/gigs             {fee} → Profile (a DJ gig played to the end)
@@ -115,9 +116,26 @@ func (pl *players) route(mux *http.ServeMux) {
 		var in struct {
 			Name   *string `json:"name"`
 			Avatar *int    `json:"avatar"`
+			Look   *string `json:"look"`
 		}
 		if ok && body(w, r, &in) {
+			if in.Look != nil {
+				if _, err := pl.db.SetLook(r.Context(), id, *in.Look); err != nil {
+					fail(w, err)
+					return
+				}
+			}
 			p, err := pl.db.Update(r.Context(), id, in.Name, in.Avatar)
+			reply(w, p, err)
+		}
+	})
+	mux.HandleFunc("POST /api/items", func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pl.who(w, r)
+		var in struct {
+			Item string `json:"item"`
+		}
+		if ok && body(w, r, &in) {
+			p, err := pl.db.BuyItem(r.Context(), id, in.Item)
 			reply(w, p, err)
 		}
 	})

@@ -262,6 +262,16 @@ var migrations = []string{
 		PRIMARY KEY (kind, ref, block)
 	);
 	CREATE INDEX IF NOT EXISTS platform_ledger_ref ON platform_ledger(lower(ref));`,
+	// 9 — the wardrobe: the outfit a player saved, and the shop items they bought with Coin (items.go). Bought once,
+	// kept for good; price is what was paid.
+	`ALTER TABLE users ADD COLUMN look TEXT NOT NULL DEFAULT '';
+	CREATE TABLE IF NOT EXISTS owned_items (
+		user_id TEXT    NOT NULL,
+		item    TEXT    NOT NULL,
+		price   INTEGER NOT NULL,
+		at      INTEGER NOT NULL,
+		PRIMARY KEY (user_id, item)
+	);`,
 }
 
 func migrate(db *sql.DB) error {
@@ -300,10 +310,11 @@ var addColumnRe = regexp.MustCompile(`(?i)ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN\s
 // adds them.
 const onceMark = "-- once: backfill of the new columns"
 
-// rerunnable: the only columns whose ADD COLUMN may be skipped when the table has them already (migrations 7 and 8).
+// rerunnable: the only columns whose ADD COLUMN may be skipped when the table has them already (migrations 7, 8, 9).
 // Any other ADD COLUMN runs as written, so a column that exists where it shouldn't (schema drift) fails the
 // migration instead of being hidden.
-var rerunnable = map[string]bool{"topups.refund_cents": true, "topups.refunded_at": true, "topups.credited_at": true}
+var rerunnable = map[string]bool{"topups.refund_cents": true, "topups.refunded_at": true, "topups.credited_at": true,
+	"users.look": true}
 
 // withoutColumnsPresent drops a migration's ADD COLUMN statements for rerunnable columns the table already has, so
 // a migration runs again on a database that has it (SQLite has no ADD COLUMN IF NOT EXISTS; a test harness may

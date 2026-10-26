@@ -400,8 +400,8 @@ func rvSchema(t *testing.T, s *store) string {
 // rows only (a claimed row: its claim time), ends at the latest version with the same schema as a fresh database,
 // and running migration 7 again changes nothing. Migration 7 is the last one.
 func TestRV64Migration7OnAV6Database(t *testing.T) {
-	if !strings.Contains(migrations[len(migrations)-1], "credited_at") {
-		t.Fatal("migration 7 isn't appended at the end")
+	if !strings.Contains(migrations[7], "credited_at") {
+		t.Fatal("credited_at isn't migration 8")
 	}
 	fresh := rvSchema(t, testStore(t))
 	path := filepath.Join(t.TempDir(), "prod.db")
