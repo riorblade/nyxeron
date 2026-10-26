@@ -206,7 +206,7 @@ export function Wardrobe({ onClose }: { onClose(): void }) {
           </div>
         </div>
 
-        <footer className="flex items-center justify-between gap-2 border-t border-white/10 px-5 py-3">
+        <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 px-5 py-3">
           <button
             className="flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-2 text-sm hover:bg-white/10"
             onClick={() =>
@@ -221,11 +221,14 @@ export function Wardrobe({ onClose }: { onClose(): void }) {
             <Shuffle className="size-4" /> {t.random}
           </button>
           {(error || short) && (
-            <p role="alert" className="min-w-0 flex-1 text-xs text-rose-300">
+            <p
+              role="alert"
+              className="order-first basis-full text-xs sm:order-none sm:basis-0 sm:flex-1 text-rose-300"
+            >
               {error || t.floor(SHOP_FLOOR)}
             </p>
           )}
-          <div className="flex shrink-0 gap-2">
+          <div className="ml-auto flex shrink-0 gap-2">
             <button
               className="rounded-lg px-3 py-2 text-sm text-white/70 hover:bg-white/10"
               onClick={onClose}

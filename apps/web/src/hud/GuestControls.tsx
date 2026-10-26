@@ -95,7 +95,7 @@ export function EmoteBar({
   );
 }
 
-/** The touch stick (bottom left), shown on touch screens only. Writes `stick`; the scene reads it every frame. */
+/** The touch stick (bottom left, above the dance bar), shown on touch screens only. Writes `stick`; the scene reads it every frame. */
 export function Joystick() {
   const [touch] = useState(
     () =>
@@ -134,7 +134,7 @@ export function Joystick() {
     <div
       ref={base}
       aria-hidden
-      className="glass fixed bottom-6 left-6 z-30 size-32 touch-none rounded-full"
+      className="glass fixed bottom-32 left-4 z-30 size-28 touch-none rounded-full"
       onPointerDown={(e) => {
         id.current = e.pointerId;
         e.currentTarget.setPointerCapture(e.pointerId);
