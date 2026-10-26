@@ -2,7 +2,7 @@
 // blockers, and the host's check on what a player claims (bounded, and no faster than running). Cosmetic only:
 // positions never touch the game state, money or tokens.
 import type { Layout } from "@/venue/layouts";
-import { DANCES, type Dance } from "./moves";
+import { EMOTES, type Emote } from "./moves";
 
 export interface Room {
   w: number;
@@ -17,7 +17,7 @@ export interface Roam {
   /** Facing (radians; 0 = +z). */
   yaw: number;
   /** The dance they picked (null = just standing). */
-  emote: Dance | null;
+  emote: Emote | null;
   moving: boolean;
 }
 
@@ -112,7 +112,7 @@ export function acceptRoam(
     : 0;
   const emote =
     typeof next.emote === "string" &&
-    (DANCES as readonly string[]).includes(next.emote)
+    (EMOTES as readonly string[]).includes(next.emote)
       ? next.emote
       : null;
   return { x, z, yaw, emote, moving: !!next.moving };

@@ -3,7 +3,8 @@ import * as THREE from "three";
 import type { Avatar } from "@nyxeron/core";
 import { cn } from "@/lib/utils";
 import { avatarMaterial, buildRig, type Rig } from "./rig";
-import { applyMove, DANCES, type Move } from "./moves";
+import { applyMove, DANCES, isCelebration, type Move } from "./moves";
+import { Showers } from "./showers";
 
 /**
  * One avatar dancing on a small neon stage (wardrobe, dashboard). Drag to turn it. `move` "auto" cycles the dances.
@@ -49,6 +50,7 @@ export function AvatarPreview({
     );
     disc.rotation.x = -Math.PI / 2;
     scene.add(disc);
+    const showers = new Showers(scene);
     const mat = avatarMaterial(0.25);
     let rig: Rig | null = null;
     let turn = 0.4;
@@ -89,16 +91,21 @@ export function AvatarPreview({
     window.addEventListener("pointermove", moveP);
     window.addEventListener("pointerup", up);
 
+    let last = performance.now();
     renderer.setAnimationLoop((now) => {
+      const dt = now - last;
+      last = now;
       const b = (now / 60000) * 118;
       const m = api.current!.move;
       const current: Move =
         m === "auto" ? DANCES[Math.floor(b / 8) % DANCES.length]! : m;
       if (rig) {
         applyMove(rig, current, b, 0.8);
+        if (isCelebration(current)) showers.emit(rig, current, b);
         if (drag === null) turn += 0.004;
         rig.mesh.rotation.y = Math.sin(turn) * 0.9;
       }
+      showers.update(dt);
       renderer.render(scene, camera);
     });
     return () => {
@@ -108,6 +115,7 @@ export function AvatarPreview({
       window.removeEventListener("pointermove", moveP);
       window.removeEventListener("pointerup", up);
       rig?.dispose();
+      showers.dispose();
       mat.dispose();
       renderer.dispose();
       renderer.forceContextLoss();

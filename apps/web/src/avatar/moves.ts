@@ -14,7 +14,15 @@ export const DANCES = [
   "jump",
 ] as const;
 export type Dance = (typeof DANCES)[number];
-export type Move = Dance | "idle" | "walk";
+/** Shop moves (core wardrobe.json → celebrations): the hands throw cash or token coins (showers.ts). */
+export const CELEBRATIONS = ["makeItRain", "tokenToss"] as const;
+export type Celebration = (typeof CELEBRATIONS)[number];
+/** What a player can pick to do: a dance, or a celebration they own. */
+export const EMOTES = [...DANCES, ...CELEBRATIONS] as const;
+export type Emote = (typeof EMOTES)[number];
+export const isCelebration = (m: string): m is Celebration =>
+  (CELEBRATIONS as readonly string[]).includes(m);
+export type Move = Emote | "idle" | "walk";
 
 type Pose = Partial<Record<BoneName, [number, number, number]>>;
 const TAU = Math.PI * 2;
@@ -178,6 +186,52 @@ function pose(
         sway: 0.02 * s,
       };
     }
+    case "makeItRain": {
+      // Left hand holds the stack at the chest; the right sweeps bills off it and flings them out, twice a beat.
+      const u = (((b * 2) % 1) + 1) % 1;
+      const out = u < 0.3 ? u / 0.3 : 1 - (u - 0.3) / 0.7; // fast fling, slow return
+      return {
+        pose: {
+          ...legsBounce,
+          lArm: [-1.05, 0, 0.12],
+          lFore: [-1.15, 0, 0],
+          rArm: [-1.0 - 0.35 * out, 0, 0.35 - 1.35 * out],
+          rFore: [-1.1 + 0.9 * out, 0, 0],
+          chest: [0.06 * bob, -0.25 * out + 0.1, 0],
+          head: [0.1 * bob, -0.3 * out + 0.15, 0],
+        },
+        lift: drop,
+        sway: 0,
+      };
+    }
+    case "tokenToss": {
+      // Scoop low, then throw both hands up: a burst of token coins every two beats.
+      const u = (((b / 2) % 1) + 1) % 1;
+      const scoop = u < 0.5 ? Math.sin((u / 0.5) * Math.PI * 0.5) : 0;
+      const up =
+        u < 0.5
+          ? 0
+          : u < 0.62
+            ? (u - 0.5) / 0.12
+            : 1 - ((u - 0.62) / 0.38) * 0.7;
+      const crouch = scoop * 0.8;
+      return {
+        pose: {
+          lThigh: [-0.6 * crouch, 0, 0],
+          rThigh: [-0.6 * crouch, 0, 0],
+          lShin: [1.1 * crouch, 0, 0],
+          rShin: [1.1 * crouch, 0, 0],
+          chest: [0.35 * crouch - 0.12 * up, 0, 0],
+          lArm: [-0.5 * scoop - 2.7 * up, 0, 0.15 + 0.35 * up],
+          rArm: [-0.5 * scoop - 2.7 * up, 0, -0.15 - 0.35 * up],
+          lFore: [-0.5 * scoop - 0.2, 0, 0],
+          rFore: [-0.5 * scoop - 0.2, 0, 0],
+          head: [0.2 * crouch - 0.3 * up, 0, 0],
+        },
+        lift: -0.07 * crouch + 0.03 * up,
+        sway: 0,
+      };
+    }
     case "jump": {
       const up = Math.max(0, Math.sin(ph));
       return {
@@ -197,6 +251,24 @@ function pose(
       };
     }
   }
+}
+
+/** What leaves the hands between beat `from` and `to` (a frame): bills from the right hand twice a beat, or a burst
+ *  of coins from both hands at the top of each throw. */
+export function throwsBetween(
+  move: Move,
+  from: number,
+  to: number,
+): { kind: "bill" | "coin"; hands: ("l" | "r")[]; n: number }[] {
+  const crossed = (period: number, at: number) =>
+    to > from &&
+    Math.floor((to - at * period) / period) >
+      Math.floor((from - at * period) / period);
+  if (move === "makeItRain" && crossed(0.5, 0.28))
+    return [{ kind: "bill", hands: ["r"], n: 4 }];
+  if (move === "tokenToss" && crossed(2, 0.6))
+    return [{ kind: "coin", hands: ["l", "r"], n: 7 }];
+  return [];
 }
 
 /** Puts `rig` in `move` at beat `b`. Every bone not in the pose goes back to rest. */

@@ -1234,6 +1234,7 @@ export const en = {
       glasses: "Glasses",
       facial: "Facial hair",
       neck: "Neck",
+      celebrations: "Celebrations",
     },
     moves: {
       auto: "Auto",
@@ -1245,7 +1246,16 @@ export const en = {
       groove: "Groove",
       shuffle: "Shuffle",
       jump: "Jump",
+      makeItRain: "Make It Rain",
+      tokenToss: "Token Toss",
     },
+    celebrationsNote:
+      "Celebrations are shop moves: cash and token coins fly off your hands in every club. Bought once, yours for good.",
+    celebrationHint: {
+      makeItRain: "Sweep bills off the stack, twice a beat.",
+      tokenToss: "Scoop and throw a burst of NVDA, TSLA and friends.",
+    },
+    buy: (n: number) => `Buy · ${fmt(n)} Coin`,
   },
 
   settings: {

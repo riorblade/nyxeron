@@ -73,6 +73,9 @@ var game struct {
 			Slot  string `json:"slot"`
 			Price int64  `json:"price"` // 0: free for everyone
 		} `json:"items"`
+		Celebrations map[string]struct {
+			Price int64 `json:"price"`
+		} `json:"celebrations"` // shop emotes, bought like items
 	}
 	payments struct {
 		ChainID       int              `json:"chainId"`

@@ -13,6 +13,8 @@ import {
   type ItemId,
   SLOTS,
   priceOf,
+  CELEBRATION_IDS,
+  celebrationOf,
   unowned,
 } from "../src";
 
@@ -103,5 +105,13 @@ describe("avatar", () => {
     expect(unowned(a, [])).toEqual(["tophat-gold", "chain-diamond"]);
     expect(unowned(a, ["chain-diamond"])).toEqual(["tophat-gold"]);
     expect(unowned(DEFAULT_AVATAR, [])).toEqual([]);
+  });
+
+  it("celebrations are shop moves with a Coin price, never wardrobe items", () => {
+    expect(CELEBRATION_IDS).toEqual(["makeItRain", "tokenToss"]);
+    for (const id of CELEBRATION_IDS) {
+      expect(celebrationOf(id).price).toBeGreaterThan(0);
+      expect(Object.keys(wardrobe.items)).not.toContain(id);
+    }
   });
 });

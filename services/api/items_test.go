@@ -117,3 +117,19 @@ func TestSetLook(t *testing.T) {
 		t.Fatalf("wore another player's item: %v", err)
 	}
 }
+
+func TestBuyCelebration(t *testing.T) {
+	s := testStore(t)
+	price := game.wardrobe.Celebrations["makeItRain"].Price
+	p, err := s.BuyItem(ctx, "u", "makeItRain")
+	if err != nil || price <= 0 || p.Wallet != startWallet-price || len(p.Items) != 1 || p.Items[0] != "makeItRain" {
+		t.Fatalf("bought a celebration: %+v %v", p, err)
+	}
+	if _, err := s.BuyItem(ctx, "u", "makeItRain"); !errors.Is(err, errConflict) {
+		t.Fatalf("twice: %v", err)
+	}
+	// A move isn't something to wear.
+	if _, err := s.SetLook(ctx, "u", "sand:tee-white,jeans-blue,sneakers-white,makeItRain"); !errors.Is(err, errBad) {
+		t.Fatalf("wore a celebration: %v", err)
+	}
+}

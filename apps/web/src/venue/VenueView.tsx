@@ -10,10 +10,10 @@ import { KINDS } from "./furniture";
 import { onPyro } from "./pyro";
 import { sendRoam, shareShow, useNet } from "@/net/session";
 import type { CamMode } from "@/avatar/camera";
-import type { Dance } from "@/avatar/moves";
+import type { Emote } from "@/avatar/moves";
 import { VenueScene } from "./scene3d";
 
-type Steer = { cam: CamMode; emote: Dance | null };
+type Steer = { cam: CamMode; emote: Emote | null };
 
 /** Guest screens: the player walks their avatar, dances what they pick, and picks the camera. */
 function applySteer(v: VenueScene, st: Steer | undefined) {
