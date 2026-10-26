@@ -453,6 +453,8 @@ export const en = {
     value: "Value",
     pnl: "Tonight",
     desk: "Token desk",
+    deskHide: "Fold the desk",
+    deskShow: "Open the desk",
     deskNote:
       "Buy at the live price. What you buy is yours: it goes home to your portfolio.",
     held: (n: number) => `${n} held`,
@@ -1192,6 +1194,58 @@ export const en = {
     needHost: "Hire hosts",
     needDj: "After the DJ starts",
     used: "Used tonight",
+  },
+
+  guestControls: {
+    camera: "Camera",
+    cams: { eyes: "Eyes", behind: "Behind", drone: "Drone" },
+    dance: "Dance",
+    stop: "Stop dancing",
+    hint: "WASD to walk · Shift run · drag to look · V camera · G dance · T desk",
+    hintTouch: "Stick to walk · drag to look",
+  },
+  wardrobe: {
+    title: "Wardrobe",
+    open: "Open Wardrobe",
+    card: "Your look",
+    cardNote:
+      "Mix skin, clothes, hair and accessories. Your avatar dances in every club you walk into.",
+    save: "Save look",
+    cancel: "Cancel",
+    random: "Shuffle",
+    none: "None",
+    close: "Close",
+    beta: "Gold-tagged items are in the shop: try them on, then buy with Coin when you save. Bought items are yours for good.",
+    wallet: (n: number) => `Wallet ${fmt(n)} Coin`,
+    price: (n: number) => `${fmt(n)} Coin`,
+    owned: "Owned",
+    buySave: (n: number) => `Buy & save · ${fmt(n)} Coin`,
+    floor: (n: number) =>
+      `Not enough Coin: a purchase has to leave ${fmt(n)} Coin in your wallet.`,
+    buyFailed:
+      "The purchase didn't go through. Nothing was charged for what failed.",
+    tabs: {
+      skin: "Skin",
+      shirt: "Tops",
+      pants: "Bottoms",
+      shoes: "Shoes",
+      hair: "Hair",
+      hat: "Hats",
+      glasses: "Glasses",
+      facial: "Facial hair",
+      neck: "Neck",
+    },
+    moves: {
+      auto: "Auto",
+      bounce: "Bounce",
+      pump: "Fist pump",
+      sway: "Sway",
+      handsUp: "Hands up",
+      twoStep: "Two-step",
+      groove: "Groove",
+      shuffle: "Shuffle",
+      jump: "Jump",
+    },
   },
 
   settings: {

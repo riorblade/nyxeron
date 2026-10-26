@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   coverPrice,
+  encodeAvatar,
+  legacyAvatar,
   createEvent,
   scenarios,
   marketPrice,
@@ -37,6 +39,23 @@ describe("guest player", () => {
     expect(r.night!.visitors!.me!.cash).toBe(20_000 - coverPrice(s));
     expect(r.nightRevenue.cover).toBe(s.nightRevenue.cover + coverPrice(s));
     expect(visitorJoin(s, "b", "Broke", 0).ok).toBe(false);
+  });
+
+  it("keeps a valid outfit and replaces a forged one", () => {
+    const look = "ebony:tank-gold,skirt-black,heels-gold,hair-afro";
+    expect(
+      must(visitorJoin(club(), "me", "Kiel", 20_000, 7, look)).night!.visitors!
+        .me!.look,
+    ).toBe(look);
+    const forged = must(
+      visitorJoin(club(), "me", "Kiel", 20_000, 7, "sand:<script>"),
+    );
+    expect(forged.night!.visitors!.me!.look).toBe(
+      encodeAvatar(legacyAvatar(7)),
+    );
+    expect(
+      must(visitorJoin(club(), "me", "Kiel", 20_000)).night!.visitors!.me!.look,
+    ).toBeUndefined();
   });
 
   it("buys at the live price: stock down, club takings up", () => {

@@ -1,0 +1,475 @@
+{
+  "skins": {
+    "porcelain": "#f7d9c4",
+    "ivory": "#eec1a0",
+    "sand": "#dba57e",
+    "honey": "#c68a5c",
+    "caramel": "#a8693f",
+    "cocoa": "#7c4a2b",
+    "espresso": "#5a331d",
+    "ebony": "#3d2314"
+  },
+  "slots": [
+    "shirt",
+    "pants",
+    "shoes",
+    "hair",
+    "hat",
+    "glasses",
+    "facial",
+    "neck"
+  ],
+  "required": ["shirt", "pants", "shoes"],
+  "items": {
+    "tee-white": {
+      "slot": "shirt",
+      "name": "White Tee",
+      "style": "tee",
+      "color": "#f4f4f5"
+    },
+    "tee-black": {
+      "slot": "shirt",
+      "name": "Black Tee",
+      "style": "tee",
+      "color": "#18181b"
+    },
+    "tee-neon": {
+      "slot": "shirt",
+      "name": "Neon Tee",
+      "style": "tee",
+      "color": "#ff2bd6"
+    },
+    "tank-gold": {
+      "slot": "shirt",
+      "name": "Gold Tank",
+      "style": "tank",
+      "color": "#f5b301"
+    },
+    "tank-white": {
+      "slot": "shirt",
+      "name": "White Tank",
+      "style": "tank",
+      "color": "#fafafa"
+    },
+    "long-violet": {
+      "slot": "shirt",
+      "name": "Violet Longsleeve",
+      "style": "longsleeve",
+      "color": "#8b5cf6"
+    },
+    "hoodie-navy": {
+      "slot": "shirt",
+      "name": "Navy Hoodie",
+      "style": "hoodie",
+      "color": "#1e3a8a"
+    },
+    "hoodie-pink": {
+      "slot": "shirt",
+      "name": "Pink Hoodie",
+      "style": "hoodie",
+      "color": "#f472b6"
+    },
+    "jacket-leather": {
+      "slot": "shirt",
+      "name": "Leather Jacket",
+      "style": "jacket",
+      "color": "#111111",
+      "accent": "#f4f4f5"
+    },
+    "jacket-red": {
+      "slot": "shirt",
+      "name": "Red Blazer",
+      "style": "jacket",
+      "color": "#b91c1c",
+      "accent": "#18181b"
+    },
+    "dress-red": {
+      "slot": "shirt",
+      "name": "Red Dress",
+      "style": "dress",
+      "color": "#dc2626"
+    },
+    "dress-sequin": {
+      "slot": "shirt",
+      "name": "Sequin Dress",
+      "style": "dress",
+      "color": "#c0c0d0"
+    },
+
+    "jeans-blue": {
+      "slot": "pants",
+      "name": "Blue Jeans",
+      "style": "pants",
+      "color": "#2f4f8f"
+    },
+    "jeans-black": {
+      "slot": "pants",
+      "name": "Black Jeans",
+      "style": "pants",
+      "color": "#1f1f24"
+    },
+    "cargo-olive": {
+      "slot": "pants",
+      "name": "Olive Cargo",
+      "style": "pants",
+      "color": "#4d5b2c"
+    },
+    "pants-white": {
+      "slot": "pants",
+      "name": "White Pants",
+      "style": "pants",
+      "color": "#e5e5e5"
+    },
+    "shorts-denim": {
+      "slot": "pants",
+      "name": "Denim Shorts",
+      "style": "shorts",
+      "color": "#3b6ab0"
+    },
+    "skirt-black": {
+      "slot": "pants",
+      "name": "Black Skirt",
+      "style": "skirt",
+      "color": "#111114"
+    },
+    "skirt-violet": {
+      "slot": "pants",
+      "name": "Violet Skirt",
+      "style": "skirt",
+      "color": "#7c3aed"
+    },
+
+    "sneakers-white": {
+      "slot": "shoes",
+      "name": "White Sneakers",
+      "style": "sneakers",
+      "color": "#fafafa",
+      "accent": "#d4d4d8"
+    },
+    "sneakers-red": {
+      "slot": "shoes",
+      "name": "Red Sneakers",
+      "style": "sneakers",
+      "color": "#ef4444",
+      "accent": "#fafafa"
+    },
+    "boots-black": {
+      "slot": "shoes",
+      "name": "Black Boots",
+      "style": "boots",
+      "color": "#18181b"
+    },
+    "heels-gold": {
+      "slot": "shoes",
+      "name": "Gold Heels",
+      "style": "heels",
+      "color": "#f5b301"
+    },
+
+    "hair-short-black": {
+      "slot": "hair",
+      "name": "Short Black",
+      "style": "short",
+      "color": "#1a1210"
+    },
+    "hair-short-brown": {
+      "slot": "hair",
+      "name": "Short Brown",
+      "style": "short",
+      "color": "#5b3a22"
+    },
+    "hair-buzz": {
+      "slot": "hair",
+      "name": "Buzz Cut",
+      "style": "buzz",
+      "color": "#1a1210"
+    },
+    "hair-long-black": {
+      "slot": "hair",
+      "name": "Long Black",
+      "style": "long",
+      "color": "#140e0c"
+    },
+    "hair-long-blonde": {
+      "slot": "hair",
+      "name": "Long Blonde",
+      "style": "long",
+      "color": "#e8c66a"
+    },
+    "hair-bob-pink": {
+      "slot": "hair",
+      "name": "Pink Bob",
+      "style": "bob",
+      "color": "#f472b6"
+    },
+    "hair-bun-brown": {
+      "slot": "hair",
+      "name": "Brown Bun",
+      "style": "bun",
+      "color": "#4a2c1a"
+    },
+    "hair-mohawk": {
+      "slot": "hair",
+      "name": "Neon Mohawk",
+      "style": "mohawk",
+      "color": "#22d3ee"
+    },
+    "hair-afro": {
+      "slot": "hair",
+      "name": "Afro",
+      "style": "afro",
+      "color": "#1a1210"
+    },
+
+    "cap-black": {
+      "slot": "hat",
+      "name": "Black Cap",
+      "style": "cap",
+      "color": "#18181b"
+    },
+    "cap-gold": {
+      "slot": "hat",
+      "name": "Gold Cap",
+      "style": "cap",
+      "color": "#f5b301"
+    },
+    "beanie-violet": {
+      "slot": "hat",
+      "name": "Violet Beanie",
+      "style": "beanie",
+      "color": "#7c3aed"
+    },
+    "bucket-navy": {
+      "slot": "hat",
+      "name": "Navy Bucket Hat",
+      "style": "bucket",
+      "color": "#1e3a8a"
+    },
+    "tophat-black": {
+      "slot": "hat",
+      "name": "Top Hat",
+      "style": "tophat",
+      "color": "#0f0f12",
+      "accent": "#ff2bd6"
+    },
+
+    "glasses-round": {
+      "slot": "glasses",
+      "name": "Round Glasses",
+      "style": "round",
+      "color": "#18181b"
+    },
+    "shades-black": {
+      "slot": "glasses",
+      "name": "Black Shades",
+      "style": "shades",
+      "color": "#09090b"
+    },
+    "shades-neon": {
+      "slot": "glasses",
+      "name": "Neon Shades",
+      "style": "shades",
+      "color": "#ff2bd6"
+    },
+
+    "moustache": {
+      "slot": "facial",
+      "name": "Moustache",
+      "style": "moustache",
+      "color": "#1a1210"
+    },
+    "beard": {
+      "slot": "facial",
+      "name": "Full Beard",
+      "style": "beard",
+      "color": "#2a1a12"
+    },
+
+    "chain-gold": {
+      "slot": "neck",
+      "name": "Gold Chain",
+      "style": "chain",
+      "color": "#f5b301"
+    },
+    "bowtie-black": {
+      "slot": "neck",
+      "name": "Bow Tie",
+      "style": "bowtie",
+      "color": "#0f0f12"
+    },
+
+    "tee-holo": {
+      "slot": "shirt",
+      "name": "Holo Tee",
+      "style": "tee",
+      "color": "#22d3ee",
+      "price": 1500
+    },
+    "hoodie-chrome": {
+      "slot": "shirt",
+      "name": "Chrome Hoodie",
+      "style": "hoodie",
+      "color": "#c7cbd6",
+      "price": 3000
+    },
+    "jacket-gold": {
+      "slot": "shirt",
+      "name": "Gold Bomber",
+      "style": "jacket",
+      "color": "#f5b301",
+      "accent": "#111111",
+      "price": 6000
+    },
+    "dress-gold": {
+      "slot": "shirt",
+      "name": "Gold Gown",
+      "style": "dress",
+      "color": "#f5b301",
+      "price": 6000
+    },
+    "pants-gold": {
+      "slot": "pants",
+      "name": "Gold Pants",
+      "style": "pants",
+      "color": "#d4a017",
+      "price": 2500
+    },
+    "skirt-sequin": {
+      "slot": "pants",
+      "name": "Sequin Skirt",
+      "style": "skirt",
+      "color": "#c0c0d0",
+      "price": 2000
+    },
+    "sneakers-neon": {
+      "slot": "shoes",
+      "name": "Neon Runners",
+      "style": "sneakers",
+      "color": "#ff2bd6",
+      "accent": "#22d3ee",
+      "price": 2000
+    },
+    "boots-gold": {
+      "slot": "shoes",
+      "name": "Gold Boots",
+      "style": "boots",
+      "color": "#f5b301",
+      "price": 3000
+    },
+    "hair-mohawk-gold": {
+      "slot": "hair",
+      "name": "Gold Mohawk",
+      "style": "mohawk",
+      "color": "#f5b301",
+      "price": 2500
+    },
+    "hair-long-violet": {
+      "slot": "hair",
+      "name": "Long Violet",
+      "style": "long",
+      "color": "#a855f7",
+      "price": 2000
+    },
+    "tophat-gold": {
+      "slot": "hat",
+      "name": "Gold Top Hat",
+      "style": "tophat",
+      "color": "#f5b301",
+      "accent": "#ff2bd6",
+      "price": 8000
+    },
+    "cap-neon": {
+      "slot": "hat",
+      "name": "Neon Cap",
+      "style": "cap",
+      "color": "#22d3ee",
+      "price": 1500
+    },
+    "shades-gold": {
+      "slot": "glasses",
+      "name": "Gold Shades",
+      "style": "shades",
+      "color": "#f5b301",
+      "price": 2500
+    },
+    "chain-diamond": {
+      "slot": "neck",
+      "name": "Diamond Chain",
+      "style": "chain",
+      "color": "#e0f2fe",
+      "price": 9000
+    },
+    "bowtie-neon": {
+      "slot": "neck",
+      "name": "Neon Bow Tie",
+      "style": "bowtie",
+      "color": "#ff2bd6",
+      "price": 1000
+    }
+  },
+  "presets": {
+    "masc": {
+      "shirt": [
+        "tee-white",
+        "tee-black",
+        "tee-neon",
+        "long-violet",
+        "hoodie-navy",
+        "jacket-leather",
+        "jacket-red",
+        "tank-white"
+      ],
+      "pants": [
+        "jeans-blue",
+        "jeans-black",
+        "cargo-olive",
+        "pants-white",
+        "shorts-denim"
+      ],
+      "shoes": ["sneakers-white", "sneakers-red", "boots-black"],
+      "hair": [
+        "hair-short-black",
+        "hair-short-brown",
+        "hair-buzz",
+        "hair-mohawk",
+        "hair-afro"
+      ],
+      "hat": ["cap-black", "cap-gold", "beanie-violet", "bucket-navy"],
+      "glasses": ["glasses-round", "shades-black", "shades-neon"],
+      "facial": ["moustache", "beard"],
+      "neck": ["chain-gold"]
+    },
+    "fem": {
+      "shirt": [
+        "tee-white",
+        "tee-neon",
+        "tank-gold",
+        "hoodie-pink",
+        "dress-red",
+        "dress-sequin",
+        "jacket-leather",
+        "long-violet"
+      ],
+      "pants": [
+        "jeans-blue",
+        "jeans-black",
+        "skirt-black",
+        "skirt-violet",
+        "shorts-denim"
+      ],
+      "shoes": ["sneakers-white", "heels-gold", "boots-black"],
+      "hair": [
+        "hair-long-black",
+        "hair-long-blonde",
+        "hair-bob-pink",
+        "hair-bun-brown",
+        "hair-afro"
+      ],
+      "hat": ["beanie-violet", "bucket-navy"],
+      "glasses": ["glasses-round", "shades-black", "shades-neon"],
+      "facial": [],
+      "neck": ["chain-gold"]
+    },
+    "chance": { "hat": 0.25, "glasses": 0.3, "facial": 0.3, "neck": 0.2 }
+  }
+}

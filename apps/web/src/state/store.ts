@@ -159,13 +159,14 @@ export const useGame = create<Store>((set, get) => ({
   joinEvent: async (spec) => {
     // The AI CEO stocks up at tonight's real spot prices.
     const quotes = await fetchQuotes();
-    const { name, wallet, avatar } = useProfile.getState();
+    const { name, wallet, avatar, look } = useProfile.getState();
     const r = visitorJoin(
       createEvent(spec, newSeed(), quotes),
       "me",
       name || en.dashboard.anon,
       wallet,
       avatar,
+      look,
     );
     if (!r.ok) return get().notify(reasonText(r.reason, r.short), true);
     set({

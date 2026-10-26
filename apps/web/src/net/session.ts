@@ -12,6 +12,7 @@ import {
 import { create } from "zustand";
 import { en, reasonText } from "@/i18n/en";
 import { useGame } from "@/state/store";
+import { useProfile } from "@/state/profile";
 import { player } from "@/api/player";
 import { packState, unpackState } from "./codec";
 import { acquireEngine, getEngine, releaseEngine } from "@/dj/session";
@@ -19,6 +20,8 @@ import type { DjAct } from "@/dj/engine";
 import { applyMix, mixSnapshot, type MixSync } from "@/dj/mixsync";
 import { KIND, pack, Relay, unpack, type Frame } from "./relay";
 import { Seats } from "./seats";
+import { acceptRoam, roomOf, type Roam } from "@/avatar/roam";
+import { layoutFor } from "@/venue/layouts";
 import { dropTicket, relayTicket } from "./ticket";
 import { audio } from "@/audio";
 import type { PadId } from "@/dj/sampler";
@@ -33,7 +36,7 @@ import {
  * Live multiplayer on top of the relay. The CEO's browser is the host: it runs the sim, applies players' input and
  * broadcasts gzipped snapshots. Guests render those snapshots and send what they want to do.
  *
- * Player → host: {t:"hello",name,avatar,cash,key} · {t:"buy",token,qty} · {t:"bye"}
+ * Player → host: {t:"hello",name,avatar,look,cash,key} · {t:"buy",token,qty} · {t:"bye"}
  * DJ → host:     {t:"djhello",name,avatar,key} · {t:"mix",m} (4×/s) · {t:"act",a} (pads, brake, backspin)
  * Host → player: {t:"welcome",ok,reason?,short?,me?} · {t:"result",ok,reason?,short?,token,qty,cost} · {t:"dj",…}
  * Host → all:    state frames (gzipped GameState); events {t:"dj",on,name,avatar} · {t:"mix",m} · {t:"act",a}
@@ -44,7 +47,13 @@ import {
  * state (dj/mixsync.ts), so the relay carries a few hundred bytes a second.
  */
 /** `key`: the guest's secret for this night, so a reconnect gets their own visitor back (net/seats.ts). */
-type Hello = { name: string; avatar: number; cash: number; key?: string };
+type Hello = {
+  name: string;
+  avatar: number;
+  look?: string;
+  cash: number;
+  key?: string;
+};
 type DjHello = { name: string; avatar: number; key?: string };
 type Input =
   | ({ t: "hello" } & Hello)
@@ -52,7 +61,17 @@ type Input =
   | { t: "bye" }
   | ({ t: "djhello" } & DjHello)
   | { t: "mix"; m: MixSync }
-  | { t: "act"; a: DjAct };
+  | { t: "act"; a: DjAct }
+  | {
+      t: "roam";
+      x: number;
+      z: number;
+      y: number;
+      e: string | null;
+      m: boolean;
+    };
+/** Players' positions: visitor id → [x, z, yaw, dance, walking]. */
+type Roams = Record<string, [number, number, number, string | null, boolean]>;
 type Live =
   | { t: "dj"; on: boolean; name?: string; avatar?: number }
   | { t: "mix"; m: MixSync }
@@ -66,6 +85,7 @@ type Reply =
   | Live
   | Show
   | { t: "welcome"; ok: boolean; reason?: string; short?: number; me?: string }
+  | { t: "roams"; r: Roams }
   | {
       t: "result";
       ok: boolean;
@@ -102,6 +122,8 @@ interface Net {
   last: { v: Visitor; value: number; pnl: number } | null;
   /** Guest: I was inside and the host's night has ended. */
   ended: boolean;
+  /** Where every player in the club walks and what they dance (host: accepted; guests: as relayed). */
+  roams: Record<string, Roam>;
   /** Host: the club is invite-only tonight (not listed under Clubs open now; guests come by invite link). */
   private: boolean;
 }
@@ -118,6 +140,7 @@ export const useNet = create<Net>(() => ({
   refused: "",
   last: null,
   ended: false,
+  roams: {},
   private: false,
 }));
 
@@ -213,7 +236,7 @@ function admitWaiting() {
   if (!g || g.phase !== "night") return;
   for (const [peer, h] of hellos) {
     const v = crypto.randomUUID().slice(0, 8);
-    const r = act((s) => visitorJoin(s, v, h.name, h.cash, h.avatar));
+    const r = act((s) => visitorJoin(s, v, h.name, h.cash, h.avatar, h.look));
     if (!r) continue;
     hellos.delete(peer);
     if (r.ok) seats.seat(peer, v, h.key ?? "");
@@ -231,6 +254,56 @@ function admitWaiting() {
 const visitorOf = (peer: number) => seats.of(peer) ?? "";
 
 /** A connection dropped: its visitor waits a minute for the player to reconnect, then goes home. */
+// ---------------- players walking the club (cosmetic) ----------------
+
+const roams = new Map<string, { r: Roam; at: number }>();
+let roamTimer = 0;
+const round = (n: number) => Math.round(n * 100) / 100;
+
+/** At most 8×/s: everyone's accepted positions to the room (and to the host's own view). */
+function shareRoamsSoon() {
+  if (roamTimer) return;
+  roamTimer = window.setTimeout(() => {
+    roamTimer = 0;
+    const visitors = useGame.getState().game?.night?.visitors ?? {};
+    const r: Roams = {};
+    const view: Record<string, Roam> = {};
+    for (const [id, { r: x }] of roams) {
+      if (!visitors[id]) {
+        roams.delete(id);
+        continue;
+      }
+      r[id] = [round(x.x), round(x.z), round(x.yaw), x.emote, x.moving];
+      view[id] = x;
+    }
+    set({ roams: view });
+    relay?.event(pack({ t: "roams", r }));
+  }, 125);
+}
+
+/** Guest: where I am and what I dance (the scene calls this ~8×/s while I move). */
+export function sendRoam(r: Roam) {
+  if (useNet.getState().role !== "guest") return;
+  relay?.input(
+    pack({
+      t: "roam",
+      x: round(r.x),
+      z: round(r.z),
+      y: round(r.yaw),
+      e: r.emote,
+      m: r.moving,
+    }),
+  );
+}
+
+const expandRoams = (r: Roams): Record<string, Roam> =>
+  Object.fromEntries(
+    Object.entries(r).map(([id, [x, z, yaw, emote, moving]]) => [
+      id,
+      { x, z, yaw, emote: emote as Roam["emote"], moving },
+    ]),
+  );
+
 function letGo(peer: number) {
   const v = seats.drop(peer);
   if (!v || away.has(v)) return;
@@ -277,6 +350,8 @@ function onHostFrame(f: Frame) {
     hellos.set(f.peer, {
       name: String(m.name ?? "").slice(0, 24) || "Guest",
       avatar: Number(m.avatar) || 1,
+      // visitorJoin re-validates it; junk becomes the look of their sprite pick.
+      look: typeof m.look === "string" ? m.look.slice(0, 400) : undefined,
       // ponytail: the wallet is the player's word for now (play money); validate server-side before real funds.
       cash: Number.isFinite(cash) && cash >= 0 ? Math.min(cash, 1e9) : 0,
       key,
@@ -298,6 +373,25 @@ function onHostFrame(f: Frame) {
       qty,
       cost: before - after,
     });
+  } else if (m.t === "roam") {
+    const g = useGame.getState().game;
+    if (!g?.night?.visitors?.[id]) return;
+    const now = Date.now();
+    const prev = roams.get(id);
+    const r = acceptRoam(
+      prev?.r,
+      {
+        x: Number(m.x),
+        z: Number(m.z),
+        yaw: Number(m.y),
+        emote: m.e as Roam["emote"],
+        moving: !!m.m,
+      },
+      prev ? now - prev.at : 0,
+      roomOf(layoutFor(g.level)),
+    );
+    roams.set(id, { r, at: now });
+    shareRoamsSoon();
   } else if (m.t === "djhello") {
     const key = String(m.key ?? "").slice(0, 64);
     if (djPeer && djPeer !== f.peer && (!key || key !== djKey)) {
@@ -416,6 +510,9 @@ export function hostClose() {
   timer = 0;
   hellos.clear();
   seats.clear();
+  roams.clear();
+  clearTimeout(roamTimer);
+  roamTimer = 0;
   for (const t of away.values()) clearTimeout(t);
   away.clear();
   relay?.close();
@@ -430,6 +527,7 @@ export function hostClose() {
     status: "closed",
     dj: null,
     private: false,
+    roams: {},
   });
 }
 
@@ -482,7 +580,7 @@ export async function guestJoin(
       pack(
         as === "dj"
           ? { t: "djhello", name: hello.name, avatar: hello.avatar, key }
-          : { t: "hello", ...hello, key },
+          : { t: "hello", look: useProfile.getState().look, ...hello, key },
       ),
     );
   relay.onStatus = (on) => {
@@ -537,6 +635,7 @@ export async function guestJoin(
     if (m.t === "fx") return firePyro(m.cue);
     if (m.t === "pad") return void audio.pad(m.id);
     if (m.t === "shout") return setHostedShoutouts(m.list);
+    if (m.t === "roams") return set({ roams: expandRoams(m.r) });
     if (m.t === "dj" || m.t === "mix" || m.t === "act") {
       // The DJ doesn't follow their own mix.
       if (useNet.getState().role === "guest" || m.t === "dj") follow(m);
@@ -605,6 +704,7 @@ export function guestLeave() {
     me: "",
     status: "closed",
     dj: null,
+    roams: {},
   });
 }
 

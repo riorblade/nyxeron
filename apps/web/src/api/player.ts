@@ -13,8 +13,16 @@ import { useAccount } from "@/auth/account";
 type Holdings = Partial<Record<TokenId, { qty: number; cost: number }>>;
 type ServerProfile = Pick<
   Profile,
-  "name" | "avatar" | "wallet" | "nights" | "gigs" | "totalPnl" | "bestPnl"
+  | "name"
+  | "avatar"
+  | "look"
+  | "wallet"
+  | "nights"
+  | "gigs"
+  | "totalPnl"
+  | "bestPnl"
 > & {
+  items: string[];
   id: string;
   portfolio: Holdings;
   imported: boolean;
@@ -53,6 +61,8 @@ export function apply(p: ServerProfile) {
   useProfile.setState({
     name: p.name,
     avatar: p.avatar,
+    look: p.look ?? "",
+    owned: p.items ?? [],
     wallet: p.wallet,
     portfolio: p.portfolio ?? {},
     nights: p.nights,
@@ -107,6 +117,9 @@ export async function syncProfile() {
     // A brand-new account keeps the name picked from Google / the email.
     if (!p.name && local.name)
       p = await call("PATCH", "/profile", { name: local.name });
+    // An outfit saved on this device before the server kept them (free items only, so it fits).
+    if (!p.look && local.look)
+      p = await call("PATCH", "/profile", { look: local.look }).catch(() => p);
     apply(p);
   } catch {
     useGame.getState().notify(en.auth.syncFailed, true);
@@ -131,6 +144,26 @@ export const player = {
   setAvatar(avatar: number) {
     useProfile.getState().setAvatar(avatar);
     if (online()) call("PATCH", "/profile", { avatar }).then(apply, recover);
+  },
+  setLook(look: string) {
+    useProfile.getState().setLook(look);
+    if (online()) call("PATCH", "/profile", { look }).then(apply, recover);
+  },
+  /** Buy shop items with Coin, one by one; true if all went through (the server decides when signed in). */
+  async buy(items: { id: string; price: number }[]): Promise<boolean> {
+    for (const it of items) {
+      if (!online()) {
+        if (!useProfile.getState().buy(it.id, it.price)) return false;
+        continue;
+      }
+      try {
+        apply(await call("POST", "/items", { item: it.id }));
+      } catch {
+        await recover();
+        return false;
+      }
+    }
+    return true;
   },
   refill() {
     if (!online()) return useProfile.getState().refill();

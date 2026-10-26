@@ -47,6 +47,8 @@ import { useDocsSync } from "@/api/docs";
 import { useGame } from "@/state/store";
 import { CityGuest, ManageVenue, RentVenue, useCityLive } from "./CityPanels";
 import { EventsPanel, LiveEventBanner } from "./EventsPanel";
+import { useLook, Wardrobe } from "./Wardrobe";
+import { AvatarPreview } from "@/avatar/AvatarPreview";
 import { events } from "@/api/events";
 import { topups, useTopups } from "@/api/topups";
 
@@ -241,13 +243,6 @@ function ProfileCard() {
     >
       <AccountRow />
       <div className="flex items-center gap-3">
-        <span className="flex size-12 shrink-0 items-start justify-center overflow-hidden rounded-full border border-white/20 bg-white/[0.06]">
-          <img
-            src={`/sprites/guest-${p.avatar}.webp`}
-            alt=""
-            className="mt-1 h-[250%] w-auto max-w-none object-contain object-top"
-          />
-        </span>
         <label className="min-w-0 flex-1 text-[10px] tracking-[0.2em] text-white/50 uppercase">
           {t.nameLabel}
           <Input
@@ -260,7 +255,7 @@ function ProfileCard() {
         </label>
       </div>
 
-      <AvatarPicker />
+      <LookCard />
 
       <CreditCard />
 
@@ -310,47 +305,30 @@ function ProfileCard() {
   );
 }
 
-/** Pick a look from the club's guest sprites (1–5 men, 6–10 women); it walks the floor on guest nights. */
-function AvatarPicker() {
-  const avatar = useProfile((p) => p.avatar);
-  const setAvatar = player.setAvatar;
-  const group = (label: string, from: number) => (
-    <div>
-      <div className="mb-1 text-[10px] text-white/45">{label}</div>
-      <div className="grid grid-cols-5 gap-1.5">
-        {[0, 1, 2, 3, 4].map((i) => {
-          const n = from + i;
-          return (
-            <button
-              key={n}
-              onClick={() => setAvatar(n)}
-              aria-pressed={avatar === n}
-              aria-label={t.avatarPick(n)}
-              className={cn(
-                "flex aspect-[3/4] items-end justify-center overflow-hidden rounded-md border bg-white/[0.03] transition",
-                avatar === n
-                  ? "border-white shadow-[0_0_14px_rgba(255,255,255,.35)]"
-                  : "border-white/10 opacity-70 hover:opacity-100",
-              )}
-            >
-              <img
-                src={`/sprites/guest-${n}.webp`}
-                alt=""
-                className="h-[92%] w-auto object-contain"
-              />
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
+/** The player's avatar dancing, and the way into the wardrobe. */
+function LookCard() {
+  const look = useLook();
+  const [open, setOpen] = useState(false);
+  const w = en.wardrobe;
   return (
-    <div className="space-y-2">
-      <div className="text-[10px] tracking-[0.2em] text-white/50 uppercase">
-        {t.avatar}
+    <div className="tile flex items-center gap-3 rounded-xl p-3">
+      <AvatarPreview
+        look={look}
+        className="h-36 w-28 shrink-0 overflow-hidden rounded-lg"
+      />
+      <div className="min-w-0 space-y-2">
+        <div className="text-[10px] tracking-[0.2em] text-white/50 uppercase">
+          {w.card}
+        </div>
+        <p className="text-xs text-white/65">{w.cardNote}</p>
+        <button
+          className="gold rounded-lg px-3 py-1.5 text-sm font-medium"
+          onClick={() => setOpen(true)}
+        >
+          {w.open}
+        </button>
       </div>
-      {group(t.men, 1)}
-      {group(t.women, 6)}
+      {open ? <Wardrobe onClose={() => setOpen(false)} /> : null}
     </div>
   );
 }

@@ -10,6 +10,10 @@ export interface Profile {
   name: string;
   /** Guest sprite 1–10 (1–5 men, 6–10 women). */
   avatar: number;
+  /** Their outfit from the wardrobe (`encodeAvatar`); empty until they open it (the club derives one from `avatar`). */
+  look: string;
+  /** Shop items bought (free wardrobe items aren't listed). */
+  owned: string[];
   wallet: number;
   /** Tokens bought on nights out (guests only buy, so they keep them): units and total paid. */
   portfolio: Partial<Record<TokenId, { qty: number; cost: number }>>;
@@ -20,6 +24,9 @@ export interface Profile {
   bestPnl: number;
   setName(name: string): void;
   setAvatar(avatar: number): void;
+  setLook(look: string): void;
+  /** Signed out: buy a shop item from the local wallet (it keeps the refill floor, as on the server). */
+  buy(item: string, price: number): boolean;
   /** Back from a night out: the cash left becomes the wallet and the tokens bought join the portfolio. */
   settle(
     cash: number,
@@ -34,12 +41,16 @@ export interface Profile {
 
 const START = strategy.visitor.startWallet;
 export const canRefill = (wallet: number) => wallet < START / 10;
+/** What a purchase must leave in the wallet: spending on items never unlocks a free refill. */
+export const SHOP_FLOOR = START / 10;
 
 export const useProfile = create<Profile>()(
   persist(
     (set) => ({
       name: "",
       avatar: 1,
+      look: "",
+      owned: [],
       wallet: START,
       portfolio: {},
       nights: 0,
@@ -48,6 +59,14 @@ export const useProfile = create<Profile>()(
       bestPnl: 0,
       setName: (name) => set({ name: name.slice(0, 20) }),
       setAvatar: (avatar) => set({ avatar }),
+      setLook: (look) => set({ look }),
+      buy: (item, price) => {
+        const p = useProfile.getState();
+        if (p.owned.includes(item) || p.wallet - price < SHOP_FLOOR)
+          return false;
+        set({ wallet: p.wallet - price, owned: [...p.owned, item] });
+        return true;
+      },
       settle: (cash, bought, pnl) =>
         set((p) => {
           const portfolio = { ...p.portfolio };
