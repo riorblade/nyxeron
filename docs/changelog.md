@@ -3,6 +3,15 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-26 · Celebrations
+
+- **Celebration emotes (item shop):** two shop moves next to the free dances. **Make It Rain** (5,000 Coin) holds
+  a cash stack and flings bills off it twice a beat; **Token Toss** (4,000 Coin) scoops and throws a burst of coins
+  stamped with the game's tokens (NVDA, TSLA, SPCX…) every two beats. Cash and coins fly, land and lie on the floor
+  a moment (`apps/web/src/avatar/showers.ts`, one instanced mesh per kind). Bought in Wardrobe → Celebrations
+  through the same `POST /api/items` (prices in `wardrobe.json → celebrations`); once owned they join the dance bar
+  (keys 9 and 0). Cosmetic only; like looks, the relay doesn't check ownership.
+
 ## 2026-10-26 · 3D avatars and the wardrobe
 
 - **Item shop (Coin):** 15 shop items in the wardrobe (gold, chrome, neon; 1,000–9,000 Coin, all 15 = 52,500), tried

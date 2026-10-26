@@ -2,6 +2,8 @@ import { Lock, Shirt, Shuffle, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  CELEBRATION_IDS,
+  celebrationOf,
   decodeAvatar,
   encodeAvatar,
   equip,
@@ -18,14 +20,14 @@ import {
   type SkinId,
 } from "@nyxeron/core";
 import { AvatarPreview } from "@/avatar/AvatarPreview";
-import { DANCES, type Dance } from "@/avatar/moves";
+import { DANCES, isCelebration, type Move } from "@/avatar/moves";
 import { en } from "@/i18n/en";
 import { cn, trapFocus } from "@/lib/utils";
 import { player } from "@/api/player";
 import { SHOP_FLOOR, useProfile } from "@/state/profile";
 
 const t = en.wardrobe;
-type Tab = "skin" | Slot;
+type Tab = "skin" | Slot | "celebrations";
 const REQUIRED = wardrobe.required as Slot[];
 
 /** The player's current outfit (an old sprite pick until they save one). */
@@ -43,7 +45,7 @@ export function Wardrobe({ onClose }: { onClose(): void }) {
   const saved = useLook();
   const [draft, setDraft] = useState<Avatar>(saved);
   const [tab, setTab] = useState<Tab>("shirt");
-  const [move, setMove] = useState<Dance | "auto">("auto");
+  const [move, setMove] = useState<Move | "auto">("auto");
   const owned = useProfile((p) => p.owned);
   const wallet = useProfile((p) => p.wallet);
   const [busy, setBusy] = useState(false);
@@ -75,7 +77,7 @@ export function Wardrobe({ onClose }: { onClose(): void }) {
     player.setLook(encodeAvatar(draft));
     onClose();
   };
-  const tabs: Tab[] = ["skin", ...SLOTS];
+  const tabs: Tab[] = ["skin", ...SLOTS, "celebrations"];
 
   // A portal: the glass panels it opens from use backdrop-filter, which would trap a fixed overlay inside them.
   return createPortal(
@@ -151,56 +153,65 @@ export function Wardrobe({ onClose }: { onClose(): void }) {
               ))}
             </div>
 
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-              {tab === "skin"
-                ? (Object.entries(wardrobe.skins) as [SkinId, string][]).map(
-                    ([id, color]) => (
-                      <Swatch
-                        key={id}
-                        label={id}
-                        colors={[color]}
-                        on={draft.skin === id}
-                        pick={() => setDraft({ ...draft, skin: id })}
-                      />
-                    ),
-                  )
-                : [
-                    ...(REQUIRED.includes(tab)
-                      ? []
-                      : [
-                          <Swatch
-                            key="none"
-                            label={t.none}
-                            colors={[]}
-                            on={!draft.items[tab]}
-                            pick={() => setDraft(equip(draft, tab, null))}
-                          />,
-                        ]),
-                    ...itemsFor(tab).map((id) => {
-                      const it = itemOf(id);
-                      const price = priceOf(id);
-                      return (
+            {tab === "celebrations" ? (
+              <Celebrations
+                move={move}
+                setMove={setMove}
+                owned={owned}
+                wallet={wallet}
+              />
+            ) : (
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                {tab === "skin"
+                  ? (Object.entries(wardrobe.skins) as [SkinId, string][]).map(
+                      ([id, color]) => (
                         <Swatch
                           key={id}
-                          label={it.name}
-                          tag={
-                            price
-                              ? owned.includes(id)
-                                ? t.owned
-                                : t.price(price)
-                              : undefined
-                          }
-                          locked={price > 0 && !owned.includes(id)}
-                          colors={
-                            it.accent ? [it.color, it.accent] : [it.color]
-                          }
-                          on={draft.items[tab] === id}
-                          pick={() => setDraft(equip(draft, tab, id))}
+                          label={id}
+                          colors={[color]}
+                          on={draft.skin === id}
+                          pick={() => setDraft({ ...draft, skin: id })}
                         />
-                      );
-                    }),
-                  ]}
-            </div>
+                      ),
+                    )
+                  : [
+                      ...(REQUIRED.includes(tab)
+                        ? []
+                        : [
+                            <Swatch
+                              key="none"
+                              label={t.none}
+                              colors={[]}
+                              on={!draft.items[tab]}
+                              pick={() => setDraft(equip(draft, tab, null))}
+                            />,
+                          ]),
+                      ...itemsFor(tab).map((id) => {
+                        const it = itemOf(id);
+                        const price = priceOf(id);
+                        return (
+                          <Swatch
+                            key={id}
+                            label={it.name}
+                            tag={
+                              price
+                                ? owned.includes(id)
+                                  ? t.owned
+                                  : t.price(price)
+                                : undefined
+                            }
+                            locked={price > 0 && !owned.includes(id)}
+                            colors={
+                              it.accent ? [it.color, it.accent] : [it.color]
+                            }
+                            on={draft.items[tab] === id}
+                            pick={() => setDraft(equip(draft, tab, id))}
+                          />
+                        );
+                      }),
+                    ]}
+              </div>
+            )}
             <p className="text-[11px] text-white/50">{t.beta}</p>
             <p className="text-xs text-white/70">{t.wallet(wallet)}</p>
           </div>
@@ -247,6 +258,76 @@ export function Wardrobe({ onClose }: { onClose(): void }) {
       </div>
     </div>,
     document.body,
+  );
+}
+
+/** Shop moves: try one on the preview, buy it here (it isn't part of the look, so it doesn't wait for Save). */
+function Celebrations({
+  move,
+  setMove,
+  owned,
+  wallet,
+}: {
+  move: Move | "auto";
+  setMove(m: Move | "auto"): void;
+  owned: string[];
+  wallet: number;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const pick = move !== "auto" && isCelebration(move) ? move : null;
+  const price = pick ? celebrationOf(pick).price : 0;
+  const has = pick ? owned.includes(pick) : false;
+  const short = !!pick && !has && wallet - price < SHOP_FLOOR;
+  const buy = async () => {
+    if (!pick) return;
+    setError("");
+    setBusy(true);
+    const ok = await player.buy([{ id: pick, price }]);
+    setBusy(false);
+    if (!ok) setError(t.buyFailed);
+  };
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {CELEBRATION_IDS.map((id) => (
+          <Swatch
+            key={id}
+            label={t.moves[id]}
+            colors={
+              id === "makeItRain"
+                ? ["#3fae5a", "#d9f99d"]
+                : ["#f5b301", "#76b900"]
+            }
+            on={pick === id}
+            pick={() => setMove(id)}
+            tag={
+              owned.includes(id) ? t.owned : t.price(celebrationOf(id).price)
+            }
+            locked={!owned.includes(id)}
+          />
+        ))}
+      </div>
+      <p className="text-xs text-white/70">
+        {pick ? t.celebrationHint[pick] : t.celebrationsNote}
+      </p>
+      {pick && !has && (
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            className="gold rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
+            onClick={buy}
+            disabled={busy || short}
+          >
+            {t.buy(price)}
+          </button>
+          {(error || short) && (
+            <p role="alert" className="text-xs text-rose-300">
+              {error || t.floor(SHOP_FLOOR)}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

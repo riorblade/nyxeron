@@ -1,7 +1,7 @@
-import { Drone, PersonStanding, ScanEye, Square } from "lucide-react";
+import { Drone, PersonStanding, ScanEye, Sparkles, Square } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CAM_MODES, type CamMode } from "@/avatar/camera";
-import { DANCES, type Dance } from "@/avatar/moves";
+import { DANCES, type Celebration, type Emote } from "@/avatar/moves";
 import { stick } from "@/avatar/stick";
 import { en } from "@/i18n/en";
 import { cn } from "@/lib/utils";
@@ -50,15 +50,18 @@ export function CameraSwitch({
   );
 }
 
-/** Pick a dance (keys 1–8 online, G to start/stop). Walking pauses it; standing still picks it back up. */
+/** Pick a dance (keys 1–8 online, G to start/stop) or a celebration the player owns (keys 9, 0). Walking pauses
+ *  it; standing still picks it back up. */
 export function EmoteBar({
   emote,
   onEmote,
   keys,
+  celebrations,
 }: {
-  emote: Dance | null;
-  onEmote(d: Dance | null): void;
+  emote: Emote | null;
+  onEmote(d: Emote | null): void;
   keys: boolean;
+  celebrations: Celebration[];
 }) {
   return (
     <div
@@ -80,6 +83,27 @@ export function EmoteBar({
               {i + 1}
             </span>
           )}
+          {en.wardrobe.moves[d]}
+        </button>
+      ))}
+      {celebrations.map((d, i) => (
+        <button
+          key={d}
+          aria-pressed={emote === d}
+          onClick={() => onEmote(emote === d ? null : d)}
+          className={cn(
+            "flex h-9 shrink-0 items-center gap-1 rounded-lg border px-2.5 text-xs whitespace-nowrap",
+            emote === d
+              ? "gold border-transparent"
+              : "border-[oklch(0.8_0.16_75/0.5)] text-[oklch(0.9_0.12_85)] hover:bg-white/10",
+          )}
+        >
+          {keys && (
+            <span className="font-mono text-[10px] opacity-60">
+              {(DANCES.length + i + 1) % 10}
+            </span>
+          )}
+          <Sparkles className="size-3" />
           {en.wardrobe.moves[d]}
         </button>
       ))}

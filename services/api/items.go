@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-// The item shop: wardrobe items with a price (wardrobe.json) are bought once with Coin and kept; the others are
-// free. A saved look may only wear what is free or owned. Cosmetic only: nothing here touches credits or tokens.
+// The item shop: wardrobe items with a price (wardrobe.json) and the celebration emotes are bought once with Coin
+// and kept; the other items are free. A saved look may only wear what is free or owned. Cosmetic only: nothing here touches credits or tokens.
 //
 //	POST  /api/items     {item} → Profile (buy it)
 //	PATCH /api/profile   {look} → Profile (save an outfit)
@@ -35,8 +35,11 @@ func ownedItems(t *sql.Tx, id string) ([]string, error) {
 // BuyItem debits the price and records the item. The wallet keeps at least the refill floor after paying, so
 // spending on items never makes a player eligible for a free refill (no buy → refill → buy loop).
 func (s *store) BuyItem(ctx context.Context, id, item string) (p Profile, err error) {
-	it, ok := game.wardrobe.Items[item]
-	if !ok || it.Price <= 0 {
+	price := game.wardrobe.Items[item].Price
+	if c, ok := game.wardrobe.Celebrations[item]; ok {
+		price = c.Price
+	}
+	if price <= 0 {
 		return p, errBad
 	}
 	err = s.tx(ctx, id, func(t *sql.Tx) error {
@@ -48,18 +51,18 @@ func (s *store) BuyItem(ctx context.Context, id, item string) (p Profile, err er
 			return errConflict
 		}
 		res, e := t.Exec(`UPDATE users SET wallet = wallet - ? WHERE id = ? AND wallet - ? >= ?`,
-			it.Price, id, it.Price, refillBelow)
+			price, id, price, refillBelow)
 		if e != nil {
 			return e
 		}
 		if k, _ := res.RowsAffected(); k == 0 {
 			return errRejected
 		}
-		if e := ledger(t, id, -it.Price, "item", "", item); e != nil {
+		if e := ledger(t, id, -price, "item", "", item); e != nil {
 			return e
 		}
 		if _, e := t.Exec(`INSERT INTO owned_items (user_id, item, price, at) VALUES (?, ?, ?, ?)`,
-			id, item, it.Price, time.Now().Unix()); e != nil {
+			id, item, price, time.Now().Unix()); e != nil {
 			return e
 		}
 		if e := touch(t, id); e != nil {

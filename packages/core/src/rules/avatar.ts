@@ -19,6 +19,12 @@ export interface Avatar {
 }
 
 export const itemOf = (id: ItemId) => wardrobe.items[id] as Item;
+/** Celebration emotes: shop moves bought once with Coin (the dances are free). */
+export type CelebrationId = keyof typeof wardrobe.celebrations;
+export const CELEBRATION_IDS = Object.keys(
+  wardrobe.celebrations,
+) as CelebrationId[];
+export const celebrationOf = (id: CelebrationId) => wardrobe.celebrations[id];
 export const priceOf = (id: ItemId) => itemOf(id).price ?? 0;
 /** The shop items in `a` that `owned` doesn't have (the api refuses to save a look with any). */
 export const unowned = (a: Avatar, owned: readonly string[]) =>

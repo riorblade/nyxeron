@@ -61,7 +61,8 @@ import { StageFx, type FlameSpot } from "./effects";
 import type { PyroCue } from "./pyro";
 import { Videotron, VIDEOTRON_ASPECT, type VideotronData } from "./videotron";
 import { avatarMaterial, buildRig, type Rig } from "@/avatar/rig";
-import { applyMove, danceAt, type Dance } from "@/avatar/moves";
+import { applyMove, danceAt, isCelebration, type Emote } from "@/avatar/moves";
+import { Showers } from "@/avatar/showers";
 import { GuestCamera, type CamMode } from "@/avatar/camera";
 import { roomOf, stepRoam, type Roam } from "@/avatar/roam";
 import { stick } from "@/avatar/stick";
@@ -109,7 +110,7 @@ interface Person {
   /** Walking under the player's own control (or a remote player's last report). */
   walking?: boolean;
   /** The dance the player picked; when standing they do this one. */
-  emote?: Dance | null;
+  emote?: Emote | null;
   /** A player's name tag (hidden on my own avatar when the camera is at it). */
   label?: THREE.Sprite;
   alert?: THREE.Sprite;
@@ -140,6 +141,8 @@ export class VenueScene {
   private camera = new THREE.PerspectiveCamera(40, 1, 0.1, 200);
   private controls!: OrbitControls;
   private root = new THREE.Group();
+  /** Cash and coins thrown by players' celebration emotes. */
+  private showers: Showers | null = null;
   private assets: VenueAssets | null = null;
   private shadowTex = shadowTexture();
   // Shared by every tilt-guest marker (they pulse together).
@@ -306,6 +309,7 @@ export class VenueScene {
     this.scene.background = new THREE.Color(0x07050c);
     this.scene.fog = new THREE.Fog(0x07050c, 28, 70);
     this.scene.add(this.root);
+    this.showers = new Showers(this.scene);
 
     const c = new OrbitControls(this.camera, r.domElement);
     c.enableDamping = true;
@@ -394,6 +398,7 @@ export class VenueScene {
     if (!this.ready) return;
     this.renderer.setAnimationLoop(null);
     this.controls.dispose();
+    this.showers?.dispose();
     this.screenWall?.dispose();
     this.disposeTree(this.scene);
     this.renderer.dispose();
@@ -2052,7 +2057,7 @@ export class VenueScene {
   private gcam = new GuestCamera();
   /** My own avatar's position while I steer it. */
   private roam: Roam | null = null;
-  private emote: Dance | null = null;
+  private emote: Emote | null = null;
   private keys = new Set<string>();
   private remoteRoams: Record<string, Roam> = {};
   private roamSent = 0;
@@ -2090,7 +2095,7 @@ export class VenueScene {
     if (me?.label) me.label.visible = m === "drone";
   }
 
-  setEmote(e: Dance | null) {
+  setEmote(e: Emote | null) {
     this.emote = e;
     if (this.roam) this.roam = { ...this.roam, emote: e };
   }
@@ -2117,6 +2122,13 @@ export class VenueScene {
   private myPerson() {
     const sid = this.playerIds.get(this.me);
     return sid === undefined ? undefined : this.guests.get(sid);
+  }
+
+  /** A player's picked move; a celebration also throws its cash or coins. */
+  private emoteMove(p: Person, e: Emote, beats: number) {
+    applyMove(p.rig!, e, beats, 0.85);
+    if (isCelebration(e))
+      this.showers?.emit(p.rig!, e, beats, p.g.position.y + p.lift);
   }
 
   /** One frame of steering my avatar, sending it on, and the eyes / behind camera. */
@@ -3084,10 +3096,10 @@ export class VenueScene {
         const walking = p.walking ?? moving;
         if (p.walking !== undefined) {
           if (walking) applyMove(p.rig, "walk", (now / 1000) * 2.2 + p.seed);
-          else if (p.emote) applyMove(p.rig, p.emote, beats, 0.85);
+          else if (p.emote) this.emoteMove(p, p.emote, beats);
           else applyMove(p.rig, "idle", beats + p.seed);
         } else if (p.emote && !moving) {
-          applyMove(p.rig, p.emote, beats, 0.85);
+          this.emoteMove(p, p.emote, beats);
         } else if (moving) {
           face = Math.atan2(p.tx - p.g.position.x, p.tz - p.g.position.z);
           applyMove(p.rig, "walk", (now / 1000) * 2.2 + p.seed);
@@ -3309,6 +3321,7 @@ export class VenueScene {
       f.far = 70 + (d * 1.6 - 70) * h;
       f.color.setRGB(0.027 + h * 0.13, 0.02 + h * 0.1, 0.047 + h * 0.18);
     }
+    this.showers?.update(dt);
     this.renderer.render(this.scene, this.camera);
   }
 

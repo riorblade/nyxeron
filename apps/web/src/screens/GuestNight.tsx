@@ -17,6 +17,7 @@ import { ChevronDown, Clapperboard, DoorOpen, Eye, EyeOff } from "lucide-react";
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ButtonHTMLAttributes,
@@ -24,6 +25,7 @@ import {
   type ReactNode,
 } from "react";
 import { audio, nightTrack, useMusic } from "@/audio";
+import { useProfile } from "@/state/profile";
 import { art } from "@/lib/art";
 import { Img } from "@/components/Img";
 import { Button } from "@/components/ui/button";
@@ -37,7 +39,7 @@ import { useGame } from "@/state/store";
 import { VenueView } from "@/venue/VenueView";
 import { CameraSwitch, EmoteBar, Joystick, nextCam } from "@/hud/GuestControls";
 import type { CamMode } from "@/avatar/camera";
-import { DANCES, type Dance } from "@/avatar/moves";
+import { CELEBRATIONS, DANCES, type Emote } from "@/avatar/moves";
 import { useNet } from "@/net/session";
 
 const t = en.guest;
@@ -87,13 +89,19 @@ export function GuestNight({
   const [cinematic, setCinematic] = useState(false);
   // Walk your own avatar: the camera starts over your shoulder; the last dance you picked comes back with G.
   const [cam, setCam] = useState<CamMode>("behind");
-  const [emote, setEmote] = useState<Dance | null>(null);
-  const lastDance = useRef<Dance>("bounce");
+  const [emote, setEmote] = useState<Emote | null>(null);
+  const lastDance = useRef<Emote>("bounce");
+  // Celebrations show up once bought (Wardrobe → Celebrations).
+  const ownedItems = useProfile((p) => p.owned);
+  const celebrations = useMemo(
+    () => CELEBRATIONS.filter((c) => ownedItems.includes(c)),
+    [ownedItems],
+  );
   // The desk folds away (T) to free the view; open by default on wide screens.
   const [deskOpen, setDeskOpen] = useState(
     () => typeof innerWidth === "undefined" || innerWidth >= 900,
   );
-  const pickEmote = (d: Dance | null) => {
+  const pickEmote = (d: Emote | null) => {
     if (d) lastDance.current = d;
     setEmote(d);
   };
@@ -119,9 +127,11 @@ export function GuestNight({
         setRunning(!useGame.getState().running);
       } else if ((k === "1" || k === "2" || k === "3") && !online)
         setSpeed(Number(k) as 1 | 2 | 3);
-      else if (online && /^[1-8]$/.test(k)) {
-        lastDance.current = DANCES[Number(k) - 1]!;
-        setEmote(lastDance.current);
+      else if (online && /^[0-9]$/.test(k)) {
+        const pick: Emote | undefined = [...DANCES, ...celebrations][
+          (Number(k) + 9) % 10
+        ];
+        if (pick) setEmote((lastDance.current = pick));
       } else if (k === "g") setEmote((x) => (x ? null : lastDance.current));
       else if (k === "v") setCam(nextCam);
       else if (k === "t") setDeskOpen((x) => !x);
@@ -131,7 +141,7 @@ export function GuestNight({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [setRunning, setSpeed, online, over]);
+  }, [setRunning, setSpeed, online, over, celebrations]);
 
   const walkOut = () => {
     // Buy-only: the tokens are the guest's, so they go home to the portfolio with the cash.
@@ -251,7 +261,12 @@ export function GuestNight({
       {inside && !done && hud && !cinematic && (
         <>
           <div className="pointer-events-none fixed inset-x-0 bottom-3 z-20 flex flex-col items-center gap-2 px-3 [&>*]:pointer-events-auto">
-            <EmoteBar emote={emote} onEmote={pickEmote} keys={!!online} />
+            <EmoteBar
+              emote={emote}
+              onEmote={pickEmote}
+              keys={!!online}
+              celebrations={celebrations}
+            />
             <div className="flex items-center gap-2">
               <CameraSwitch cam={cam} onCam={setCam} />
               <span className="glass hidden rounded-lg px-2.5 py-1.5 text-[11px] text-white/60 lg:inline">

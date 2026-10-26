@@ -407,6 +407,10 @@
       "price": 1000
     }
   },
+  "celebrations": {
+    "makeItRain": { "name": "Make It Rain", "price": 5000 },
+    "tokenToss": { "name": "Token Toss", "price": 4000 }
+  },
   "presets": {
     "masc": {
       "shirt": [

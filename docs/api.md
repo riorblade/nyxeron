@@ -41,7 +41,7 @@ Base URL: `https://api.nyxeron.xyz` (dev: same origin, Vite proxies `/api` to `:
 | GET | `/api/profile` | — | profile (created with the starter wallet on first call) |
 | POST | `/api/profile/import` | profile | once: this device's pre-account data, bounded |
 | PATCH | `/api/profile` | `{name?, avatar?, look?}` | `look`: the wardrobe outfit `skin:item,…` (one item a slot, shirt/pants/shoes required, shop items only if owned), or `""` |
-| POST | `/api/items` | `{item}` | buy a shop item (`wardrobe.json` items with a `price`) with Coin, once; it must leave the refill floor in the wallet (422), 409 if owned. The profile lists `items` |
+| POST | `/api/items` | `{item}` | buy a shop item (`wardrobe.json` items with a `price`, or a `celebrations` emote) with Coin, once; it must leave the refill floor in the wallet (422), 409 if owned. The profile lists `items` |
 | POST | `/api/wallet/refill` | — | only when the wallet is nearly empty |
 | POST | `/api/nights` | `{cash, bought, pnl, room?}` | a night out as a guest (play money): every unit cost ≥ 1, `pnl` within what the market range allows, `room` a relay code or empty, one per account per minute (409 if sooner) |
 | POST | `/api/gigs` | `{fee}` | a DJ gig played to the end (capped, rate-limited) |
