@@ -28,7 +28,7 @@ Each rule is a function in `packages/core/src/rules` with a unit test.
 | R7 | Over 150 guests without a crowd permit → may be shut down (revenue −50%, rep −10) | `engine.ts` |
 | R8 | Underage guest at the door is rejected if security is present (below Level 3 the owner checks IDs) | `security.ts` |
 | R9 | Tilt ≥ 80 and fewer than 1 guard per 40 guests → fight chance (safety −15, rep −5) | `security.ts` |
-| R10 | Capacity reached → door closes; forcing it open (only while the night runs, before 04:00) is a violation | `security.ts` |
+| R10 | The door lets in 3 a minute, +2 per security, +1 per 4 desk brokers; capacity reached → door closes; forcing it open (only while the night runs, before 04:00) is a violation | `security.ts` |
 | R11 | Night report: avg satisfaction ≥ 70 → rep +3..+8; < 40 → rep −5 | `reputation.ts` |
 | R12 | New day: CEO Energy back to 5, wages and rent paid | `economy.ts` |
 | R13 | Defeat: Coin < 0 for 3 days, or 3 violations, or reputation 0 | `economy.ts` |

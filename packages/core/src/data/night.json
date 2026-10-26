@@ -3,6 +3,8 @@
   "startHour": 22,
   "arrivalWindow": 240,
   "doorRatePerMinute": 3,
+  "doorPerSecurity": 2,
+  "doorPerBartender": 0.25,
   "demand": {
     "base": 0.4,
     "hypeWeight": 1.0,

@@ -773,15 +773,15 @@ export const en = {
     hire: "Hire",
     fire: "Fire",
     securityHint: (cap: number) =>
-      `Keep at least 1 security per 40 guests (${Math.ceil(cap / 40)} for full capacity). Security also checks IDs at the door.`,
+      `Keep at least 1 security per 40 guests (${Math.ceil(cap / 40)} for full capacity). Each guard also works the door: +2 guests let in a minute and IDs checked.`,
     bartenderHint:
-      "Each desk broker adds order capacity. A slow desk means lost sales and unhappy guests.",
+      "Each desk broker adds order capacity, and every 4 take pre-orders in the queue (+1 guest let in a minute). A slow desk means lost sales and a long line.",
     hostHint:
       "Social hosts keep the room lively: the club looks fuller, men spend more (and buy them tokens). Unlocks the 'Hosts to the floor' move.",
     relationsHint:
       "Guest relations meet every guest, keep them happy, talk up bigger orders and book tables (whale service). One covers ~60 guests.",
     mcHint:
-      "Hype man on the stage. Unlocks 'MC hype': sing-alongs and hands in the air that lift the room's energy.",
+      "Hype man on the stage. Unlocks 'MC hype': sing-alongs and hands in the air that lift the room's energy. A 2nd and 3rd MC make it 25% stronger each.",
   },
 
   permits: {

@@ -3,6 +3,13 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-13 · Staff clear the line
+
+- **The door scales with staff:** it lets in 3 guests a minute, +2 per security and +1 per 4 desk brokers
+  (`night.json → doorPerSecurity, doorPerBartender`). Before, it was 3 a minute whatever the crew, so a Level 5 club
+  had a long queue in front of an empty room (7 security + 30 brokers now let in 24 a minute).
+- **More MCs, louder hype:** a 2nd and 3rd MC make MC hype 25% stronger each (`staff.json → mc.hypePerExtra`).
+
 ## 2026-10-11 · The public docs look like the game
 
 - **Neon theme:** docs.nyxeron.xyz now uses the game's violet glass, magenta neon and gold (`docs/site/style.css`,

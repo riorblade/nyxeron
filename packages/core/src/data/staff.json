@@ -22,6 +22,8 @@
   "mc": {
     "name": "MC",
     "wagePerDay": 1500,
-    "minLevel": 4
+    "minLevel": 4,
+    "hypePerExtra": 0.25,
+    "maxUseful": 3
   }
 }

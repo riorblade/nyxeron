@@ -62,6 +62,14 @@ import {
   SEAT_TYPES,
   seatSpend,
 } from "./rules/strategy";
+
+/** Guests let in per minute: the owner's lane, plus 2 per security (ID checks) and 1 per 4 desk brokers (pre-orders). */
+export const doorRateOf = (s: GameState) =>
+  Math.floor(
+    night.doorRatePerMinute +
+      night.doorPerSecurity * s.staff.security +
+      night.doorPerBartender * s.staff.bartender,
+  );
 import {
   clamp,
   type GameEvent,
@@ -281,12 +289,13 @@ export function tickNight(s: GameState): GameState {
   for (const g of n.guests)
     if (g.state === "pending" && g.arriveMinute <= m) g.state = "queue";
 
-  // Door (R8 ID check, R10 capacity, cover charge).
+  // Door (R8 ID check, R10 capacity, cover charge). Security and desk brokers open more lanes.
   const capacity = capacityOf(s);
+  const doorRate = doorRateOf(st);
   let inside = n.guests.filter(isInside).length;
   let admittedNow = 0;
   for (const g of n.guests) {
-    if (g.state !== "queue" || admittedNow >= night.doorRatePerMinute) continue;
+    if (g.state !== "queue" || admittedNow >= doorRate) continue;
     if (n.doorClosedByCeo) break;
     if (inside >= capacity && !n.doorForced) {
       if (!n.doorClosedLogged) ev({ ...at, kind: "doorClosed" });

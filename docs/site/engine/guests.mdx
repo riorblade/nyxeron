@@ -128,14 +128,14 @@ where $\Delta H$ is the hype the promo actually added (after the 0–100 clamp),
 
 ## The door
 
-Each minute, guests whose arrival minute has come join the queue. The door then processes at most **3** queued guests, in arrival order:
+Each minute, guests whose arrival minute has come join the queue. The door then processes at most $r = \lfloor 3 + 2\, n_{\text{security}} + n_{\text{bartender}} / 4 \rfloor$ queued guests, in arrival order (each guard works a lane, desk brokers take pre-orders in the line):
 
 1. **Capacity.** If the number inside has reached $C = \operatorname{round}\big(\text{capacity}_L \cdot (1 + 0.15\, u_{\text{cap}})\big)$, the door closes for this minute, unless the player forced it open (a violation under R10). Here $u_{\text{cap}} \in \lbrace 0, 1, 2, 3 \rbrace$ is the capacity upgrade tier.
 2. **ID check.** An underage guest is turned away if the club has security, or if it is below Level 3 (the owner checks IDs at the counter). Otherwise the guest gets in, and an inspector who visits that night will find them.
 3. **Dress code.** Turned away with probability 0.1 / 0.25 (men) or 0.03 / 0.08 (women) under a smart / strict code.
 4. **Cover.** If the guest's budget $b$ is below the cover $c_g$, they go home: the door never takes a whole wallet. Otherwise they pay $c_g$ and their budget drops by it. Here $c_g = 0$ for guest-list guests and for women on ladies' night, and $c_g = c$ otherwise.
 
-Turned-away guests still use up one of the 3 door slots that minute.
+Turned-away guests still use up one of the $r$ door slots that minute. A long queue in front of an empty room means the door is understaffed: hire security or desk brokers.
 
 ## When a guest buys
 
