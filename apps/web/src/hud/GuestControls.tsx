@@ -50,7 +50,7 @@ export function CameraSwitch({
   );
 }
 
-/** Pick a dance (keys 1–8 online, G to start/stop) or a celebration the player owns (keys 9, 0). Walking pauses
+/** Pick a celebration the player owns (first, keys 9, 0) or a dance (keys 1–8 online, G to start/stop). Walking pauses
  *  it; standing still picks it back up. */
 export function EmoteBar({
   emote,
@@ -68,24 +68,6 @@ export function EmoteBar({
       className="glass flex max-w-full items-center gap-1 overflow-x-auto rounded-xl p-1"
       aria-label={t.dance}
     >
-      {DANCES.map((d, i) => (
-        <button
-          key={d}
-          aria-pressed={emote === d}
-          onClick={() => onEmote(emote === d ? null : d)}
-          className={cn(
-            "h-9 shrink-0 rounded-lg px-2.5 text-xs whitespace-nowrap",
-            emote === d ? "gold" : "text-white/80 hover:bg-white/10",
-          )}
-        >
-          {keys && (
-            <span className="mr-1 font-mono text-[10px] opacity-60">
-              {i + 1}
-            </span>
-          )}
-          {en.wardrobe.moves[d]}
-        </button>
-      ))}
       {celebrations.map((d, i) => (
         <button
           key={d}
@@ -104,6 +86,24 @@ export function EmoteBar({
             </span>
           )}
           <Sparkles className="size-3" />
+          {en.wardrobe.moves[d]}
+        </button>
+      ))}
+      {DANCES.map((d, i) => (
+        <button
+          key={d}
+          aria-pressed={emote === d}
+          onClick={() => onEmote(emote === d ? null : d)}
+          className={cn(
+            "h-9 shrink-0 rounded-lg px-2.5 text-xs whitespace-nowrap",
+            emote === d ? "gold" : "text-white/80 hover:bg-white/10",
+          )}
+        >
+          {keys && (
+            <span className="mr-1 font-mono text-[10px] opacity-60">
+              {i + 1}
+            </span>
+          )}
           {en.wardrobe.moves[d]}
         </button>
       ))}
