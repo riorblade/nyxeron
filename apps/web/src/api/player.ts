@@ -167,7 +167,9 @@ export const player = {
   },
   refill() {
     if (!online()) return useProfile.getState().refill();
-    call("POST", "/wallet/refill").then(apply, recover);
+    call("POST", "/wallet/refill").then(apply, () =>
+      useGame.getState().notify(en.dashboard.refillWait, true),
+    );
   },
   /** Back from a night out as a guest: cash left and the tokens bought (the server checks they add up). */
   settle(cash: number, bought: Holdings, pnl: number) {
@@ -177,7 +179,7 @@ export const player = {
         cash: Math.round(cash),
         bought,
         pnl: Math.round(pnl),
-        // A live party at a rented venue: the tenant is paid what this guest spent.
+        // The relay room this guest was in (kept in the ledger row); a city party's real sales are settled in sales.go.
         room: useNet.getState().role === "guest" ? useNet.getState().room : "",
       }).then(apply, recover);
   },

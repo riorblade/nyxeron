@@ -7,8 +7,11 @@ import {
   marketPrice,
   recordBuy,
   startNight,
+  night,
   strategy,
   tickMarket,
+  tokens,
+  type TokenId,
   type Guest,
   type NightState,
 } from "../src";
@@ -38,6 +41,28 @@ describe("token market", () => {
     expect(n.market.tsla).toBeLessThanOrEqual(M.range[1]!);
     expect(n.market.us500).toBeGreaterThanOrEqual(M.range[0]!);
     expect(n.marketHist.tsla).toHaveLength(600);
+  });
+
+  // The api cuts a guest's night P&L to what this move allows (services/api nightValueCap).
+  it("within one night no token rises more than maxNightMove-fold, even in a packed room", () => {
+    const menu = Object.keys(tokens) as TokenId[];
+    let worst = 0;
+    for (let seed = 1; seed <= 400; seed++) {
+      const n = nightAt(100);
+      const rng = createRng(seed);
+      for (let i = 0; i < night.minutes; i++)
+        tickMarket(
+          rng,
+          n,
+          menu,
+          (i === 1 ? M.djStartPump : 0) + M.anthemPumpPerMinute,
+        );
+      for (const t of menu) {
+        const h = [1, ...n.marketHist[t]!];
+        worst = Math.max(worst, h.at(-1)! / Math.min(...h));
+      }
+    }
+    expect(worst).toBeLessThan(M.maxNightMove);
   });
 
   it("a hot room drives prices up, a dead one down; the DJ pump lifts them", () => {

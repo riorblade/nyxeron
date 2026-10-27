@@ -26,7 +26,8 @@ const (
 	refillBelow = startWallet / 10 // a broke guest may claim the starter wallet again
 	maxGigFee   = 12_000           // highest djFee in scenarios.json → events
 	gigEvery    = 5 * time.Minute  // a gig takes ~10 real minutes; this stops fee farming
-	nightEvery  = time.Minute      // one settled night out per minute: stops replays and the spend → refill loop
+	nightEvery  = time.Minute      // one settled night out per minute: stops replays
+	refillEvery = 6 * time.Hour    // one starter wallet per 6 h: spend → refill → spend can't grow a portfolio fast
 	maxImport   = 10_000_000       // ceiling for a wallet brought over from before accounts
 	maxName     = 20
 )
@@ -272,6 +273,18 @@ func (s *store) Import(ctx context.Context, id string, in Profile) (p Profile, e
 		in.Nights < 0 || in.Nights > 100_000 || in.Gigs < 0 || in.Gigs > 100_000 || !validHoldings(in.Portfolio) {
 		return p, errBad
 	}
+	// What a device brings is its own word: tokens can't be free, the lot stays under maxImport, and no P&L beyond it.
+	worth := in.Wallet
+	for _, h := range in.Portfolio {
+		if h.Cost < h.Qty {
+			return p, errBad
+		}
+		worth += h.Cost
+	}
+	if worth > maxImport {
+		return p, errBad
+	}
+	bound := func(v int64) int64 { return max(-worth, min(worth, v)) }
 	err = s.tx(ctx, id, func(t *sql.Tx) error {
 		cur, e := read(t, id)
 		if e != nil {
@@ -281,7 +294,7 @@ func (s *store) Import(ctx context.Context, id string, in Profile) (p Profile, e
 			return errConflict
 		}
 		if _, e := t.Exec(`UPDATE users SET name = ?, avatar = ?, wallet = ?, nights = ?, gigs = ?, total_pnl = ?, best_pnl = ? WHERE id = ?`,
-			name, in.Avatar, in.Wallet, in.Nights, in.Gigs, clamp(in.TotalPnl), clamp(in.BestPnl), id); e != nil {
+			name, in.Avatar, in.Wallet, in.Nights, in.Gigs, bound(in.TotalPnl), bound(in.BestPnl), id); e != nil {
 			return e
 		}
 		if e := ledger(t, id, in.Wallet-cur.Wallet, "import", "", ""); e != nil {
@@ -298,8 +311,6 @@ func (s *store) Import(ctx context.Context, id string, in Profile) (p Profile, e
 	})
 	return
 }
-
-func clamp(v int64) int64 { return max(-maxImport, min(maxImport, v)) }
 
 // Update sets the name and/or avatar.
 func (s *store) Update(ctx context.Context, id string, name *string, avatar *int) (p Profile, err error) {
@@ -334,20 +345,28 @@ func (s *store) Update(ctx context.Context, id string, name *string, avatar *int
 	return
 }
 
-// Refill gives a broke guest the starter wallet again.
-func (s *store) Refill(ctx context.Context, id string) (p Profile, err error) {
+// Refill gives a broke guest the starter wallet again, at most once per refillEvery.
+func (s *store) Refill(ctx context.Context, id string, now time.Time) (p Profile, err error) {
 	err = s.tx(ctx, id, func(t *sql.Tx) error {
-		var before int64
+		var before, last int64
 		if e := t.QueryRow(`SELECT wallet FROM users WHERE id = ?`, id).Scan(&before); e != nil {
 			return e
 		}
 		if before >= refillBelow {
 			return errRejected
 		}
+		if e := t.QueryRow(`SELECT COALESCE(MAX(at), 0) FROM ledger WHERE user_id = ? AND kind = 'refill'`, id).
+			Scan(&last); e != nil {
+			return e
+		}
+		if last > 0 && now.Sub(time.Unix(last, 0)) < refillEvery {
+			return errConflict
+		}
 		if _, e := t.Exec(`UPDATE users SET wallet = ? WHERE id = ?`, startWallet, id); e != nil {
 			return e
 		}
-		if e := ledger(t, id, startWallet-before, "refill", "", ""); e != nil {
+		if _, e := t.Exec(`INSERT INTO ledger (user_id, delta, balance, kind, actor, reason, at)
+			SELECT id, ?, wallet, 'refill', '', '', ? FROM users WHERE id = ?`, startWallet-before, now.Unix(), id); e != nil {
 			return e
 		}
 		if e := touch(t, id); e != nil {
@@ -361,21 +380,22 @@ func (s *store) Refill(ctx context.Context, id string) (p Profile, err error) {
 }
 
 // nightValueCap: the most the tokens a guest bought can be worth by the end of the night. The desk sells at
-// max(1, round(list × m)) and marks holdings the same way, with m within strategy.json's market range [lo, hi], so a
-// unit bought at b is worth at most (hi/lo)·b + (hi/(2·lo) + ½) by closing (the second term covers the rounding).
+// max(1, round(list × m)) and marks holdings the same way; within one night m rises at most maxNightMove-fold
+// (strategy.json, checked by a core test against the simulated market). So a unit bought at b, with list × m ≤ b + ½,
+// is worth at most maxNightMove·(b + ½) + ½ by closing.
 func nightValueCap(bought map[string]Holding) int64 {
-	lo, hi := game.strategy.Market.Range[0], game.strategy.Market.Range[1]
+	k := game.strategy.Market.MaxNightMove
 	var v int64
 	for _, h := range bought {
-		v += int64(math.Ceil(float64(h.Cost)*hi/lo + float64(h.Qty)*(hi/(2*lo)+0.5)))
+		v += int64(math.Ceil(k*(float64(h.Cost)+float64(h.Qty)/2) + float64(h.Qty)/2))
 	}
 	return v
 }
 
 // Night settles a night out as a guest. Guests only spend (door + tokens), so the wallet can't grow, and the tokens
-// taken home can't have cost more than what was spent. Every unit cost at least 1 (the desk's floor price), the
-// P&L can't beat what the market range lets those tokens be worth, `room` is a relay code or empty, and an account
-// settles at most one night per nightEvery. It is play money everywhere: since the cutover a city party's real sales
+// taken home can't have cost more than what was spent. Every unit cost at least 1 (the desk's floor price), a P&L
+// above what one night's market lets those tokens be worth is cut down to it, `room` is a relay code or empty, a night
+// with nothing spent doesn't count, and an account settles at most one night per nightEvery. It is play money everywhere: since the cutover a city party's real sales
 // go through the api in credits (sales.go), so nobody is paid Coin for a guest's night.
 func (s *store) Night(ctx context.Context, id string, cash int64, bought map[string]Holding, pnl int64, room string, now time.Time) (p Profile, err error) {
 	room = strings.ToUpper(strings.TrimSpace(room))
@@ -386,6 +406,13 @@ func (s *store) Night(ctx context.Context, id string, cash int64, bought map[str
 		cur, e := read(t, id)
 		if e != nil {
 			return e
+		}
+		if cash == cur.Wallet && len(bought) == 0 {
+			if pnl != 0 {
+				return errRejected // nothing bought, nothing to gain or lose
+			}
+			p = cur // just looked around: not a night out
+			return nil
 		}
 		var last int64
 		if e := t.QueryRow(`SELECT COALESCE(MAX(at), 0) FROM ledger WHERE user_id = ? AND kind = 'night'`, id).
@@ -403,9 +430,10 @@ func (s *store) Night(ctx context.Context, id string, cash int64, bought map[str
 			cost += h.Cost
 		}
 		spent := cur.Wallet - cash
-		if cash > cur.Wallet || cost > spent || pnl > nightValueCap(bought)-spent || pnl < -cur.Wallet {
+		if cash > cur.Wallet || cost > spent || pnl < -cur.Wallet {
 			return errRejected
 		}
+		pnl = min(pnl, nightValueCap(bought)-spent)
 		best := pnl
 		if cur.Nights > 0 {
 			best = max(cur.BestPnl, pnl)
