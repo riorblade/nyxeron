@@ -3,6 +3,19 @@
 What shipped, newest first, with the numbers behind decisions. Add a line for anything a player, admin or
 teammate would notice.
 
+## 2026-10-27 · Guest nights checked tighter (#67)
+
+- **Starter wallet once per 6 hours:** `POST /api/wallet/refill` still needs a wallet under 2,000 and now also 6 h
+  since the last claim (409, "Try again in a few hours"). Spend → refill → spend grew a portfolio by 20,000 a
+  minute; now by at most 20,000 per 6 h.
+- **Night P&L cut to one night's market:** a guest's reported P&L is capped at what their tokens can be worth after
+  the biggest move the market makes in a night (`market.maxNightMove` 2.5; 400 simulated packed nights peak at
+  ~1.95, a core test keeps it that way). Floor-price buys stretched the old range-based cap to ~10.75× spend; now
+  ≤ 4.25×. The night still settles (tokens go home); only the P&L is cut.
+- **Empty nights don't count:** nothing spent and nothing bought leaves the profile as it was (a P&L on it is 422).
+- **Import:** a device's profile can't bring tokens below 1 Coin a unit, its wallet plus token cost stays under the
+  import ceiling, and its P&L can't exceed that.
+
 ## 2026-10-26 · Celebrations
 
 - **Celebration emotes (item shop):** two shop moves next to the free dances. **Make It Rain** (5,000 Coin) holds

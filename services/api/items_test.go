@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestBuyItem(t *testing.T) {
@@ -53,7 +54,7 @@ func TestBuyItemKeepsTheRefillFloor(t *testing.T) {
 	if bought == 0 {
 		t.Fatal("nothing affordable")
 	}
-	if _, err := s.Refill(ctx, "u"); !errors.Is(err, errRejected) {
+	if _, err := s.Refill(ctx, "u", time.Now()); !errors.Is(err, errRejected) {
 		t.Fatalf("shopping made a refill possible: %v", err)
 	}
 }

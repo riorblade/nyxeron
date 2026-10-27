@@ -141,7 +141,7 @@ func (pl *players) route(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("POST /api/wallet/refill", func(w http.ResponseWriter, r *http.Request) {
 		if id, ok := pl.who(w, r); ok {
-			p, err := pl.db.Refill(r.Context(), id)
+			p, err := pl.db.Refill(r.Context(), id, time.Now())
 			reply(w, p, err)
 		}
 	})

@@ -130,7 +130,7 @@ func TestCoinPathsNeverTouchCredits(t *testing.T) {
 	if err := s.GrantCoins(ctx, "boss", "c", -startWallet+10, "broke"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Refill(ctx, "c"); err != nil {
+	if _, err := s.Refill(ctx, "c", time.Now()); err != nil {
 		t.Fatalf("refill: %v", err)
 	}
 	for _, id := range []string{"a", "b", "c"} {

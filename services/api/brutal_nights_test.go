@@ -9,6 +9,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -225,5 +226,86 @@ func TestBrutalNightsRefillLoop(t *testing.T) {
 	if p := a.me(); p.Portfolio["tsla"].Cost > 2*startWallet {
 		t.Errorf("refill loop: portfolio cost basis %d from a %d starter wallet (wallet %d)",
 			p.Portfolio["tsla"].Cost, startWallet, p.Wallet)
+	}
+}
+
+// Follow-ups to #68, on the store with a clock we control (the HTTP tests above run inside one nightEvery).
+
+// The spend → refill loop, one round a minute for 20 minutes: only the first refill pays out.
+func TestBrutalNightsRefillLoopWithTime(t *testing.T) {
+	s := testStore(t)
+	now := time.Now()
+	for i := 0; i < 20; i++ {
+		now = now.Add(nightEvery)
+		p, _ := s.Get(ctx, "u")
+		_, _ = s.Night(ctx, "u", 0, map[string]Holding{"tsla": {Qty: 1, Cost: p.Wallet}}, 0, "", now)
+		_, _ = s.Refill(ctx, "u", now)
+	}
+	if p, _ := s.Get(ctx, "u"); p.Portfolio["tsla"].Cost > 2*startWallet {
+		t.Fatalf("refill loop: cost basis %d from a %d starter wallet", p.Portfolio["tsla"].Cost, startWallet)
+	}
+	if _, err := s.Refill(ctx, "u", now.Add(refillEvery)); err != nil {
+		t.Fatalf("a refill once the wait is over: %v", err)
+	}
+}
+
+// Tokens bought at the 1-Coin floor stretched the old range-based cap to ~10.75× spend. Now a P&L is cut to what
+// one night's market move allows, and the tokens still go home.
+func TestBrutalNightsPnlFarmedAtTheFloor(t *testing.T) {
+	s := testStore(t)
+	now := time.Now()
+	p, err := s.Night(ctx, "u", 0, map[string]Holding{"tsla": {Qty: startWallet, Cost: startWallet}}, 1_000_000_000, "", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := nightValueCap(map[string]Holding{"tsla": {Qty: startWallet, Cost: startWallet}}) - startWallet
+	if p.BestPnl != want || p.TotalPnl != want || p.Portfolio["tsla"].Qty != startWallet {
+		t.Fatalf("pnl %d / %d, want %d; tokens %d", p.BestPnl, p.TotalPnl, want, p.Portfolio["tsla"].Qty)
+	}
+	if r := float64(want+startWallet) / startWallet; r > 4.5 {
+		t.Fatalf("a floor-price night can still be worth %.2f× its spend", r)
+	}
+	// A realistic night (bought at list, market up 60%) is kept as the client says.
+	now = now.Add(refillEvery)
+	_, _ = s.Refill(ctx, "u", now)
+	p, _ = s.Night(ctx, "u", 10_000, map[string]Holding{"nvda": {Qty: 10, Cost: 10_000}}, 6_000, "", now)
+	if p.BestPnl != want || p.TotalPnl != want+6_000 {
+		t.Fatalf("an honest night changed: best %d total %d", p.BestPnl, p.TotalPnl)
+	}
+}
+
+// Nothing spent, nothing bought: not a night out, however often it's sent.
+func TestBrutalNightsEmptyNightsDontCount(t *testing.T) {
+	s := testStore(t)
+	now := time.Now()
+	for i := 0; i < 30; i++ {
+		now = now.Add(nightEvery)
+		if _, err := s.Night(ctx, "u", startWallet, nil, 0, "", now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if p, _ := s.Get(ctx, "u"); p.Nights != 0 {
+		t.Fatalf("empty nights counted: %d", p.Nights)
+	}
+	if _, err := s.Night(ctx, "u", startWallet, nil, 500, "", now.Add(time.Hour)); !errors.Is(err, errRejected) {
+		t.Fatalf("a profit from an empty night: %v", err)
+	}
+}
+
+// A fresh account imports a device's profile once; it can't bring free tokens or a P&L beyond what it holds.
+func TestBrutalImportBounds(t *testing.T) {
+	s := testStore(t)
+	free := Profile{Name: "x", Avatar: 1, Wallet: 0, Portfolio: map[string]Holding{"tsla": {Qty: 1_000_000, Cost: 0}}}
+	if _, err := s.Import(ctx, "a", free); !errors.Is(err, errBad) {
+		t.Fatalf("free tokens imported: %v", err)
+	}
+	big := Profile{Name: "x", Avatar: 1, Wallet: maxImport, Portfolio: map[string]Holding{"tsla": {Qty: 1, Cost: 1}}}
+	if _, err := s.Import(ctx, "b", big); !errors.Is(err, errBad) {
+		t.Fatalf("over maxImport imported: %v", err)
+	}
+	p, err := s.Import(ctx, "c", Profile{Name: "x", Avatar: 1, Wallet: 5_000,
+		Portfolio: map[string]Holding{"nvda": {Qty: 3, Cost: 3_000}}, TotalPnl: 10_000_000, BestPnl: -10_000_000})
+	if err != nil || p.TotalPnl != 8_000 || p.BestPnl != -8_000 || p.Portfolio["nvda"].Qty != 3 {
+		t.Fatalf("import: %+v %v", p, err)
 	}
 }

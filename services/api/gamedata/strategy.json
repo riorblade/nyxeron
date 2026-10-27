@@ -210,6 +210,7 @@
     "fomoRange": [0.75, 1.4],
     "pnlSatisfaction": 0.6,
     "lossTilt": 8,
-    "range": [0.4, 3]
+    "range": [0.4, 3],
+    "maxNightMove": 2.5
   }
 }

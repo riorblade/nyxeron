@@ -132,6 +132,8 @@ export const en = {
     walletNote:
       "Classic mode's play currency, farmed for the NYX launch. Not real money.",
     refill: "Claim starter wallet",
+    refillWait:
+      "You claimed a starter wallet not long ago. Try again in a few hours.",
     nights: "Nights out",
     totalPnl: "Total P&L",
     bestPnl: "Best night",

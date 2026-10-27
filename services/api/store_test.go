@@ -115,11 +115,11 @@ func TestGigAndRefillRules(t *testing.T) {
 	if _, err := s.Gig(ctx, "u", maxGigFee+1, now.Add(time.Hour)); !errors.Is(err, errBad) {
 		t.Fatalf("fee too big: %v", err)
 	}
-	if _, err := s.Refill(ctx, "u"); !errors.Is(err, errRejected) {
+	if _, err := s.Refill(ctx, "u", time.Now()); !errors.Is(err, errRejected) {
 		t.Fatalf("refill while rich: %v", err)
 	}
 	s.Night(ctx, "u", 100, nil, 100-(startWallet+4_000), "", now) // spent it all on the door
-	if p, err := s.Refill(ctx, "u"); err != nil || p.Wallet != startWallet {
+	if p, err := s.Refill(ctx, "u", time.Now()); err != nil || p.Wallet != startWallet {
 		t.Fatalf("refill when broke: %+v %v", p, err)
 	}
 }

@@ -62,7 +62,8 @@ var game struct {
 	}
 	strategy struct {
 		Market struct {
-			Range [2]float64 `json:"range"` // the desk price's multiplier on the list price, low to high
+			Range        [2]float64 `json:"range"`        // the desk price's multiplier on the list price, low to high
+			MaxNightMove float64    `json:"maxNightMove"` // the most that multiplier grows within one night
 		} `json:"market"`
 	}
 	// wardrobe: the look a profile may save (skins, items, required slots) and the item shop's prices in Coin.
